@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Blender yedek dosyaları
+*.blend1
+
+# Unity'nin ürettiği klasörler (asıl Unity projesi C:\SuruIHA altında, burada yalnızca scriptler ve ayarlar var)
+unity/Library/
+unity/Temp/
+unity/Logs/
+unity/UserSettings/
+*.meta
+
+# Derlenmiş uygulamanın sıkıştırılmış yedeği (OneDrive ile buluta gider, git'e girmez)
+yedek/
