@@ -31,6 +31,13 @@ namespace SuruIHA
         public static readonly Color ColNoGps = new Color(1f, 0.18f, 0.15f);
         public static readonly Color ColSearch = new Color(0.25f, 0.6f, 1f);
         public static readonly Color ColSpoof = new Color(0.8f, 0.25f, 1f);
+        public static readonly Color ColRelay = new Color(0.1f, 0.95f, 1f);
+        public static readonly Color ColFailed = new Color(0.05f, 0.05f, 0.05f);
+
+        bool Failed => State != null && State.mode == 4;
+        bool Parked => State != null && (State.phase == 6 || (State.phase == 0 && transform.localPosition.y - GroundY < 0.8f));
+        float GroundY => vis.GroundAt(transform.position) - vis.transform.position.y;
+        float tumble;
 
         public static DroneView Create(SwarmVisualizer vis, Transform parent, int id)
         {
@@ -128,12 +135,12 @@ namespace SuruIHA
                 trail.Clear();
                 hasState = true;
             }
-            Color c = s.mode == 2 ? ColSpoof : s.gps == 0 ? ColNoGps : s.mode == 1 ? ColSearch
-                    : s.jam > 0.35f ? ColJammed : ColNormal;
+            Color c = s.mode == 4 ? ColFailed : s.mode == 2 ? ColSpoof : s.mode == 3 ? ColRelay
+                    : s.gps == 0 ? ColNoGps : s.mode == 1 ? ColSearch : s.jam > 0.35f ? ColJammed : ColNormal;
             SwarmMaterials.SetBlock(block, c * 0.3f, c * vis.glow * 2f);
             foreach (var r in leds) r.SetPropertyBlock(block);
             beaconRenderer.SetPropertyBlock(block);
-            trail.emitting = vis.showTrails;
+            trail.emitting = vis.showTrails && s.mode != 4 && s.phase != 6;
             if (!Application.isPlaying)
             {
                 // Editör önizlemesi: yumuşatma yok, her şeyi hemen yerine koy
@@ -156,9 +163,15 @@ namespace SuruIHA
             Vector3 v = (transform.localPosition - prev) / Mathf.Max(dt, 1e-4f);
             smoothVel = Vector3.Lerp(smoothVel, v, 1f - Mathf.Exp(-4f * dt));
 
+            // Arızalanan İHA dönerek düşer
+            if (Failed && transform.localPosition.y - GroundY > 0.6f)
+            {
+                tumble += 400f * dt;
+                model.localRotation = Quaternion.Euler(tumble * 0.7f, tumble, tumble * 0.3f);
+            }
             // Gövde, hız yönüne bakar ve hızlandıkça öne yatar (gerçek quadcopter gibi)
             Vector3 flat = new Vector3(smoothVel.x, 0, smoothVel.z);
-            if (flat.sqrMagnitude > 0.5f)
+            if (!Failed && flat.sqrMagnitude > 0.5f)
             {
                 float tilt = Mathf.Clamp(flat.magnitude * 1.6f, 0f, 22f);
                 Quaternion want = Quaternion.LookRotation(flat.normalized) * Quaternion.Euler(tilt, 0, 0);
@@ -167,10 +180,12 @@ namespace SuruIHA
 
             float st = (Time.time + strobePhase) % 1.3f;
             bool flash = st < 0.05f || (st > 0.16f && st < 0.21f);
+            if (Failed || Parked) flash = false;
             SwarmMaterials.SetBlock(strobeBlock, Color.white * 0.4f, flash ? Color.white * vis.glow * 10f : Color.black);
             strobe.SetPropertyBlock(strobeBlock);
 
-            float rpm = transform.localPosition.y > 1.5f ? 2400f : 900f;
+            // İndikten sonra motorlar durur (gerçek İHA'lar inişte motoru kilitler)
+            float rpm = Failed || Parked ? 0f : transform.localPosition.y - GroundY > 1.5f ? 2400f : 900f;
             propAngle = (propAngle + rpm * 6f * dt) % 360f;
             for (int i = 0; i < props.Length; i++)
             {

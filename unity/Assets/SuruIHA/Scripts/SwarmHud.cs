@@ -14,6 +14,18 @@ namespace SuruIHA
         Texture2D bg, bar, barFill;
         float scale = 1f;
 
+        static string PhaseName(string p) => p switch
+        {
+            "kalkis" => "kalkış",
+            "intikal" => "intikal (düzende)",
+            "gorev" => "görev",
+            "toplanma" => "toplanma",
+            "donus" => "dönüş (düzende)",
+            "inis" => "iniş",
+            "indi" => "indi",
+            _ => p ?? "-",
+        };
+
         static string StrategyName(string s) => s switch
         {
             "centralized" => "MERKEZİ (YER İSTASYONU)",
@@ -54,6 +66,8 @@ namespace SuruIHA
             if (SwarmInput.Down(SwarmInput.K.Minus)) rx.SendCommand("{\"cmd\":\"jammer\",\"step\":-1}");
             if (SwarmInput.Down(SwarmInput.K.X)) rx.SendCommand("{\"cmd\":\"spoof\"}");
             if (SwarmInput.Down(SwarmInput.K.N)) rx.SendCommand("{\"cmd\":\"restart\"}");
+            if (SwarmInput.Down(SwarmInput.K.V)) rx.SendCommand("{\"cmd\":\"formation\"}");
+            if (SwarmInput.Down(SwarmInput.K.Z)) rx.SendCommand("{\"cmd\":\"fail\"}");
         }
 
         static Texture2D Tex(Color c)
@@ -99,6 +113,7 @@ namespace SuruIHA
             else
             {
                 GUILayout.Label(StrategyName(f.strategy), value);
+                Row("Uçuş evresi", PhaseName(f.phase), line);
                 Row("Görev süresi", $"{f.t:0} s", line);
                 var m = f.m;
                 if (m != null)
@@ -113,6 +128,9 @@ namespace SuruIHA
                     Row("Ort. konum hatası", $"{m.locErr:0.0} m", line);
                     Row("Yanlış tamamlama", $"{m.falseDone}", line);
                     Row("Gereksiz tekrar ziyaret", $"{m.redundant}", line);
+                    Row("Sürü bağlantısı", $"%{m.conn * 100:0}", line);
+                    Row("Düzen", $"{f.formation} · hata {m.formErr:0.0} m", line);
+                    Row("Uçan İHA · röle", $"{m.alive} · {m.relays}", line);
                 }
                 if (f.jammers != null && f.jammers.Length > 0)
                     Row("Karıştırıcı", $"{f.jammers[0].pw:0} dBm · ~{f.jammers[0].r:0} m", line);
@@ -123,12 +141,14 @@ namespace SuruIHA
                     Row("Saldırgan İHA", f.ctl.spoof > 0 ? $"%{f.ctl.spoof * 100:0}" : "yok", line);
                     Row("Harita", $"#{f.ctl.seed}", line);
                     if (f.ctl.finished == 1)
-                        GUILayout.Label("<color=#33ff73><b>GÖREV BİTTİ</b></color> · [N] yeni harita", small);
+                        GUILayout.Label("<color=#33ff73><b>SÜRÜ İNDİ</b></color> · [N] yeni harita", small);
+                    else if (f.ctl.missionDone == 1)
+                        GUILayout.Label("<color=#33ff73><b>GÖREVLER BİTTİ</b></color> · sürü üsse dönüyor", small);
                 }
             }
             GUILayout.Space(10 * s);
             GUILayout.Label("<b>İHA ışığı</b>  <color=#26ff8c>●</color> normal  <color=#ff9e1a>●</color> karıştırılıyor  " +
-                            "<color=#ff2e26>●</color> GPS yok  <color=#4099ff>●</color> arıyor  <color=#cc40ff>●</color> saldırgan", small);
+                            "<color=#ff2e26>●</color> GPS yok  <color=#4099ff>●</color> arıyor  <color=#cc40ff>●</color> saldırgan  <color=#1af2ff>●</color> röle  <color=#555555>●</color> arızalı", small);
             GUILayout.Label("<b>Görev</b>  <color=#d9e0f2>●</color> açık  <color=#ffc733>●</color> yolda  " +
                             "<color=#33ff73>●</color> tamam  <color=#ff2640>●</color> yanlış tamam", small);
             GUILayout.Label("<b>Bağlantı</b>  <color=#26ff8c>━</color> sağlam → <color=#ff1f14>━</color> karıştırılmış   " +
@@ -147,7 +167,7 @@ namespace SuruIHA
                             $"{1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} FPS", small);
             GUILayout.Label($"Kamera: <b>{camName}</b>   [C] sinematik [O] serbest [F/Tab/1-9] takip [T] taktik\n" +
                             "[L] bağlantılar  [G] konum hayaletleri  [J] karıştırma haritası  [B] uzak işaretler  [H] paneli gizle  [Esc] çıkış\n" +
-                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [+/-] karıştırıcı  [X] saldırgan  [N] yeni harita", small);
+                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [+/-] karıştırıcı  [X] saldırgan  [N] yeni harita  [V] düzen  [Z] arıza", small);
             GUILayout.EndVertical();
             GUILayout.EndArea();
         }

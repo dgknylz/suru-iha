@@ -464,6 +464,7 @@ namespace SuruIHA.EditorTools
 
             EditorUtility.DisplayProgressBar("SürüİHA", "Arazi", 0.5f);
             var terrain = BuildTerrain(prefabs);
+            ExportHeightmap(terrain);
             EditorUtility.DisplayProgressBar("SürüİHA", "Köy ve elektrik hattı", 0.9f);
             BuildVillage(prefabs, terrain);
             BuildPowerLine(prefabs, terrain);
@@ -521,6 +522,28 @@ namespace SuruIHA.EditorTools
             }
             AssetDatabase.SaveAssets();
             return m;
+        }
+
+        // Python simülasyonu aynı araziyi kullansın diye yükseklik haritasını dışa aktarır.
+        // Biçim: 601x601 float32 (küçük-endian), satır = kuzey (z), sütun = doğu (x), değer = dünya y'si (m).
+        static void ExportHeightmap(Terrain t)
+        {
+            const int n = 601;
+            const float origin = -1200f, step = 4f;
+            var buf = new byte[n * n * 4];
+            for (int j = 0; j < n; j++)
+            for (int i = 0; i < n; i++)
+            {
+                float x = origin + i * step, z = origin + j * step;
+                float y = t.SampleHeight(new Vector3(x, 0, z)) + t.transform.position.y;
+                System.Buffer.BlockCopy(BitConverter.GetBytes(y), 0, buf, (j * n + i) * 4, 4);
+            }
+            string dir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Arazi"));
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "arazi_yukseklik.bin"), buf);
+            File.WriteAllText(Path.Combine(dir, "arazi_yukseklik.json"),
+                $"{{\"n\": {n}, \"origin\": {origin}, \"step\": {step}}}");
+            Debug.Log("[SuruIHA] Yükseklik haritası: " + dir);
         }
 
         // ------------------------------------------------------------------ köy ve elektrik hattı

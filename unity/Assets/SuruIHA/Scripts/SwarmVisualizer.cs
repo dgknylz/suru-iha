@@ -55,6 +55,7 @@ namespace SuruIHA
         readonly List<JammerView> jammers = new List<JammerView>();
         readonly List<GameObject> jamCells = new List<GameObject>();
         readonly List<LineRenderer> gcsLinks = new List<LineRenderer>();
+        readonly List<LineRenderer> relayLines = new List<LineRenderer>();
         Transform droneRoot, linkRoot, taskRoot, ewRoot;
         Transform gcs, gcsMastTop;
         MaterialPropertyBlock block;
@@ -156,8 +157,14 @@ namespace SuruIHA
                 if (!on) continue;
                 var d = linkData[k];
                 if (d.x >= drones.Count || d.y >= drones.Count) { links[k].enabled = false; continue; }
-                links[k].SetPosition(0, drones[d.x].transform.position);
-                links[k].SetPosition(1, drones[d.y].transform.position);
+                Vector3 a = drones[d.x].transform.position, b = drones[d.y].transform.position;
+                links[k].SetPosition(0, a);
+                links[k].SetPosition(1, b);
+                // Kameraya yakın çizgiler incelsin (takip kamerasında ekranı kaplamasın)
+                var cam = Camera.main;
+                float near = cam != null ? DistanceToSegment(cam.transform.position, a, b) : 200f;
+                links[k].widthMultiplier = linkWidth * Mathf.Lerp(0.4f, 1f, k < linkQ.Count ? linkQ[k] : 1f)
+                                           * Mathf.Clamp(near / 120f, 0.08f, 1f);
             }
             if (gcs != null && Frame?.gcs?.up != null)
             {
@@ -171,11 +178,30 @@ namespace SuruIHA
                     gcsLinks[i].SetPosition(1, drones[i].transform.position);
                 }
             }
+            if (Frame?.drones != null)
+            {
+                while (relayLines.Count < drones.Count) relayLines.Add(MakeLine(linkRoot, Mats.GcsLink, linkWidth * 1.4f, 2, true));
+                for (int i = 0; i < relayLines.Count; i++)
+                {
+                    int k = i < Frame.drones.Length ? Frame.drones[i].relay : -1;
+                    bool on = showLinks && k >= 0 && k < drones.Count;
+                    relayLines[i].enabled = on;
+                    if (!on) continue;
+                    relayLines[i].SetPosition(0, drones[i].transform.position);
+                    relayLines[i].SetPosition(1, drones[k].transform.position);
+                }
+            }
             if (drones.Count > 0)
             {
                 Vector3 c = Vector3.zero;
-                foreach (var d in drones) c += d.transform.position;
-                Centroid = c / drones.Count;
+                int n = 0;
+                foreach (var d in drones)
+                {
+                    if (d.State != null && d.State.mode == 4) continue;
+                    c += d.transform.position;
+                    n++;
+                }
+                if (n > 0) Centroid = c / n;
             }
         }
 
@@ -221,7 +247,7 @@ namespace SuruIHA
             {
                 bool on = i < f.tasks.Length;
                 tasks[i].Root.gameObject.SetActive(on);
-                if (on) tasks[i].Set(f.tasks[i], block);
+                if (on) tasks[i].Set(f.tasks[i], block, this);
             }
         }
 
@@ -259,7 +285,8 @@ namespace SuruIHA
                 gcs.name = "YerIstasyonu";
             }
             var p = SwarmFrame.Enu(f.gcs.p);
-            gcs.localPosition = new Vector3(p.x, 0f, p.z) + gcsModelOffset;
+            var gp = new Vector3(p.x, 0f, p.z) + gcsModelOffset;
+            gcs.localPosition = new Vector3(gp.x, LocalGround(gp.x, gp.z), gp.z);
             while (gcsLinks.Count < (f.drones?.Length ?? 0)) gcsLinks.Add(MakeLine(linkRoot, Mats.GcsLink, linkWidth * 0.6f, 2, true));
         }
 
@@ -301,6 +328,24 @@ namespace SuruIHA
                 snapped = true;
             }
         }
+
+        static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-4f));
+            return Vector3.Distance(p, a + ab * t);
+        }
+
+        // Dünya konumunun altındaki arazi yüksekliği (arazi çarpıştırıcısına ışın atar)
+        public float GroundAt(Vector3 world)
+        {
+            var o = new Vector3(world.x, 3000f, world.z);
+            if (Physics.Raycast(o, Vector3.down, out var hit, 6000f, groundMask, QueryTriggerInteraction.Ignore))
+                return hit.point.y;
+            return transform.position.y;
+        }
+
+        float LocalGround(float x, float z) => GroundAt(transform.TransformPoint(new Vector3(x, 0, z))) - transform.position.y;
 
         // ---------------------------------------------------------- yardımcılar
         public static void SafeDestroy(Object o)
@@ -384,13 +429,17 @@ namespace SuruIHA
                 ring = MakeCircle(Root, 6f, 48, v.Mats.TaskRing, 0.22f);
             }
 
-            public void Set(TaskState s, MaterialPropertyBlock block)
+            float ground = float.NaN;
+
+            public void Set(TaskState s, MaterialPropertyBlock block, SwarmVisualizer v)
             {
                 var p = SwarmFrame.Enu(s.p);
-                Root.localPosition = new Vector3(p.x, 0, p.z);
-                beamT.localPosition = new Vector3(0, p.y * 0.5f, 0);
-                beamT.localScale = new Vector3(s.s == 2 ? 0.3f : 0.6f, p.y * 0.5f, s.s == 2 ? 0.3f : 0.6f);
-                ring.transform.localPosition = new Vector3(0, p.y, 0);
+                if (float.IsNaN(ground)) ground = v.LocalGround(p.x, p.z);
+                float h = Mathf.Max(p.y - ground, 1f);
+                Root.localPosition = new Vector3(p.x, ground, p.z);
+                beamT.localPosition = new Vector3(0, h * 0.5f, 0);
+                beamT.localScale = new Vector3(s.s == 2 ? 0.3f : 0.6f, h * 0.5f, s.s == 2 ? 0.3f : 0.6f);
+                ring.transform.localPosition = new Vector3(0, h, 0);
                 Color c = StateColors[Mathf.Clamp(s.s, 0, 3)];
                 SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.07f), c * 0.15f);
                 beam.SetPropertyBlock(block);

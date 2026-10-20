@@ -16,7 +16,9 @@ namespace SuruIHA
         public float jam;      // 0..1 karıştırma seviyesi
         public int gps;        // 1 = GPS var
         public int task;       // hedef görev (-1 = yok)
-        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan
+        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı
+        public int phase;      // 0 kalkış, 1 intikal, 2 görev, 3 toplanma, 4 dönüş, 5 iniş, 6 indi
+        public int relay;      // röle ise bağlantısını koruduğu İHA (-1: değil)
         public float sigma;    // konum belirsizliği (m)
     }
 
@@ -53,6 +55,10 @@ namespace SuruIHA
         public float pdr;
         public float locErr;
         public int gpsLost;
+        public float conn;     // en büyük bağlı grubun oranı
+        public float formErr;  // düzen hatası (m)
+        public int relays;
+        public int alive;
     }
 
     [Serializable]
@@ -61,7 +67,8 @@ namespace SuruIHA
         public float power;    // karıştırıcı gücü (dBm), -1 = kapalı
         public float spoof;    // saldırgan oranı
         public int seed;       // harita numarası
-        public int finished;   // 1 = görev bitti, yeni komut bekleniyor
+        public int finished;   // 1 = sürü indi, yeni komut bekleniyor
+        public int missionDone; // 1 = görevler bitti (sürü dönüşte)
     }
 
     [Serializable]
@@ -69,6 +76,8 @@ namespace SuruIHA
     {
         public float t;
         public string strategy;
+        public string phase;       // sürünün çoğunluğunun evresi
+        public string formation;   // intikal düzeni
         public DroneState[] drones;
         public float[] links;      // [i, j, kalite, i, j, kalite, ...]
         public TaskState[] tasks;

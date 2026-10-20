@@ -23,15 +23,28 @@ Tek paragraf. İçinde şunlar olsun:
 - **Hipotez:** Karıştırma algısı, ortak karıştırma haritası, işbirlikçi konumlama ve makullük kontrolüyle güçlendirilmiş merkeziyetsiz sürü, karıştırma ve aldatma altında merkezi ve korumasız merkeziyetsiz mimarilerden anlamlı olarak daha yüksek görev tamamlama oranına ulaşır.
 
 ## Yöntem
-1. **Simülasyon ortamı:** Python. 800 m × 800 m görev alanı, 10 İHA, 20 görev noktası, 0,1 s zaman adımı, 5 Hz haberleşme.
-2. **Uçuş modeli:** Hız (12 m/s) ve ivme (4 m/s²) sınırlı nokta-kütle, rüzgâr türbülansı, çarpışmadan kaçınma.
-3. **Radyo modeli:** 2,4 GHz log-mesafe yol kaybı `PL(d) = 40 + 25·log10(d)`. SINR → paket kaybı lojistik eğrisi. Formülü rapora yaz ve ne anlama geldiğini açıkla.
-4. **Elektronik harp modeli:** Karıştırıcı (0/10/20/30 dBm), GPS kesilme eşiği (−80 dBm), IMU sapması (`σ² = σ0² + q²t³/3`), sahte teklif yayan ele geçirilmiş İHA'lar (%20).
-5. **Karşılaştırılan üç mimari:** Her birini bir paragrafla anlat. Dirençli mimarinin altı mekanizmasını madde madde yaz (README §2).
-6. **Deney tasarımı:** 3 strateji × 4 güç × 2 saldırgan oranı × 30 tekrar = 720 koşu. Aynı tohumda aynı görev haritası kullanıldı (eşleştirilmiş tasarım).
-7. **Ölçütler:** Görev tamamlama oranı, görev süresi, yanlış tamamlama, tekrar ziyaret, paket iletim oranı, konum hatası.
-8. **İstatistik:** Kruskal-Wallis (3 grup), Wilcoxon işaretli sıralar testi (eşleştirilmiş), α = 0,05. Neden parametrik olmayan test seçtiğini açıkla: veriler normal dağılmıyor ve tavan etkisi var (%100).
-9. **Görselleştirme:** Unity HDRP. Python, UDP üzerinden saniyede 30 kare yollar; modeller Blender'da kodla üretildi.
+1. **Simülasyon ortamı:** Python. Üssün 50 m kuzeyinden başlayan 660 m × 660 m görev alanı, 10 İHA, 20 görev noktası, 0,1 s zaman adımı, 5 Hz haberleşme. Arazi Unity'deki 3D araziyle birebir aynı (4 m çözünürlüklü yükseklik haritası); alanın kuzeyi 60 m'ye yükselen tepelik.
+2. **Uçuş modeli:** Hız (12 m/s) ve ivme (4 m/s²) sınırlı nokta-kütle, rüzgâr türbülansı, yerden 40 m yükseklikte arazi takibi (4 s ileriye bakış + radar altimetre emniyeti), görevde ±6 m irtifa katmanları.
+3. **Sürü zekâsı (başlığın "otonom sürü zekâsı" kısmı):** Bunu ayrı bir alt bölüm olarak yaz:
+   - **Görev akışı:** kalkış → düzende intikal → dağılıp görev → toplanma → düzende dönüş → iniş. Her İHA kendi evresine kendi karar verir; lider yok.
+   - **Lidersiz düzen uçuşu:** V, hat, kol ve halka düzenleri. Her İHA "sanal liderin" rota üzerindeki ilerlemesini tahmin eder ve komşularıyla uzlaşır: `s_i ← s_i + g · ortalama(s_j − s_i)`. Bu, ortalama uzlaşma (average consensus) algoritmasıdır. Geride kalan olursa sanal lider yavaşlar.
+   - **Yuva ataması:** Düzen değişirken İHA'ların yolları kesişmesin diye yuvalar her saniye "toplam uzaklık en küçük" olacak şekilde Macar algoritmasıyla (Kuhn, 1955) yeniden dağıtılır.
+   - **Reynolds kuralları:** ayrışma (çarpışma önleme, yaklaşma hızını da sönümler), hizalanma, uyum.
+   - **Toplanma kararı:** Bir İHA, haberini aldığı tüm arkadaşları toplanma noktasına gelmeden dönüşe geçmez; görevi süren arkadaşını bekler.
+   - **Üye kaybı:** Arızalanıp düşen İHA'nın görevleri teklif süresi dolunca diğerlerine geçer, düzen kalan İHA'larla yeniden kurulur.
+   - **Bağlantı koruma rölesi (isteğe bağlı):** Kopan bir arkadaş varsa, herkes aynı bilgiyle aynı seçimi yaparak en uygun İHA'yı röle olarak aradaki noktaya gönderir.
+4. **Radyo modeli:** 2,4 GHz log-mesafe yol kaybı `PL(d) = 40 + 25·log10(d)`. SINR → paket kaybı lojistik eğrisi. Formülü rapora yaz ve ne anlama geldiğini açıkla.
+5. **Elektronik harp modeli:** Karıştırıcı (0/10/20/30 dBm), GPS kesilme eşiği (−80 dBm), IMU sapması (`σ² = σ0² + q²t³/3`), sahte teklif yayan ele geçirilmiş İHA'lar (%20).
+6. **Karşılaştırılan üç mimari:** Her birini bir paragrafla anlat. Dirençli mimarinin altı mekanizmasını madde madde yaz (README §2).
+7. **Deney tasarımı:**
+   - Ana deney: 3 strateji × 4 güç × 2 saldırgan oranı × 30 tekrar = 720 koşu.
+   - Üye kaybı deneyi: 3 strateji × 2 güç × 0/2/4 düşen İHA × 30 tekrar = 540 koşu.
+   - Röle deneyi: 2 strateji × röle açık/kapalı × 30 tekrar, haberleşme menzili 180 m = 120 koşu.
+   - Aynı tohumda aynı görev haritası kullanıldı (eşleştirilmiş tasarım).
+8. **Ölçütler:** Görev tamamlama oranı, görev süresi (kalkış ve intikal dahil), yanlış tamamlama, tekrar ziyaret, paket iletim oranı, konum hatası, sürü bağlantılılığı (en büyük bağlı grubun oranı), düzen yuva hatası, en düşük yerden yükseklik, yakın geçiş sayısı.
+9. **Doğrulama:** `tests/test_suru.py` içinde 14 otomatik test var (radyo fiziği, düzen geometrisi, tam uçuş, arazi takibi, arıza). Raporda "simülatörün doğru çalıştığını nasıl kontrol ettin?" sorusunun cevabı bu.
+10. **İstatistik:** Kruskal-Wallis (3 grup), Wilcoxon işaretli sıralar testi (eşleştirilmiş), α = 0,05. Neden parametrik olmayan test seçtiğini açıkla: veriler normal dağılmıyor ve tavan etkisi var (%100).
+11. **Görselleştirme:** Unity HDRP. Python, UDP üzerinden saniyede 30 kare yollar; modeller Blender'da kodla üretildi.
 
 ## Proje İş-Zaman Çizelgesi
 | İş | Ay 1 | Ay 2 | Ay 3 | Ay 4 |
@@ -49,21 +62,36 @@ Tek paragraf. İçinde şunlar olsun:
 ## Bulgular
 Grafikleri `results/figures/` klasöründen koy (özellikle `completion_saldirgan0.png` ve `completion_saldirgan20.png`).
 
+**Tablo 1: Görev tamamlama oranı** (ortalama ± standart sapma, n = 30)
+
 | Koşul | Merkezi | Merkeziyetsiz | Dirençli | Wilcoxon p (Dirençli vs en iyi diğer) |
 |---|---|---|---|---|
 | Karıştırma yok | %100 | %100 | %100 | – |
-| 10 dBm | %99,2 ± 1,9 | %98,8 ± 2,5 | %99,8 ± 0,9 | 0,10 (anlamsız) |
-| 20 dBm | %91,7 ± 5,9 | %93,8 ± 4,5 | %99,7 ± 1,3 | 2,1·10⁻⁵ |
-| 30 dBm | %45,8 ± 11,2 | %48,0 ± 11,7 | %73,5 ± 12,3 | 2,5·10⁻⁶ |
-| %20 saldırgan | %53,8 ± 6,0 | %0,0 | %100 | 1,4·10⁻⁶ |
-| %20 saldırgan + 20 dBm | %51,2 ± 8,0 | %0,0 | %99,5 ± 1,5 | 1,6·10⁻⁶ |
+| 10 dBm | %99,2 ± 1,9 | %99,7 ± 1,3 | %99,8 ± 0,9 | 0,32 (anlamsız) |
+| 20 dBm | %86,8 ± 8,7 | %88,0 ± 5,8 | %99,0 ± 2,0 | 2,3·10⁻⁶ |
+| 30 dBm | %4,2 ± 4,7 | %16,8 ± 11,4 | %20,7 ± 14,8 | 0,096 (anlamsız) |
+| %20 saldırgan | %17,0 ± 4,1 | %0,0 | %100 | 1,1·10⁻⁶ |
+| %20 saldırgan + 20 dBm | %23,0 ± 5,3 | %0,0 | %98,8 ± 2,5 | 1,2·10⁻⁶ |
+
+**Tablo 2: Sürü davranışı**
+
+| Ölçüt | Merkezi | Merkeziyetsiz | Dirençli |
+|---|---|---|---|
+| Düzen yuva hatası, karıştırma yok | 5,8 m | 3,8 m | 3,8 m |
+| Düzen yuva hatası, 30 dBm | 134,6 m | 123,4 m | 26,2 m |
+| Görev süresi, 4 İHA düştü (karıştırma yok) | 152 s (130'dan) | 121 s (113'ten) | 121 s (113'ten) |
+| Tamamlama, 20 dBm + 4 İHA düştü | %86,5 | %84,5 | %98,3 |
+
+**Tablo 3: Röle** (menzil 180 m): bağlantılılık %80 → %85 (p < 0,001), görev süresi +23-27 s (p < 0,001).
 
 Yorumlaman gereken noktalar:
 - Zayıf karıştırmada (10 dBm) fark yok. Bu beklenen bir sonuç: sistemler zaten dayanıklı.
 - 20 dBm'de diğer iki mimari "yanlış tamamlama" yaşıyor (GPS'i kesilen İHA hedefi görmeden bitti sanıyor). Dirençli sürü spiral arama ve "görmeden bitti deme" kuralıyla bunu sıfıra indiriyor.
-- 30 dBm'de bütün alan karıştırılıyor; hiçbir yöntem %100'e ulaşamıyor ama dirençli sürü ~25 puan önde.
+- 30 dBm'de bütün alan karıştırılıyor ve GPS tüm görev boyunca yok; hiçbir yöntem başarılı değil. Dirençli sürünün tamamlama farkı anlamsız ama **düzenini koruyabilen tek sürü** (işbirlikçi konumlama). Bu, "dirençli sürü her durumda üstün" demeni engeller; dürüstçe yaz.
 - En çarpıcı bulgu: Korumasız merkeziyetsiz sürü saldırgana karşı **tamamen çöküyor** (%0). Merkeziyetsizlik tek başına güvenlik sağlamıyor; güven/makullük kontrolü şart.
-- Dirençli sürünün bedeli: karıştırma bölgesinde daha uzun kaldığı için ortalama konum hatası daha yüksek, görev süresi biraz daha uzun. Bunu dürüstçe tartış.
+- Lidersiz sürü üye kaybına merkeziden daha az duyarlı: 4 İHA düşünce görev süresi merkezide 22 s, merkeziyetsizde 8 s uzuyor.
+- Röle bir ödünleşim: bağlantıyı artırıyor ama bir İHA'yı görevden alıyor.
+- Dirençli sürünün bedeli: karıştırma altında görev daha uzun sürüyor (20 dBm'de 202 s; diğerleri 176-190 s). Bunu dürüstçe tartış.
 
 ## Sonuç ve Tartışma
 - Hipotez desteklendi mi? (Evet, 20 ve 30 dBm ile saldırgan koşullarında p < 0,001.)
@@ -84,6 +112,9 @@ Yorumlaman gereken noktalar:
 - Chung, S.-J., Paranjape, A. A., Dames, P., Shen, S., & Kumar, V. (2018). A survey on aerial swarm robotics. *IEEE Transactions on Robotics*, 34(4), 837–855.
 - Pelechrinis, K., Iliofotou, M., & Krishnamurthy, S. V. (2011). Denial of service attacks in wireless networks: The case of jammers. *IEEE Communications Surveys & Tutorials*, 13(2), 245–257.
 - Rappaport, T. S. (2002). *Wireless Communications: Principles and Practice* (2nd ed.). Prentice Hall.
+- Kuhn, H. W. (1955). The Hungarian method for the assignment problem. *Naval Research Logistics Quarterly*, 2(1–2), 83–97.
+- Olfati-Saber, R., Fax, J. A., & Murray, R. M. (2007). Consensus and cooperation in networked multi-agent systems. *Proceedings of the IEEE*, 95(1), 215–233.
+- Ren, W., & Beard, R. W. (2008). *Distributed Consensus in Multi-vehicle Cooperative Control*. Springer.
 - Fiedler, M. (1973). Algebraic connectivity of graphs. *Czechoslovak Mathematical Journal*, 23(2), 298–305.
 - Wilcoxon, F. (1945). Individual comparisons by ranking methods. *Biometrics Bulletin*, 1(6), 80–83.
 

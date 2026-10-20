@@ -70,7 +70,7 @@ namespace SuruIHA
         public void Set(JammerState s)
         {
             var p = SwarmFrame.Enu(s.p);
-            transform.localPosition = new Vector3(p.x, 0f, p.z);
+            transform.localPosition = new Vector3(p.x, vis.GroundAt(transform.parent.TransformPoint(new Vector3(p.x, 0, p.z))) - vis.transform.position.y, p.z);
             radius = Mathf.Max(s.r, 5f);
             if (!Application.isPlaying) Animate(1.3f);
         }

@@ -7,8 +7,10 @@
     python run_live.py --jammer off --loop
 
 Unity'den klavyeyle senaryo değiştirilebilir (UDP 5066 komut kanalı):
-    F1/F2/F3 mimari, +/- karıştırıcı gücü, X saldırgan aç/kapa, N yeni harita.
-Görev bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
+    F1/F2/F3 mimari, +/- karıştırıcı gücü, X saldırgan aç/kapa, N yeni harita,
+    V düzen tipi (V / hat / kol / halka), Z bir İHA'yı arızalandır.
+Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
+İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
 Çıkmak için Ctrl+C.
 """
 import argparse
@@ -35,6 +37,9 @@ def parse():
     p.add_argument("--port", type=int, default=5065)
     p.add_argument("--cmd-port", type=int, default=5066, help="Unity'den komut dinlenen port")
     p.add_argument("--loop", action="store_true", help="bitince yeni tohumla yeniden başla")
+    p.add_argument("--formation", default="V", choices=["V", "hat", "kol", "halka"], help="intikal düzeni")
+    p.add_argument("--failures", type=int, default=0, help="görev sırasında arızalanacak İHA sayısı")
+    p.add_argument("--relay", action="store_true", help="bağlantı koruma rölesini aç (merkeziyetsiz)")
     return p.parse_args()
 
 
@@ -58,9 +63,19 @@ class Controls:
                 continue
 
 
-def apply(cmd, st):
-    """Komutu senaryo durumuna uygular. Değişiklik olduysa True döner (dünya yeniden kurulur)."""
+def apply(cmd, st, world):
+    """Komutu uygular. Senaryo değiştiyse True döner (dünya yeniden kurulur).
+    Düzen ve arıza komutları uçuşu yeniden başlatmadan, çalışan dünyaya uygulanır."""
     c = cmd.get("cmd")
+    if c == "formation":
+        world.cycle_formation()
+        st["formation"] = world.form_kind
+        print(f"  düzen: {world.form_kind}")
+        return False
+    if c == "fail":
+        world.fail_drone()
+        print("  bir İHA arızalandı")
+        return False
     if c == "strategy" and cmd.get("value") in STRATEGY_NAMES:
         st["strategy"] = cmd["value"]
     elif c == "jammer":
@@ -91,43 +106,48 @@ def main():
     except OSError:
         ctl = None
         print(f"Uyarı: komut portu {a.cmd_port} açılamadı, Unity'den kontrol kapalı.")
-    print("Unity'de: F1/F2/F3 mimari, +/- karıştırıcı, X saldırgan, N yeni harita. Çıkış: Ctrl+C")
+    print("Unity'de: F1/F2/F3 mimari, +/- karıştırıcı, X saldırgan, N yeni harita, V düzen, Z arıza. Çıkış: Ctrl+C")
+    st["formation"] = a.formation
 
     while True:
-        cfg = make_config(st["strategy"], st["power"], st["spoof"], st["seed"], n_drones=a.drones, n_tasks=a.tasks)
+        cfg = make_config(st["strategy"], st["power"], st["spoof"], st["seed"], n_drones=a.drones, n_tasks=a.tasks,
+                          formation=st["formation"], failures=a.failures, relay=a.relay)
         world = World(cfg)
         print(f"\n== {describe(st)} ==")
         steps_per_frame = max(1, round(a.speed / a.fps / cfg.dt))
-        last_print, done_at, changed = 0.0, None, False
+        last_print, done_at, changed, reported = 0.0, None, False, False
 
         def send():
             f = world.frame()
             f["ctl"] = {"power": -1 if st["power"] is None else st["power"], "spoof": st["spoof"], "seed": st["seed"],
-                        "finished": int(world.finished())}
+                        "finished": int(world.flight_over()), "missionDone": int(world.finished())}
             bridge.send(f)
             return f
 
         while not changed:
             t0 = time.perf_counter()
-            if not world.finished():
+            if not world.flight_over():
                 for _ in range(steps_per_frame):
                     world.step()
-                if world.finished():
+                if world.finished() and not reported:
+                    reported = True
                     s = world.summary()
-                    print(f"Bitti: tamamlama %{s['completion'] * 100:.0f}, süre {s['mission_time']:.0f}s, "
-                          f"yanlış tamamlama {s['false_done']}, tekrar ziyaret {s['redundant']}")
+                    print(f"Görev bitti: tamamlama %{s['completion'] * 100:.0f}, süre {s['mission_time']:.0f}s, "
+                          f"yanlış tamamlama {s['false_done']}, tekrar ziyaret {s['redundant']}. Sürü üsse dönüyor...")
+                if world.flight_over():
+                    print(f"Sürü indi (t={world.t:.0f}s).")
                     done_at = time.perf_counter()
             elif a.loop and time.perf_counter() - done_at > 3.0:
                 st["seed"] += 1
                 changed = True
             f = send()
-            if world.t - last_print >= 5.0 and not world.finished():
+            if world.t - last_print >= 5.0 and not world.flight_over():
                 last_print = world.t
                 m = f["m"]
-                print(f"t={world.t:6.1f}s  görev {m['done']}/{m['total']}  paket iletim %{m['pdr'] * 100:4.0f}"
-                      f"  GPS'siz {m['gpsLost']}  konum hatası {m['locErr']:.1f} m")
+                print(f"t={world.t:6.1f}s  {f['phase']:9s} görev {m['done']}/{m['total']}  paket %{m['pdr'] * 100:3.0f}"
+                      f"  bağlantı %{m['conn'] * 100:3.0f}  düzen hatası {m['formErr']:4.1f} m  GPS'siz {m['gpsLost']}")
             for cmd in (ctl.poll() if ctl else []):
-                changed |= apply(cmd, st)
+                changed |= apply(cmd, st, world)
             time.sleep(max(0.0, 1.0 / a.fps - (time.perf_counter() - t0)))
 
 

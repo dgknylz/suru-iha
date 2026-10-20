@@ -7,6 +7,8 @@ sahte mesaj) altında görevlerini nasıl paylaştığını ve ne kadar dayanık
 ```
 Python (beyin)                         Unity HDRP (göz)
  suru/world.py  ── fizik, karar, EH ─┐
+ suru/swarm.py  ── sürü zekâsı       │
+ suru/terrain.py ── Unity arazisi ◄──┼─────────────── yükseklik haritası (sahne kurulumunda)
  suru/radio.py  ── SINR, paket kaybı │  UDP 5065 (JSON, 30 kare/s)
  run_live.py    ── canlı yayın ──────┴──────────────► SwarmReceiver → SwarmVisualizer
  run_experiments.py → results.csv → analyze.py → grafikler + istatistik
@@ -52,9 +54,14 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
 
 Uygulama arka planda da çalışmaya devam eder, yani terminale geçince donmaz.
 
+**Bir uçuşta ne görürsün:** Sürü üsten kalkar ve havada halka olur. V düzeninde kuzeydeki görev
+alanına uçar, orada dağılıp görevleri kendi arasında paylaşır. Görevler bitince toplanma noktasında
+yeniden halka olur, V düzeninde üsse döner ve iner. Toplam yaklaşık 3,5 dakika sürer.
+
 **Sunum ipucu:** `python run_live.py` bir kez başlatıldıktan sonra her şeyi Unity'den yönetebilirsin.
-F1/F2/F3 ile mimariyi, +/- ile karıştırıcıyı, X ile saldırganı değiştir. Aynı haritada üç mimarinin
-farkını jüriye canlı gösterebilirsin. Görev bitince simülasyon bekler, N ile yeni harita başlar.
+F1/F2/F3 ile mimariyi, +/- ile karıştırıcıyı, X ile saldırganı değiştir. V ile düzeni değiştir,
+Z ile bir İHA'yı düşür ve sürünün görevleri nasıl yeniden paylaştığını göster. Aynı haritada üç
+mimarinin farkını jüriye canlı gösterebilirsin. Sürü inince simülasyon bekler, N ile yeni harita başlar.
 
 **Performans:** RTX 4060 dizüstünde ölçüldü (sinematik kamera): Yüksek kalitede ~45 FPS (hacimsel sis, bulut gölgeleri, hareket bulanıklığı açık), Dengeli kalitede ~73 FPS. GPU ısınınca biraz düşer; bellek sabit, sızıntı yok. Sunumdan önce bilgisayarı prize tak, takılma olursa K ile Dengeli'ye geç.
 
@@ -66,6 +73,8 @@ farkını jüriye canlı gösterebilirsin. Görev bitince simülasyon bekler, N 
 | `python run_live.py --strategy centralized --jammer 30` | Merkezi mimari, güçlü karıştırma |
 | `python run_live.py --strategy decentralized --spoof 0.2` | Saldırgan İHA'lı senaryo |
 | `python run_live.py --jammer off --speed 3 --loop` | Karıştırıcısız, 3x hızlı, sürekli tekrar |
+| `python run_live.py --formation hat --failures 2` | Hat düzeninde intikal, görevde 2 İHA arızası |
+| `python run_live.py --strategy decentralized --relay` | Bağlantı koruma rölesi açık |
 
 ### Unity kısayolları
 
@@ -83,12 +92,14 @@ farkını jüriye canlı gösterebilirsin. Görev bitince simülasyon bekler, N 
 | **+ / -** | Karıştırıcı gücü: kapalı → 10 → 20 → 30 dBm |
 | **X** | Saldırgan (sahte bilgi yayan) İHA'ları aç/kapat (%20) |
 | **N** | Yeni harita (farklı görev noktaları) |
+| **V** | Düzen tipi: V → hat → kol → halka (uçuşu yeniden başlatmadan) |
+| **Z** | Rastgele bir İHA'yı arızalandır (düşer, sürü görevlerini ve düzeni yeniden dağıtır) |
 | **K** | Grafik kalitesi: Yüksek → Dengeli → Performans (panelde FPS görünür) |
 | **Esc** | Uygulamadan çık (yalnızca SuruIHA.exe) |
 | **H** | Bilgi panelini gizle |
 
 **Renkler:** İHA ışığı yeşil = normal, turuncu = karıştırılıyor, kırmızı = GPS yok, mavi = spiral
-arama yapıyor, mor = saldırgan. Bağlantı çizgisi yeşilden kırmızıya sinyal kalitesini gösterir.
+arama yapıyor, mor = saldırgan, camgöbeği = röle (koruduğu arkadaşına çizgiyle bağlı), sönük = arızalı. Bağlantı çizgisi yeşilden kırmızıya sinyal kalitesini gösterir.
 Görev halkası beyaz = açık, sarı = bir İHA yolda, yeşil = tamamlandı, kırmızı = yanlış tamamlandı.
 
 ---
@@ -117,9 +128,39 @@ Görev halkası beyaz = açık, sarı = bir İHA yolda, yeşil = tamamlandı, k�
    - konum belirsizliği büyükse hedefte **spiral arama**, bulamazsa "bitti" demeyip yeniden deneme
    - teklifi konumuyla tutarsız olan İHA'ya güvenmeme (**makullük kontrolü**, sahte bilgiye karşı)
 
+### Sürü zekâsı (`suru/swarm.py`, `suru/world.py`)
+- **Görev akışı:** kalkış → düzende intikal → dağılıp görev → toplanma → düzende dönüş → iniş.
+  Her İHA kendi evresine kendisi karar verir, lider yoktur.
+- **Lidersiz düzen uçuşu (V, hat, kol, halka):** Her İHA, düzenin ortasındaki "sanal liderin" rota
+  üzerindeki ilerlemesini tahmin eder ve komşularıyla **uzlaşır** (ortalama konsensüs):
+  `s_i ← s_i + g · ortalama(s_j − s_i)`. Geride kalan olursa sanal lider yavaşlar.
+  Karıştırma uzlaşmayı bozar; elektronik harbin sürü davranışına etkisi böylece doğrudan görülür.
+- **Yuva ataması:** Düzen değişirken yollar kesişmesin diye yuvalar her saniye "toplam uzaklık en
+  küçük" olacak şekilde **Macar algoritmasıyla** yeniden dağıtılır.
+- **Reynolds kuralları:** ayrışma (yaklaşma hızını da sönümleyen çarpışma önleme), hizalanma, uyum.
+  Görevde İHA'lar ±6 m'lik irtifa katmanlarında uçar.
+- **Arazi takibi:** Unity'deki arazi birebir simülasyona aktarılır (4 m çözünürlüklü yükseklik
+  haritası). İHA'lar 4 s ileriye bakarak tepelerden önce yükselir. GPS gidip konum kayarsa
+  radar altimetre emniyeti devreye girer.
+- **Toplanma kararı:** Bir İHA, haberini aldığı tüm arkadaşları toplanma noktasına gelmeden
+  dönüşe geçmez; görevi süren arkadaşını bekler (dedikoduyla yayılan sürü durum tablosu).
+- **Üye kaybı:** Düşen İHA'nın görevleri teklif süresi dolunca diğerlerine geçer; düzen kalan
+  İHA'larla yeniden kurulur.
+- **Bağlantı koruma rölesi (isteğe bağlı, `--relay`):** Kopan arkadaş varsa, herkes aynı bilgiyle
+  aynı seçimi yapar ve en uygun İHA aradaki noktaya giderek röle olur.
+
 ### Ölçülen metrikler
-Görev tamamlama oranı, görev süresi, yanlış tamamlama (İHA bitti sandı ama hedef görülmedi),
-gereksiz tekrar ziyaret, paket iletim oranı, ortalama konum hatası, ağ bağlantılılığı (λ2).
+Görev tamamlama oranı, görev süresi (kalkış ve intikal dahil), yanlış tamamlama (İHA bitti sandı ama
+hedef görülmedi), gereksiz tekrar ziyaret, paket iletim oranı, ortalama konum hatası, sürü
+bağlantılılığı (en büyük bağlı grubun oranı), düzen yuva hatası (gerçek konumla), en düşük yerden
+yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
+
+### Doğrulama
+```bash
+.venv\Scripts\python.exe -m pytest tests -q
+```
+14 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe), arazi takibi,
+karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 
 ---
 
@@ -132,26 +173,45 @@ gereksiz tekrar ziyaret, paket iletim oranı, ortalama konum hatası, ağ bağla
 .venv\Scripts\python.exe analyze.py
 ```
 
-3 strateji × 4 karıştırıcı gücü (kapalı, 10, 20, 30 dBm) × 2 saldırgan oranı (%0, %20) × 30 tekrar
-= **720 simülasyon** (~2 dakika, 15 çekirdek). Aynı tohum (seed) = aynı görev haritası olduğu
-için stratejiler birebir aynı koşulda karşılaştırılır (eşleştirilmiş deney → Wilcoxon testi).
+```bash
+.venv\Scripts\python.exe run_experiments.py --swarm
+```
 
-Çıktılar: `results/results.csv`, `results/figures/*.png`, `results/istatistik.txt`
+- **Ana deney:** 3 strateji × 4 karıştırıcı gücü (kapalı, 10, 20, 30 dBm) × 2 saldırgan oranı
+  (%0, %20) × 30 tekrar = **720 simülasyon** (~15 dakika, 8 işlem).
+- **Sürü deneyleri (`--swarm`):** üye kaybı (0/2/4 İHA düşer) ve röle (menzil 180 m, açık/kapalı)
+  = **660 simülasyon**.
+- Aynı tohum (seed) = aynı görev haritası olduğu için stratejiler birebir aynı koşulda
+  karşılaştırılır (eşleştirilmiş deney → Wilcoxon testi).
+
+Çıktılar: `results/results.csv`, `results/swarm.csv`, `results/figures/*.png`, `results/istatistik.txt`
 
 ### Öne çıkan bulgular (görev tamamlama oranı, ortalama ± std, n=30)
 
 | Koşul | Merkezi | Merkeziyetsiz | **Dirençli** |
 |---|---|---|---|
 | Karıştırıcı yok | %100 | %100 | **%100** |
-| 20 dBm karıştırma | %91.7 ± 5.9 | %93.8 ± 4.5 | **%99.7 ± 1.3** |
-| 30 dBm karıştırma | %45.8 ± 11.2 | %48.0 ± 11.7 | **%73.5 ± 12.3** |
-| %20 saldırgan, karıştırma yok | %53.8 ± 6.0 | %0.0 | **%100** |
-| %20 saldırgan + 20 dBm | %51.2 ± 8.0 | %0.0 | **%99.5 ± 1.5** |
+| 10 dBm karıştırma | %99.2 ± 1.9 | %99.7 ± 1.3 | **%99.8 ± 0.9** |
+| 20 dBm karıştırma | %86.8 ± 8.7 | %88.0 ± 5.8 | **%99.0 ± 2.0** |
+| 30 dBm karıştırma | %4.2 ± 4.7 | %16.8 ± 11.4 | **%20.7 ± 14.8** |
+| %20 saldırgan, karıştırma yok | %17.0 ± 4.1 | %0.0 | **%100** |
+| %20 saldırgan + 20 dBm | %23.0 ± 5.3 | %0.0 | **%98.8 ± 2.5** |
+| 20 dBm + görevde 4 İHA düşer | %86.5 ± 7.9 | %84.5 ± 9.0 | **%98.3 ± 3.3** |
 
-Dirençli sürü, karıştırma veya saldırgan olan tüm koşullarda diğer ikisinden anlamlı şekilde
-iyidir (Wilcoxon, p < 0.001). İlginç bir bulgu: Saldırı altında korumasız merkeziyetsiz sürü
-merkezi mimariden bile kötü sonuç veriyor. Merkeziyetsizlik tek başına yetmiyor, **güven
-mekanizması** şart.
+- **20 dBm ve saldırgan koşullarında** dirençli sürü diğer ikisinden anlamlı şekilde iyi (Wilcoxon, p < 0.001).
+- **30 dBm'de** bütün alan karıştırılıyor ve GPS tüm görev boyunca yok: hiçbir mimari başarılı değil.
+  Dirençli sürü merkeziden anlamlı şekilde iyi (p < 0.001), merkeziyetsizden farkı anlamsız (p = 0.096).
+  Ama düzenini koruyan tek sürü o: gerçek yuva hatası dirençlide 26 m, diğerlerinde 123-135 m
+  (işbirlikçi konum düzeltmesi sayesinde).
+- **Saldırı altında korumasız merkeziyetsiz sürü tamamen çöküyor (%0)**, merkezi mimariden bile kötü.
+  Merkeziyetsizlik tek başına yetmiyor, **güven mekanizması** şart.
+- **Üye kaybı:** Karıştırma yokken 4 İHA düşse bile üç mimari de görevlerin hepsini bitiriyor. Görev süresi
+  merkezide 130 → 152 s, merkeziyetsizde 113 → 121 s uzuyor. Lidersiz sürü kayba daha az duyarlı.
+- **Röle:** Kısa menzilde (180 m) bağlantılılığı %80'den %85'e çıkarıyor (p < 0.001) ama görevi
+  23-27 s uzatıyor (röle İHA görev yapamıyor). Görevler zaten %100 bitiyor; röle, sürekli
+  bağlantı gereken görevlerde (canlı video gibi) anlamlı. Bu bir **ödünleşim** olarak raporlanmalı.
+- **Bedel:** Dirençli sürü karıştırma altında daha uzun sürüyor (20 dBm'de 202 s, diğerleri 176-190 s),
+  çünkü görmediği hedefe "bitti" demiyor, arıyor ve yeniden deniyor.
 
 ---
 
@@ -194,17 +254,23 @@ ve görev durumunu yazar.
 
 ## 5. Sınırlılıklar (jüriye dürüstçe söylenecekler)
 
-- Radyo modeli istatistiksel bir yaklaşımdır: çok yollu yayılım ve arazi gölgelemesi yoktur.
+- Radyo modeli istatistiksel bir yaklaşımdır: çok yollu yayılım ve arazi gölgelemesi yoktur
+  (tepeler İHA'ların uçuşunu etkiler ama sinyali henüz kesmez).
 - Uçuş dinamiği nokta-kütle modelidir (ivme ve hız sınırlı). Motor ve aerodinamik modellenmemiştir.
 - Karıştırma **yalnızca yazılımda** modellenmiştir. Gerçek RF yayını yapılmamıştır ve yapılmamalıdır.
 - Sonuçlar simülasyon ortamına aittir. Gerçek uçuş testiyle doğrulanmamıştır.
+- Sürü durum tablosu ve yuva ataması "herkes aynı bilgiyle aynı hesabı yapar" varsayımına dayanır;
+  bilgiler farklıysa iki İHA aynı yuvayı seçebilir (ayrışma kuralı çarpışmayı önler).
+- İHA'lar uzaktan görünsün diye 3D sahnede 3 kat büyük çizilir; bilimsel hesaplar gerçek boyutla yapılır.
 
 ---
 
 ## 6. Klasör yapısı
 
 ```
-suru/                 Python simülasyon paketi (config, radio, world, bridge)
+suru/                 Python simülasyon paketi (config, radio, world, swarm, terrain, bridge)
+suru/data/            Unity'den aktarılan arazi yükseklik haritası
+tests/                Otomatik doğrulama testleri (pytest)
 run_live.py           Unity'ye canlı yayın
 run_experiments.py    Toplu deney
 analyze.py            Grafik ve istatistik

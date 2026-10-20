@@ -22,15 +22,39 @@ class SimConfig:
     n_tasks: int = 20
     dt: float = 0.1                 # fizik adımı (s)
     comm_every: int = 2             # kaç fizik adımında bir mesajlaşma (0.2 s -> 5 Hz)
-    max_time: float = 300.0         # görev süresi sınırı (s)
-    world_size: float = 800.0       # görev alanının kenar uzunluğu (m)
-    cruise_alt: float = 40.0        # seyir irtifası (m)
+    max_time: float = 360.0         # görev süresi sınırı (s), kalkış ve intikal dahil
+
+    # --- görev alanı ve arazi ---
+    # Üs (yer istasyonu) (0, 0)'da. Görev alanı üssün kuzeyinde; kuzey ucu tepelik.
+    area_center: tuple = (0.0, 380.0)
+    area_half: float = 330.0        # görev alanının yarı kenarı (m)
+    terrain: bool = True            # Unity'den aktarılan gerçek arazi (False = düz zemin)
+    agl: float = 40.0               # yerden uçuş yüksekliği (m)
+    lookahead: float = 4.0          # arazi takibinde ileriye bakma süresi (s)
+    max_climb: float = 5.0          # azami tırmanma/alçalma hızı (m/s)
 
     # --- uçuş ---
     max_speed: float = 12.0         # m/s
     max_accel: float = 4.0          # m/s^2
-    sep_dist: float = 8.0           # çarpışmadan kaçınma mesafesi (m)
+    sep_dist: float = 10.0          # çarpışmadan kaçınma mesafesi (m)
+    layer_step: float = 6.0         # görevde çarpışma önleyici irtifa katmanları arası fark (m)
     task_radius: float = 6.0        # kamera hedefi bu yarıçap içinde görür (m)
+
+    # --- sürü zekâsı ---
+    formation: str = "V"            # intikal ve dönüş düzeni: V | hat | kol | halka
+    form_spacing: float = 16.0      # düzende komşu İHA'lar arası mesafe (m)
+    transit_speed: float = 9.0      # sanal liderin hızı (m/s)
+    takeoff_time: float = 15.0      # kalkış ve havada toplanma süresi (s)
+    consensus_gain: float = 0.35    # sanal lider uzlaşma (konsensüs) kazancı
+    neighbor_radius: float = 60.0   # Reynolds kuralları için komşuluk yarıçapı (m)
+    w_align: float = 0.25           # hizalanma ağırlığı
+    w_cohesion: float = 0.04        # uyum ağırlığı
+    regroup_wait: float = 8.0       # bu kadar boşta kalan İHA toplanma noktasına gider (s)
+    regroup_hold: float = 25.0      # toplanmada en fazla bu kadar bekle, sonra eve dön (s)
+    relay: bool = False             # bağlantı koruma rölesi (merkeziyetsiz stratejilerde kullanılabilir)
+    relay_after: float = 5.0        # bu kadar duyulmayan arkadaş "kopmuş" sayılır (s)
+    max_relays: int = 2             # aynı anda en fazla kaç İHA röle olabilir
+    failures: int = 0               # görev sırasında arızalanıp düşecek İHA sayısı
 
     # --- karar alma ---
     strategy: str = "resilient"     # "centralized" | "decentralized" | "resilient"
@@ -39,7 +63,7 @@ class SimConfig:
     jam_penalty: float = 150.0      # (dirençli) karıştırma bölgesindeki göreve teklif cezası (m)
     retry_cooldown: float = 30.0    # (dirençli) bulunamayan göreve aynı İHA'nın tekrar deneme beklemesi
     idle_stop: float = 40.0         # tüm sürü bu kadar boşta kalırsa görev biter
-    gcs_timeout: float = 5.0       # (merkezi) yer istasyonu bu kadar duyulmazsa üsse dön
+    gcs_timeout: float = 5.0        # (merkezi) yer istasyonu bu kadar duyulmazsa üsse dön
     gcs_release: float = 20.0       # (merkezi) bu kadar duyulmayan İHA'nın görevi başkasına verilir
 
     # --- radyo: 2.4 GHz, log-mesafe yol kaybı modeli ---
@@ -59,6 +83,9 @@ class SimConfig:
     imu_drift: float = 0.15         # GPS yokken IMU hız sapmasının büyüme hızı (m/s / sqrt(s))
     spoof_fraction: float = 0.0     # sahte bilgi yayan ele geçirilmiş İHA oranı
     spoof_period: float = 10.0      # (merkezi) saldırganın sahte "tamamlandı" raporu aralığı (s)
+
+    def relay_enabled(self):
+        return bool(self.relay) and self.strategy != "centralized"
 
 
 def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, **kw):

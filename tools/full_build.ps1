@@ -1,4 +1,4 @@
-# Tüm hattı baştan çalıştırır: eşitle -> sahneyi kur -> önizleme -> Windows uygulaması -> uçtan uca test.
+﻿# Tüm hattı baştan çalıştırır: eşitle -> sahneyi kur -> önizleme -> Windows uygulaması -> uçtan uca test.
 #   powershell -File tools/full_build.ps1 [-SkipPlayer] [-SkipTest]
 param([switch]$SkipPlayer, [switch]$SkipTest)
 $repo = Split-Path -Parent $PSScriptRoot
@@ -20,8 +20,12 @@ function RunUnity($method, $log, $extra = @()) {
 }
 
 RunUnity "SuruIHA.EditorTools.SuruIHASetup.BuildFromCommandLine" "C:\SuruIHA\build.log"
+# Unity'nin ürettiği arazi yüksekliğini simülasyona kopyala (Python aynı araziyi kullanır)
+$data = Join-Path $repo "suru\data"
+New-Item -ItemType Directory -Force $data | Out-Null
+Copy-Item (Join-Path $proj "Arazi\arazi_yukseklik.*") $data -Force
 $frame = "C:\SuruIHA\kare_60.json"
-& (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\dump_frame.py") $frame 60 | Out-Null
+& (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\dump_frame.py") $frame 45 | Out-Null
 RunUnity "SuruIHA.EditorTools.SuruIHAPreview.FromCommandLine" "C:\SuruIHA\preview.log" @("-frame", $frame, "-out", "C:\SuruIHA\preview")
 if (-not $SkipPlayer) { RunUnity "SuruIHA.EditorTools.SuruIHABuild.BuildFromCommandLine" "C:\SuruIHA\player.log" }
 if (-not $SkipTest) { & (Join-Path $PSScriptRoot "autotest.ps1") }
