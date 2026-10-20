@@ -4,110 +4,275 @@
 ##### ANA DENEY: karıştırma ve sahte bilgi #####
 
 === Karıştırıcı: Kapalı | saldırgan %0 ===
-  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   130 s  yanlış  0.0  bağlantı % 99  düzen hatası  5.8 m  (n=30)
-  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   113 s  yanlış  0.0  bağlantı % 99  düzen hatası  3.8 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   113 s  yanlış  0.0  bağlantı % 99  düzen hatası  3.8 m  (n=30)
+  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre    96 s  yanlış  0.0  bağlantı % 99  düzen hatası  5.8 m  (n=30)
+  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre    96 s  yanlış  0.0  bağlantı % 99  düzen hatası  3.8 m  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre    96 s  yanlış  0.0  bağlantı % 98  düzen hatası  3.8 m  (n=30)
   Dirençli vs Merkeziyetsiz (tamamlama): fark yok
   Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark yok
 
 === Karıştırıcı: Kapalı | saldırgan %20 ===
-  Merkezi (yer istasyonu)        tamamlama % 17.0 ±  4.1  süre    83 s  yanlış  0.0  bağlantı % 98  düzen hatası 12.1 m  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 20.2 ±  3.8  süre    82 s  yanlış  0.0  bağlantı % 98  düzen hatası 14.9 m  (n=30)
   Merkeziyetsiz                  tamamlama %  0.0 ±  0.0  süre    60 s  yanlış  0.0  bağlantı %100  düzen hatası  4.8 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   123 s  yanlış  0.0  bağlantı % 99  düzen hatası  3.8 m  (n=30)
-  Kruskal-Wallis: H=86.01, p=2.103e-19
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   105 s  yanlış  0.0  bağlantı % 96  düzen hatası  3.8 m  (n=30)
+  Kruskal-Wallis: H=86.35, p=1.776e-19
   Dirençli vs Merkeziyetsiz (tamamlama): fark +1.000, Wilcoxon p=4.32e-08 (anlamlı)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.830, Wilcoxon p=1.067e-06 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.798, Wilcoxon p=7.864e-07 (anlamlı)
 
 === Karıştırıcı: 10 dBm | saldırgan %0 ===
-  Merkezi (yer istasyonu)        tamamlama % 99.2 ±  1.9  süre   130 s  yanlış  0.2  bağlantı % 88  düzen hatası  7.0 m  (n=30)
-  Merkeziyetsiz                  tamamlama % 99.7 ±  1.3  süre   113 s  yanlış  0.1  bağlantı % 86  düzen hatası  3.9 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 99.8 ±  0.9  süre   137 s  yanlış  0.0  bağlantı % 88  düzen hatası  3.8 m  (n=30)
-  Kruskal-Wallis: H=3.53, p=0.1714
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.002, Wilcoxon p=0.3173 (anlamsız)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.007, Wilcoxon p=0.0455 (anlamlı)
+  Merkezi (yer istasyonu)        tamamlama % 99.5 ±  1.5  süre    96 s  yanlış  0.1  bağlantı % 86  düzen hatası  6.6 m  (n=30)
+  Merkeziyetsiz                  tamamlama % 99.7 ±  1.3  süre    97 s  yanlış  0.1  bağlantı % 87  düzen hatası  3.9 m  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   115 s  yanlış  0.0  bağlantı % 86  düzen hatası  4.5 m  (n=30)
+  Kruskal-Wallis: H=2.93, p=0.2309
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.003, Wilcoxon p=0.1573 (anlamsız)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.005, Wilcoxon p=0.08326 (anlamsız)
 
 === Karıştırıcı: 10 dBm | saldırgan %20 ===
-  Merkezi (yer istasyonu)        tamamlama % 17.5 ±  4.5  süre    83 s  yanlış  0.0  bağlantı % 92  düzen hatası 12.2 m  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 20.8 ±  4.2  süre    83 s  yanlış  0.0  bağlantı % 91  düzen hatası 14.8 m  (n=30)
   Merkeziyetsiz                  tamamlama %  0.0 ±  0.0  süre    60 s  yanlış  0.0  bağlantı %100  düzen hatası  4.8 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 99.7 ±  1.3  süre   139 s  yanlış  0.0  bağlantı % 84  düzen hatası  3.9 m  (n=30)
-  Kruskal-Wallis: H=85.25, p=3.072e-19
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.997, Wilcoxon p=1.013e-07 (anlamlı)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.822, Wilcoxon p=1.288e-06 (anlamlı)
+  Merkeziyetsiz + EH direnci     tamamlama % 99.8 ±  0.9  süre   109 s  yanlış  0.0  bağlantı % 81  düzen hatası  3.9 m  (n=30)
+  Kruskal-Wallis: H=85.88, p=2.249e-19
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.998, Wilcoxon p=6.799e-08 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.790, Wilcoxon p=9.844e-07 (anlamlı)
 
 === Karıştırıcı: 20 dBm | saldırgan %0 ===
-  Merkezi (yer istasyonu)        tamamlama % 86.8 ±  8.7  süre   176 s  yanlış  2.6  bağlantı % 62  düzen hatası 13.2 m  (n=30)
-  Merkeziyetsiz                  tamamlama % 88.0 ±  5.8  süre   190 s  yanlış  4.0  bağlantı % 57  düzen hatası  8.4 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 99.0 ±  2.0  süre   202 s  yanlış  0.0  bağlantı % 54  düzen hatası  9.5 m  (n=30)
-  Kruskal-Wallis: H=47.85, p=4.075e-11
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.110, Wilcoxon p=2.252e-06 (anlamlı)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.122, Wilcoxon p=6.404e-06 (anlamlı)
+  Merkezi (yer istasyonu)        tamamlama % 88.8 ±  6.1  süre   159 s  yanlış  2.5  bağlantı % 62  düzen hatası 13.9 m  (n=30)
+  Merkeziyetsiz                  tamamlama % 88.7 ±  6.1  süre   155 s  yanlış  3.1  bağlantı % 58  düzen hatası  9.8 m  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama % 99.8 ±  0.9  süre   117 s  yanlış  0.0  bağlantı % 53  düzen hatası  4.2 m  (n=30)
+  Kruskal-Wallis: H=54.43, p=1.514e-12
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.112, Wilcoxon p=3.025e-06 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.110, Wilcoxon p=4.541e-06 (anlamlı)
 
 === Karıştırıcı: 20 dBm | saldırgan %20 ===
-  Merkezi (yer istasyonu)        tamamlama % 23.0 ±  5.3  süre    90 s  yanlış  0.8  bağlantı % 60  düzen hatası 13.2 m  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 22.2 ±  6.9  süre   103 s  yanlış  0.9  bağlantı % 62  düzen hatası 11.6 m  (n=30)
   Merkeziyetsiz                  tamamlama %  0.0 ±  0.0  süre    60 s  yanlış  0.0  bağlantı %100  düzen hatası  6.2 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 98.8 ±  2.5  süre   212 s  yanlış  0.0  bağlantı % 49  düzen hatası  6.3 m  (n=30)
-  Kruskal-Wallis: H=84.25, p=5.076e-19
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.988, Wilcoxon p=3.298e-07 (anlamlı)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.758, Wilcoxon p=1.242e-06 (anlamlı)
+  Merkeziyetsiz + EH direnci     tamamlama % 99.8 ±  0.9  süre   129 s  yanlış  0.0  bağlantı % 49  düzen hatası  4.2 m  (n=30)
+  Kruskal-Wallis: H=85.39, p=2.87e-19
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.998, Wilcoxon p=6.799e-08 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.777, Wilcoxon p=1.374e-06 (anlamlı)
 
 === Karıştırıcı: 30 dBm | saldırgan %0 ===
-  Merkezi (yer istasyonu)        tamamlama %  4.2 ±  4.7  süre   360 s  yanlış 13.1  bağlantı % 31  düzen hatası 134.6 m  (n=30)
-  Merkeziyetsiz                  tamamlama % 16.8 ± 11.4  süre   354 s  yanlış 39.9  bağlantı % 25  düzen hatası 123.4 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 20.7 ± 14.8  süre   360 s  yanlış  0.1  bağlantı % 17  düzen hatası 26.2 m  (n=30)
-  Kruskal-Wallis: H=33.76, p=4.667e-08
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.038, Wilcoxon p=0.09645 (anlamsız)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.165, Wilcoxon p=2.96e-05 (anlamlı)
+  Merkezi (yer istasyonu)        tamamlama % 12.5 ±  7.7  süre   323 s  yanlış 17.0  bağlantı % 32  düzen hatası 129.4 m  (n=30)
+  Merkeziyetsiz                  tamamlama % 17.3 ± 10.1  süre   345 s  yanlış 33.7  bağlantı % 24  düzen hatası 140.4 m  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama % 57.7 ± 18.8  süre   360 s  yanlış  0.0  bağlantı % 17  düzen hatası 26.2 m  (n=30)
+  Kruskal-Wallis: H=54.15, p=1.743e-12
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.403, Wilcoxon p=2.698e-06 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.452, Wilcoxon p=2.536e-06 (anlamlı)
 
 === Karıştırıcı: 30 dBm | saldırgan %20 ===
-  Merkezi (yer istasyonu)        tamamlama %  3.7 ±  4.1  süre   346 s  yanlış 10.0  bağlantı % 36  düzen hatası 141.1 m  (n=30)
-  Merkeziyetsiz                  tamamlama % 10.0 ± 10.3  süre   341 s  yanlış 25.0  bağlantı % 35  düzen hatası 88.3 m  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 21.7 ± 13.8  süre   360 s  yanlış  0.0  bağlantı % 18  düzen hatası 26.7 m  (n=30)
-  Kruskal-Wallis: H=37.11, p=8.747e-09
-  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.117, Wilcoxon p=0.001323 (anlamlı)
-  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.180, Wilcoxon p=5.608e-06 (anlamlı)
+  Merkezi (yer istasyonu)        tamamlama %  6.7 ±  5.6  süre   271 s  yanlış 10.6  bağlantı % 34  düzen hatası 128.2 m  (n=30)
+  Merkeziyetsiz                  tamamlama %  9.3 ±  8.0  süre   311 s  yanlış 17.6  bağlantı % 41  düzen hatası 92.7 m  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama % 57.3 ± 18.9  süre   360 s  yanlış  0.0  bağlantı % 18  düzen hatası 26.7 m  (n=30)
+  Kruskal-Wallis: H=60.63, p=6.813e-14
+  Dirençli vs Merkeziyetsiz (tamamlama): fark +0.480, Wilcoxon p=1.725e-06 (anlamlı)
+  Dirençli vs Merkezi (yer istasyonu) (tamamlama): fark +0.507, Wilcoxon p=1.708e-06 (anlamlı)
 
 ##### SÜRÜ DENEYİ 1: üye kaybı (görev sırasında İHA arızası) #####
 
 === Karıştırıcı: Kapalı | düşen İHA: 0 ===
-  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   130 s  (n=30)
-  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   113 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   113 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre    96 s  (n=30)
+  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre    96 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre    96 s  (n=30)
 
 === Karıştırıcı: Kapalı | düşen İHA: 2 ===
-  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   142 s  (n=30)
-  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   115 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   115 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   113 s  (n=30)
+  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   106 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   106 s  (n=30)
 
 === Karıştırıcı: Kapalı | düşen İHA: 4 ===
-  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   152 s  (n=30)
-  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   121 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   121 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama %100.0 ±  0.0  süre   126 s  (n=30)
+  Merkeziyetsiz                  tamamlama %100.0 ±  0.0  süre   119 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   116 s  (n=30)
 
 === Karıştırıcı: 20 dBm | düşen İHA: 0 ===
-  Merkezi (yer istasyonu)        tamamlama % 86.8 ±  8.7  süre   176 s  (n=30)
-  Merkeziyetsiz                  tamamlama % 88.0 ±  5.8  süre   190 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 99.0 ±  2.0  süre   202 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 88.8 ±  6.1  süre   159 s  (n=30)
+  Merkeziyetsiz                  tamamlama % 88.7 ±  6.1  süre   155 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama % 99.8 ±  0.9  süre   117 s  (n=30)
 
 === Karıştırıcı: 20 dBm | düşen İHA: 2 ===
-  Merkezi (yer istasyonu)        tamamlama % 85.0 ±  8.6  süre   194 s  (n=30)
-  Merkeziyetsiz                  tamamlama % 84.7 ±  7.3  süre   174 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 98.3 ±  3.0  süre   212 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 86.0 ±  9.0  süre   167 s  (n=30)
+  Merkeziyetsiz                  tamamlama % 88.7 ±  8.4  süre   154 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   140 s  (n=30)
 
 === Karıştırıcı: 20 dBm | düşen İHA: 4 ===
-  Merkezi (yer istasyonu)        tamamlama % 86.5 ±  7.9  süre   198 s  (n=30)
-  Merkeziyetsiz                  tamamlama % 84.5 ±  9.0  süre   194 s  (n=30)
-  Merkeziyetsiz + EH direnci     tamamlama % 98.3 ±  3.3  süre   210 s  (n=30)
+  Merkezi (yer istasyonu)        tamamlama % 87.3 ±  9.9  süre   172 s  (n=30)
+  Merkeziyetsiz                  tamamlama % 90.0 ±  5.3  süre   178 s  (n=30)
+  Merkeziyetsiz + EH direnci     tamamlama %100.0 ±  0.0  süre   161 s  (n=30)
 
 ##### SÜRÜ DENEYİ 2: bağlantı koruma rölesi (menzil 180 m, karıştırma yok) #####
 
 === Merkeziyetsiz ===
-  röle kapalı: bağlantılılık % 80.5  süre 113.9 s  röle süresi   0.0 İHA·s  tamamlama %100.0
-  röle açık : bağlantılılık % 85.2  süre 137.4 s  röle süresi 113.7 İHA·s  tamamlama %100.0
-  Bağlantılılık (açık - kapalı): fark +0.047, Wilcoxon p=1.598e-05 (anlamlı)
-  Görev süresi (açık - kapalı): fark +23.460, Wilcoxon p=4.225e-06 (anlamlı)
+  röle kapalı: bağlantılılık % 74.3  süre  97.4 s  röle süresi   0.0 İHA·s  tamamlama %100.0
+  röle açık : bağlantılılık % 81.1  süre 161.6 s  röle süresi 217.0 İHA·s  tamamlama %100.0
+  Bağlantılılık (açık - kapalı): fark +0.068, Wilcoxon p=1.863e-08 (anlamlı)
+  Görev süresi (açık - kapalı): fark +64.137, Wilcoxon p=2.563e-06 (anlamlı)
 
 === Merkeziyetsiz + EH direnci ===
-  röle kapalı: bağlantılılık % 79.6  süre 113.4 s  röle süresi   0.0 İHA·s  tamamlama %100.0
-  röle açık : bağlantılılık % 85.2  süre 140.7 s  röle süresi 120.6 İHA·s  tamamlama %100.0
-  Bağlantılılık (açık - kapalı): fark +0.055, Wilcoxon p=1.824e-05 (anlamlı)
-  Görev süresi (açık - kapalı): fark +27.290, Wilcoxon p=3.79e-06 (anlamlı)
+  röle kapalı: bağlantılılık % 74.6  süre  96.8 s  röle süresi   0.0 İHA·s  tamamlama %100.0
+  röle açık : bağlantılılık % 80.6  süre 168.6 s  röle süresi 235.7 İHA·s  tamamlama %100.0
+  Bağlantılılık (açık - kapalı): fark +0.060, Wilcoxon p=5.974e-06 (anlamlı)
+  Görev süresi (açık - kapalı): fark +71.840, Wilcoxon p=2.563e-06 (anlamlı)
+
+##### KARAR ALMA DENEYİ: açgözlü tek görev / CBBA paket planlama / CBBA + yapay zekâ #####
+(her koşulda 6 yeni hedef görev sırasında belirir; puan = zamanla azalan görev değerleri, 0-100)
+
+=== Karıştırma yok ===
+  Merkezi (yer istasyonu)      Açgözlü tek görev    puan  73.4 ±  3.4  tamamlama %100.0  süre   139 s  yol  8.10 km  yeni hedef tepkisi  29.0 s  yeniden plan  0.0  (n=30)
+  Merkezi (yer istasyonu)      CBBA paket planlama  puan  82.9 ±  1.7  tamamlama %100.0  süre   111 s  yol  5.11 km  yeni hedef tepkisi  13.2 s  yeniden plan  8.4  (n=30)
+    CBBA - açgözlü (puan): fark +0.096, Wilcoxon p=1.863e-09 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -2987.457, Wilcoxon p=1.863e-09 (anlamlı)
+  Merkeziyetsiz                Açgözlü tek görev    puan  75.7 ±  3.3  tamamlama %100.0  süre   121 s  yol  6.16 km  yeni hedef tepkisi  21.5 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz                CBBA paket planlama  puan  79.6 ±  2.2  tamamlama %100.0  süre   111 s  yol  5.18 km  yeni hedef tepkisi  18.7 s  yeniden plan 11.3  (n=30)
+    CBBA - açgözlü (puan): fark +0.039, Wilcoxon p=1.304e-07 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -981.892, Wilcoxon p=1.863e-08 (anlamlı)
+  Merkeziyetsiz + EH direnci   Açgözlü tek görev    puan  75.7 ±  2.9  tamamlama %100.0  süre   121 s  yol  6.23 km  yeni hedef tepkisi  21.1 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA paket planlama  puan  79.7 ±  2.0  tamamlama %100.0  süre   110 s  yol  5.08 km  yeni hedef tepkisi  18.0 s  yeniden plan 10.2  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA + yapay zekâ    puan  80.3 ±  2.1  tamamlama %100.0  süre   110 s  yol  5.04 km  yeni hedef tepkisi  17.4 s  yeniden plan 10.0  (n=30)
+    CBBA - açgözlü (puan): fark +0.040, Wilcoxon p=1.304e-08 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -1152.432, Wilcoxon p=9.313e-09 (anlamlı)
+    Yapay zekâ - uzman kuralı (puan): fark +0.006, Wilcoxon p=0.0106 (anlamlı)
+
+=== 20 dBm ===
+  Merkezi (yer istasyonu)      Açgözlü tek görev    puan  59.1 ±  7.0  tamamlama % 85.5  süre   185 s  yol 11.47 km  yeni hedef tepkisi  36.8 s  yeniden plan  0.2  (n=30)
+  Merkezi (yer istasyonu)      CBBA paket planlama  puan  67.7 ±  5.6  tamamlama % 87.4  süre   185 s  yol  9.05 km  yeni hedef tepkisi  25.0 s  yeniden plan 13.8  (n=30)
+    CBBA - açgözlü (puan): fark +0.086, Wilcoxon p=8.326e-07 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -2411.807, Wilcoxon p=3.725e-09 (anlamlı)
+  Merkeziyetsiz                Açgözlü tek görev    puan  62.4 ±  5.7  tamamlama % 85.6  süre   208 s  yol  9.20 km  yeni hedef tepkisi  26.2 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz                CBBA paket planlama  puan  68.4 ±  6.4  tamamlama % 87.4  süre   174 s  yol  8.77 km  yeni hedef tepkisi  23.2 s  yeniden plan 17.8  (n=30)
+    CBBA - açgözlü (puan): fark +0.059, Wilcoxon p=2.08e-05 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -420.648, Wilcoxon p=0.1142 (anlamsız)
+  Merkeziyetsiz + EH direnci   Açgözlü tek görev    puan  71.2 ±  3.7  tamamlama % 99.9  süre   153 s  yol  8.02 km  yeni hedef tepkisi  33.8 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA paket planlama  puan  76.7 ±  2.7  tamamlama % 99.9  süre   137 s  yol  7.14 km  yeni hedef tepkisi  25.7 s  yeniden plan 15.1  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA + yapay zekâ    puan  76.2 ±  3.9  tamamlama % 99.9  süre   147 s  yol  7.17 km  yeni hedef tepkisi  26.7 s  yeniden plan 15.1  (n=30)
+    CBBA - açgözlü (puan): fark +0.055, Wilcoxon p=1.863e-09 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -884.211, Wilcoxon p=0.03643 (anlamlı)
+    Yapay zekâ - uzman kuralı (puan): fark -0.006, Wilcoxon p=0.9354 (anlamsız)
+
+=== 30 dBm ===
+  Merkezi (yer istasyonu)      Açgözlü tek görev    puan   2.6 ±  3.1  tamamlama %  4.0  süre   344 s  yol  9.50 km  yeni hedef tepkisi  91.0 s  yeniden plan  3.6  (n=30)
+  Merkezi (yer istasyonu)      CBBA paket planlama  puan   6.3 ±  5.2  tamamlama %  9.4  süre   328 s  yol  9.73 km  yeni hedef tepkisi  93.1 s  yeniden plan  1.2  (n=30)
+    CBBA - açgözlü (puan): fark +0.037, Wilcoxon p=0.001864 (anlamlı)
+    CBBA - açgözlü (yol, m): fark +228.597, Wilcoxon p=0.8553 (anlamsız)
+  Merkeziyetsiz                Açgözlü tek görev    puan   8.0 ±  5.6  tamamlama % 18.2  süre   355 s  yol 18.02 km  yeni hedef tepkisi 116.0 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz                CBBA paket planlama  puan   8.4 ±  5.3  tamamlama % 16.5  süre   360 s  yol 19.89 km  yeni hedef tepkisi 109.8 s  yeniden plan 19.3  (n=30)
+    CBBA - açgözlü (puan): fark +0.005, Wilcoxon p=0.9225 (anlamsız)
+    CBBA - açgözlü (yol, m): fark +1868.037, Wilcoxon p=0.0004601 (anlamlı)
+  Merkeziyetsiz + EH direnci   Açgözlü tek görev    puan  13.7 ±  8.0  tamamlama % 49.4  süre   360 s  yol 25.26 km  yeni hedef tepkisi 160.9 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA paket planlama  puan  19.4 ±  7.3  tamamlama % 54.2  süre   360 s  yol 24.64 km  yeni hedef tepkisi 152.3 s  yeniden plan 16.2  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA + yapay zekâ    puan  18.3 ±  8.3  tamamlama % 51.3  süre   360 s  yol 24.52 km  yeni hedef tepkisi 146.0 s  yeniden plan 13.0  (n=30)
+    CBBA - açgözlü (puan): fark +0.057, Wilcoxon p=0.005013 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -619.114, Wilcoxon p=0.02479 (anlamlı)
+    Yapay zekâ - uzman kuralı (puan): fark -0.011, Wilcoxon p=0.428 (anlamsız)
+
+=== %20 saldırgan ===
+  Merkezi (yer istasyonu)      Açgözlü tek görev    puan  21.7 ±  3.9  tamamlama % 27.8  süre    95 s  yol  3.80 km  yeni hedef tepkisi  16.7 s  yeniden plan  0.0  (n=30)
+  Merkezi (yer istasyonu)      CBBA paket planlama  puan  24.9 ±  3.9  tamamlama % 31.7  süre    91 s  yol  3.36 km  yeni hedef tepkisi  14.2 s  yeniden plan  5.0  (n=30)
+    CBBA - açgözlü (puan): fark +0.031, Wilcoxon p=3.239e-06 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -443.085, Wilcoxon p=1.218e-05 (anlamlı)
+  Merkeziyetsiz                Açgözlü tek görev    puan   0.0 ±  0.0  tamamlama %  0.0  süre    60 s  yol  0.36 km  yeni hedef tepkisi   nan s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz                CBBA paket planlama  puan   0.0 ±  0.0  tamamlama %  0.0  süre    60 s  yol  0.36 km  yeni hedef tepkisi   nan s  yeniden plan  0.0  (n=30)
+    CBBA - açgözlü (puan): fark yok
+    CBBA - açgözlü (yol, m): fark yok
+  Merkeziyetsiz + EH direnci   Açgözlü tek görev    puan  71.6 ±  3.3  tamamlama %100.0  süre   131 s  yol  5.82 km  yeni hedef tepkisi  26.3 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA paket planlama  puan  76.7 ±  3.1  tamamlama %100.0  süre   119 s  yol  4.86 km  yeni hedef tepkisi  24.8 s  yeniden plan  9.1  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA + yapay zekâ    puan  78.2 ±  2.7  tamamlama %100.0  süre   116 s  yol  4.64 km  yeni hedef tepkisi  22.8 s  yeniden plan  7.4  (n=30)
+    CBBA - açgözlü (puan): fark +0.051, Wilcoxon p=5.718e-07 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -966.987, Wilcoxon p=3.856e-07 (anlamlı)
+    Yapay zekâ - uzman kuralı (puan): fark +0.015, Wilcoxon p=2.08e-05 (anlamlı)
+
+=== 20 dBm + 3 arıza ===
+  Merkezi (yer istasyonu)      Açgözlü tek görev    puan  56.2 ±  7.5  tamamlama % 87.2  süre   215 s  yol 10.90 km  yeni hedef tepkisi  44.1 s  yeniden plan  1.1  (n=30)
+  Merkezi (yer istasyonu)      CBBA paket planlama  puan  64.3 ±  6.8  tamamlama % 85.9  süre   194 s  yol  8.42 km  yeni hedef tepkisi  28.6 s  yeniden plan 14.6  (n=30)
+    CBBA - açgözlü (puan): fark +0.081, Wilcoxon p=3.239e-06 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -2476.275, Wilcoxon p=1.863e-09 (anlamlı)
+  Merkeziyetsiz                Açgözlü tek görev    puan  61.2 ±  6.4  tamamlama % 85.6  süre   217 s  yol  8.39 km  yeni hedef tepkisi  31.5 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz                CBBA paket planlama  puan  66.1 ±  6.5  tamamlama % 88.7  süre   178 s  yol  8.36 km  yeni hedef tepkisi  32.3 s  yeniden plan 16.3  (n=30)
+    CBBA - açgözlü (puan): fark +0.049, Wilcoxon p=0.0003128 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -31.725, Wilcoxon p=0.7151 (anlamsız)
+  Merkeziyetsiz + EH direnci   Açgözlü tek görev    puan  65.5 ±  5.7  tamamlama % 99.9  süre   207 s  yol  8.50 km  yeni hedef tepkisi  46.6 s  yeniden plan  0.0  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA paket planlama  puan  70.7 ±  3.9  tamamlama % 99.9  süre   164 s  yol  7.36 km  yeni hedef tepkisi  38.4 s  yeniden plan 15.5  (n=30)
+  Merkeziyetsiz + EH direnci   CBBA + yapay zekâ    puan  71.1 ±  4.3  tamamlama %100.0  süre   166 s  yol  7.35 km  yeni hedef tepkisi  38.2 s  yeniden plan 14.5  (n=30)
+    CBBA - açgözlü (puan): fark +0.053, Wilcoxon p=4.712e-07 (anlamlı)
+    CBBA - açgözlü (yol, m): fark -1143.406, Wilcoxon p=0.003223 (anlamlı)
+    Yapay zekâ - uzman kuralı (puan): fark +0.004, Wilcoxon p=0.4161 (anlamsız)
+
+##### GÖREV DEĞERLENDİRME: kural yok / uzman kuralı / yapay zekâ (dirençli, CBBA) #####
+
+=== Karıştırma yok ===
+  Kural yok      puan  79.7 ±  2.0  tamamlama %100.0  süre   110 s  (n=30)
+  Uzman kuralı   puan  79.7 ±  2.0  tamamlama %100.0  süre   110 s  (n=30)
+  Yapay zekâ     puan  80.3 ±  2.1  tamamlama %100.0  süre   110 s  (n=30)
+  Uzman kuralı - Kural yok (puan): fark yok
+  Yapay zekâ - Kural yok (puan): fark +0.006, Wilcoxon p=0.0106 (anlamlı)
+  Yapay zekâ - Uzman kuralı (puan): fark +0.006, Wilcoxon p=0.0106 (anlamlı)
+
+=== 20 dBm ===
+  Kural yok      puan  75.7 ±  3.2  tamamlama % 99.5  süre   161 s  (n=30)
+  Uzman kuralı   puan  76.7 ±  2.7  tamamlama % 99.9  süre   137 s  (n=30)
+  Yapay zekâ     puan  76.2 ±  3.9  tamamlama % 99.9  süre   147 s  (n=30)
+  Uzman kuralı - Kural yok (puan): fark +0.011, Wilcoxon p=0.0006666 (anlamlı)
+  Yapay zekâ - Kural yok (puan): fark +0.005, Wilcoxon p=0.2054 (anlamsız)
+  Yapay zekâ - Uzman kuralı (puan): fark -0.006, Wilcoxon p=0.9354 (anlamsız)
+
+=== 30 dBm ===
+  Kural yok      puan  19.2 ±  7.1  tamamlama % 50.6  süre   360 s  (n=30)
+  Uzman kuralı   puan  19.4 ±  7.3  tamamlama % 54.2  süre   360 s  (n=30)
+  Yapay zekâ     puan  18.3 ±  8.3  tamamlama % 51.3  süre   360 s  (n=30)
+  Uzman kuralı - Kural yok (puan): fark +0.003, Wilcoxon p=0.7 (anlamsız)
+  Yapay zekâ - Kural yok (puan): fark -0.009, Wilcoxon p=0.4898 (anlamsız)
+  Yapay zekâ - Uzman kuralı (puan): fark -0.011, Wilcoxon p=0.428 (anlamsız)
+
+=== %20 saldırgan ===
+  Kural yok      puan  76.7 ±  3.1  tamamlama %100.0  süre   119 s  (n=30)
+  Uzman kuralı   puan  76.7 ±  3.1  tamamlama %100.0  süre   119 s  (n=30)
+  Yapay zekâ     puan  78.2 ±  2.7  tamamlama %100.0  süre   116 s  (n=30)
+  Uzman kuralı - Kural yok (puan): fark yok
+  Yapay zekâ - Kural yok (puan): fark +0.015, Wilcoxon p=2.08e-05 (anlamlı)
+  Yapay zekâ - Uzman kuralı (puan): fark +0.015, Wilcoxon p=2.08e-05 (anlamlı)
+
+=== 20 dBm + 3 arıza ===
+  Kural yok      puan  71.3 ±  3.5  tamamlama % 99.7  süre   170 s  (n=30)
+  Uzman kuralı   puan  70.7 ±  3.9  tamamlama % 99.9  süre   164 s  (n=30)
+  Yapay zekâ     puan  71.1 ±  4.3  tamamlama %100.0  süre   166 s  (n=30)
+  Uzman kuralı - Kural yok (puan): fark -0.006, Wilcoxon p=0.3818 (anlamsız)
+  Yapay zekâ - Kural yok (puan): fark -0.002, Wilcoxon p=0.8078 (anlamsız)
+  Yapay zekâ - Uzman kuralı (puan): fark +0.004, Wilcoxon p=0.4161 (anlamsız)
+
+YAPAY ZEKÂ: görev başarı olasılığı kestirimi (test haritaları, eğitimde hiç görülmedi)
+
+  n_egitim                 10757
+  n_dogrulama              2620
+  n_test                   3544
+  basari_orani_test        0.8282
+  auc_yapay_zeka           0.9601
+  auc_uzman_kurali         0.9227
+  dogruluk_yapay_zeka      0.9117
+  dogruluk_hep_basarili    0.8282
+  kayip_yapay_zeka         0.1894
+  brier_yapay_zeka         0.0599
+
+  Koşula göre test (gerçek başarı / yapay zekânın ortalama kestirimi / AUC yapay zekâ / AUC uzman):
+    karıştırma yok  n= 517  gerçek %100.0  kestirim %100.0  AUC nan / nan
+    15 dBm          n= 520  gerçek % 99.2  kestirim % 99.0  AUC 0.995 / 0.997
+    20 dBm          n=1130  gerçek % 93.3  kestirim % 94.1  AUC 0.972 / 0.911
+    25 dBm          n= 774  gerçek % 70.0  kestirim % 69.8  AUC 0.921 / 0.839
+    30 dBm          n= 603  gerçek % 50.7  kestirim % 51.9  AUC 0.795 / 0.737
+
+  İlk deneme, evrim stratejileri (25 kuşak): ağ - uzman puan farkı ilk 5 kuşak -0.011, son 5 kuşak -0.014 (öğrenemedi)
+
+##### PAKET BÜYÜKLÜĞÜ (dirençli strateji) #####
+
+=== Karıştırıcı: Kapalı ===
+  paket 1.0: puan  77.6 ±  2.1  süre   119 s  yol  6.04 km  (n=30)
+  paket 2.0: puan  79.2 ±  2.2  süre   111 s  yol  5.25 km  (n=30)
+  paket 3.0: puan  79.7 ±  2.0  süre   110 s  yol  5.08 km  (n=30)
+  paket 4.0: puan  79.8 ±  2.1  süre   110 s  yol  5.10 km  (n=30)
+  paket 6.0: puan  79.8 ±  2.0  süre   110 s  yol  5.09 km  (n=30)
+  Paket 3 - paket 1 (puan): fark +0.021, Wilcoxon p=5.974e-06 (anlamlı)
+
+=== Karıştırıcı: 20 dBm ===
+  paket 1.0: puan  73.0 ±  3.7  süre   157 s  yol  9.12 km  (n=30)
+  paket 2.0: puan  75.3 ±  3.1  süre   138 s  yol  7.28 km  (n=30)
+  paket 3.0: puan  76.7 ±  2.7  süre   137 s  yol  7.14 km  (n=30)
+  paket 4.0: puan  76.3 ±  3.0  süre   137 s  yol  6.95 km  (n=30)
+  paket 6.0: puan  76.3 ±  3.2  süre   139 s  yol  7.03 km  (n=30)
+  Paket 3 - paket 1 (puan): fark +0.037, Wilcoxon p=1.304e-08 (anlamlı)

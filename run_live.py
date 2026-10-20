@@ -5,10 +5,12 @@
     python run_live.py --strategy centralized --jammer 30
     python run_live.py --strategy decentralized --spoof 0.2 --speed 3
     python run_live.py --jammer off --loop
+    python run_live.py --planner greedy --popups 0      # eski yöntem, yeni hedef yok
 
 Unity'den klavyeyle senaryo değiştirilebilir (UDP 5066 komut kanalı):
-    F1/F2/F3 mimari, +/- karıştırıcı gücü, X saldırgan aç/kapa, N yeni harita,
-    V düzen tipi (V / hat / kol / halka), Z bir İHA'yı arızalandır.
+    F1/F2/F3 mimari, F4 planlama algoritması (açgözlü / CBBA / yapay zekâ), +/- karıştırıcı gücü,
+    X saldırgan aç/kapa, N yeni harita, V düzen tipi (V / hat / kol / halka),
+    Z bir İHA'yı arızalandır, Y görev alanına yeni bir hedef ekle.
 Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
 İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
 Çıkmak için Ctrl+C.
@@ -18,7 +20,7 @@ import json
 import socket
 import time
 
-from suru import World, make_config, STRATEGY_NAMES
+from suru import World, make_config, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES
 from suru.bridge import UnityBridge
 
 POWER_STEPS = [None, 10.0, 20.0, 30.0]   # karıştırıcı kademeleri (None = kapalı)
@@ -40,6 +42,8 @@ def parse():
     p.add_argument("--formation", default="V", choices=["V", "hat", "kol", "halka"], help="intikal düzeni")
     p.add_argument("--failures", type=int, default=0, help="görev sırasında arızalanacak İHA sayısı")
     p.add_argument("--relay", action="store_true", help="bağlantı koruma rölesini aç (merkeziyetsiz)")
+    p.add_argument("--planner", default="cbba", choices=list(PLANNERS), help="görev paylaşım algoritması")
+    p.add_argument("--popups", type=int, default=4, help="görev sırasında beliren yeni hedef sayısı")
     return p.parse_args()
 
 
@@ -76,8 +80,14 @@ def apply(cmd, st, world):
         world.fail_drone()
         print("  bir İHA arızalandı")
         return False
+    if c == "popup":
+        t = world.add_popup()
+        print(f"  yeni hedef eklendi (#{t})" if t >= 0 else "  yedek hedef kalmadı")
+        return False
     if c == "strategy" and cmd.get("value") in STRATEGY_NAMES:
         st["strategy"] = cmd["value"]
+    elif c == "planner":
+        st["planner"] = PLANNERS[(PLANNERS.index(st["planner"]) + 1) % len(PLANNERS)]
     elif c == "jammer":
         i = POWER_STEPS.index(st["power"]) if st["power"] in POWER_STEPS else 2
         st["power"] = POWER_STEPS[max(0, min(len(POWER_STEPS) - 1, i + int(cmd.get("step", 0))))]
@@ -92,26 +102,28 @@ def apply(cmd, st, world):
 
 def describe(st):
     p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm"
-    return (f"{STRATEGY_NAMES[st['strategy']]} | karıştırıcı: {p} | "
+    return (f"{STRATEGY_NAMES[st['strategy']]} | {PLANNER_NAMES[st['planner']]} | karıştırıcı: {p} | "
             f"saldırgan: %{st['spoof'] * 100:.0f} | harita {st['seed']}")
 
 
 def main():
     a = parse()
     st = {"strategy": a.strategy, "power": None if a.jammer.lower() == "off" else float(a.jammer),
-          "spoof": a.spoof, "seed": a.seed}
+          "spoof": a.spoof, "seed": a.seed, "planner": a.planner}
     bridge = UnityBridge(port=a.port)
     try:
         ctl = Controls(a.cmd_port)
     except OSError:
         ctl = None
         print(f"Uyarı: komut portu {a.cmd_port} açılamadı, Unity'den kontrol kapalı.")
-    print("Unity'de: F1/F2/F3 mimari, +/- karıştırıcı, X saldırgan, N yeni harita, V düzen, Z arıza. Çıkış: Ctrl+C")
+    print("Unity'de: F1/F2/F3 mimari, F4 planlama, +/- karıştırıcı, X saldırgan, N yeni harita, V düzen, Z arıza, "
+          "Y yeni hedef. Çıkış: Ctrl+C")
     st["formation"] = a.formation
 
     while True:
         cfg = make_config(st["strategy"], st["power"], st["spoof"], st["seed"], n_drones=a.drones, n_tasks=a.tasks,
-                          formation=st["formation"], failures=a.failures, relay=a.relay)
+                          formation=st["formation"], failures=a.failures, relay=a.relay, planner=st["planner"],
+                          n_popup=a.popups, live_reserve=8)
         world = World(cfg)
         print(f"\n== {describe(st)} ==")
         steps_per_frame = max(1, round(a.speed / a.fps / cfg.dt))
@@ -132,8 +144,9 @@ def main():
                 if world.finished() and not reported:
                     reported = True
                     s = world.summary()
-                    print(f"Görev bitti: tamamlama %{s['completion'] * 100:.0f}, süre {s['mission_time']:.0f}s, "
-                          f"yanlış tamamlama {s['false_done']}, tekrar ziyaret {s['redundant']}. Sürü üsse dönüyor...")
+                    print(f"Görev bitti: tamamlama %{s['completion'] * 100:.0f}, puan {s['score'] * 100:.0f}/100, "
+                          f"süre {s['mission_time']:.0f}s, yanlış tamamlama {s['false_done']}, "
+                          f"tekrar ziyaret {s['redundant']}. Sürü üsse dönüyor...")
                 if world.flight_over():
                     print(f"Sürü indi (t={world.t:.0f}s).")
                     done_at = time.perf_counter()
@@ -144,7 +157,8 @@ def main():
             if world.t - last_print >= 5.0 and not world.flight_over():
                 last_print = world.t
                 m = f["m"]
-                print(f"t={world.t:6.1f}s  {f['phase']:9s} görev {m['done']}/{m['total']}  paket %{m['pdr'] * 100:3.0f}"
+                print(f"t={world.t:6.1f}s  {f['phase']:9s} görev {m['done']}/{m['total']}  puan {m['score'] * 100:3.0f}"
+                      f"  paket %{m['pdr'] * 100:3.0f}"
                       f"  bağlantı %{m['conn'] * 100:3.0f}  düzen hatası {m['formErr']:4.1f} m  GPS'siz {m['gpsLost']}")
             for cmd in (ctl.poll() if ctl else []):
                 changed |= apply(cmd, st, world)

@@ -21,27 +21,58 @@ Görev akışı (her İHA kendi evresini yürütür, lider yoktur):
 
 Sürü zekâsı (suru/swarm.py): lidersiz düzen uçuşu (konsensüs), Reynolds kuralları,
 arazi takibi, röle ile bağlantı koruma, üye kaybında görev ve düzenin yeniden dağıtımı.
+
+Otonom karar alma (suru/decision.py): görevlerin değeri (önceliği) vardır ve beklendikçe azalır.
+Görev sırasında yeni hedefler belirir (yer istasyonu ihbarı ya da İHA sensörü). Görev paylaşımı
+CBBA (merkeziyetsiz paket planlama ve uzlaşma), SGA (merkezi) ya da eski açgözlü yöntemle yapılır.
 """
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from . import radio
+from . import decision, radio
 from .config import SimConfig
 from .swarm import FORMATIONS, Path, formation_offsets, largest_component, place, reynolds
 from .terrain import Terrain
 
 CELL = 50.0  # karıştırma haritası hücre boyu (m)
+GRID_O, GRID_N = -1200.0, 48  # karıştırma haritası ızgarası: başlangıç köşesi (m) ve hücre sayısı
 
 # Uçuş evreleri
 TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND, LANDED = range(7)
 PHASE_NAMES = ("kalkis", "intikal", "gorev", "toplanma", "donus", "inis", "indi")
 AIRBORNE = (TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND)
 
+
+def phase_mask(*phases):
+    """Evre numarasından hızlı bakış tablosu: M[self.phase] -> bu evrelerde mi? (np.isin'den hızlı)"""
+    m = np.zeros(7, bool)
+    m[list(phases)] = True
+    return m
+
+
+M_FORM = phase_mask(TRANSIT, RETURN)            # düzende uçuş
+M_GROUND = phase_mask(TAKEOFF, LAND, LANDED)    # üs üstünde
+M_EARLY = phase_mask(TAKEOFF, TRANSIT)
+M_WORK = phase_mask(TASK, REGROUP)              # görev alanında
+M_CRUISE = phase_mask(TRANSIT, TASK, REGROUP, RETURN)
+
 _TERRAIN_CACHE = {}
 
 
 def cell_of(p):
     return (int(np.floor(p[0] / CELL)), int(np.floor(p[1] / CELL)))
+
+
+def cell_idx(x, y):
+    """Konumun karıştırma haritası ızgarasındaki hücresi (ix, iy)."""
+    ix = np.clip(np.floor((np.asarray(x, float) - GRID_O) / CELL).astype(int), 0, GRID_N - 1)
+    iy = np.clip(np.floor((np.asarray(y, float) - GRID_O) / CELL).astype(int), 0, GRID_N - 1)
+    return ix, iy
+
+
+def cell_centers(grid):
+    ix, iy = np.nonzero(grid)
+    return np.c_[ix, iy].astype(float) * CELL + GRID_O + CELL / 2
 
 
 def shared_terrain(flat):
@@ -61,14 +92,45 @@ class World:
         self.central = c.strategy == "centralized"
         self.relay_on = c.relay_enabled()
         self.terrain = shared_terrain(not c.terrain)
+        self.cbba = c.planner in ("cbba", "ai")
+        self.ai = None
+        if c.planner == "ai":
+            self.ai = (decision.AIValue(c.ai_theta) if len(c.ai_theta)
+                       else decision.AIValue.load(c.ai_weights or decision.AI_WEIGHTS))
+        self.lnlam = float(np.log(c.discount))
+        self.cruise = 0.9 * c.max_speed           # plan yaparken kullanılan seyir hızı tahmini
 
         # Görevler ve saldırganlar aynı tohumla önce çekilir: aynı seed'de
         # üç strateji de AYNI görev haritasıyla karşılaşır (eşleştirilmiş deney).
         ac, h = np.asarray(c.area_center, float), c.area_half
         txy = np.c_[rng.uniform(ac[0] - h + 30, ac[0] + h - 30, T), rng.uniform(ac[1] - h + 30, ac[1] + h - 30, T)]
+        # Görev değerleri ve yeni beliren hedefler ayrı bir rastgele akıştan çekilir: diğer
+        # ayarlar (arıza, saldırgan...) değişse de aynı seed'de aynı kalırlar.
+        rng2 = np.random.default_rng([c.seed, 7])
+        P, Rv = c.n_popup, c.live_reserve
+        v_static = rng2.choice([1.0, 2.0, 3.0], c.n_tasks, p=[0.5, 0.3, 0.2])
+        pxy = np.c_[rng2.uniform(ac[0] - h + 30, ac[0] + h - 30, P), rng2.uniform(ac[1] - h + 30, ac[1] + h - 30, P)]
+        v_pop = rng2.choice([2.0, 3.0], P)          # yeni hedefler genelde acil
+        t_pop = np.sort(rng2.uniform(*c.popup_window, P))
+        txy = np.vstack([txy, pxy, np.tile(ac, (Rv, 1))])
+        self.T = T = T + P + Rv
+        self.n_popup = P
+        self.value = np.ones(T)
+        if c.priorities:
+            self.value[:c.n_tasks] = v_static
+            self.value[c.n_tasks:c.n_tasks + P] = v_pop
+        self.value[c.n_tasks + P:] = 3.0
+        self.appear = np.zeros(T)
+        self.appear[c.n_tasks:c.n_tasks + P] = t_pop
+        self.appear[c.n_tasks + P:] = np.inf      # yedek hedefler: ancak elle eklenince belirir
+        self.popup = np.zeros(T, bool)
+        self.popup[c.n_tasks:] = True
+        # Ödülün azalmaya başladığı an: baştaki görevler için sürünün alana vardığı an
+        t_area = c.takeoff_time + float(np.linalg.norm(ac)) / c.transit_speed
+        self.ref_t = np.where(self.popup, self.appear, t_area)
         self.task_ground = self.terrain.height(txy[:, 0], txy[:, 1])
         self.tasks = np.c_[txy, self.task_ground + c.agl]
-        self.task_cells = [cell_of(p) for p in self.tasks]
+        self.task_ix, self.task_iy = cell_idx(self.tasks[:, 0], self.tasks[:, 1])
         self.spoofer = np.zeros(N, bool)
         n_sp = int(round(c.spoof_fraction * N))
         if n_sp:
@@ -79,7 +141,9 @@ class World:
         if c.failures:
             cand = np.nonzero(~self.spoofer)[0]
             who = rng.choice(cand, min(c.failures, len(cand)), replace=False)
-            self.fail_at[who] = rng.uniform(c.takeoff_time + 50, c.takeoff_time + 100, len(who))   # görev evresinde
+            # görev evresinde: sürü alana vardıktan 3-35 s sonra
+            t_area = c.takeoff_time + float(np.linalg.norm(c.area_center)) / c.transit_speed
+            self.fail_at[who] = rng.uniform(t_area + 3, t_area + 35, len(who))
 
         self.home = np.zeros(2)
         self.rally = ac.copy()                       # toplanma noktası: görev alanının ortası
@@ -100,15 +164,23 @@ class World:
         self.done_time = np.full(T, np.nan)
 
         # Her İHA'nın kafasındaki dünya
+        self.known_task = np.zeros((N, T), bool)     # İHA bu hedefin varlığını biliyor mu
+        self.known_task[:, ~self.popup] = True       # baştaki hedefler görev emrinde bildirildi
         self.known_done = np.zeros((N, T), bool)
         self.cl_bid = np.full((N, T), -np.inf)   # bildiği en iyi teklif
         self.cl_id = np.full((N, T), -1)         # o teklifi veren İHA
         self.cl_time = np.full((N, T), -np.inf)  # teklifin zaman damgası
         self.my_task = np.full(N, -1)
+        self.task_since = np.zeros(N)            # şimdiki hedefe ne zamandan beri gidiliyor
+        self.bundle = [[] for _ in range(N)]     # (cbba) paket: görevler eklenme sırasıyla
+        self.path = [[] for _ in range(N)]       # (cbba) rota: görevler uçuş sırasıyla; ilki my_task
         self.search = np.zeros(N)                # spiral arama açısı (0 = arama yok)
         self.search_r = np.zeros(N)              # aramanın biteceği yarıçap (m)
+        self.recover = np.zeros(N, bool)         # (dirençli) GPS'i geri almaya gidiyor
+        self.recover_block = np.zeros(N)         # bu andan önce yeniden kurtarma denenmez
+        self.last_fix = self.pos[:, :2].copy()   # son GPS alınan nokta
         self.distrust = np.zeros((N, N), bool)   # distrust[j, i]: j, i'ye güvenmiyor
-        self.jam_cells = [set() for _ in range(N)]
+        self.jam_grid = np.zeros((N, GRID_N, GRID_N), bool)   # her İHA'nın karıştırma haritası
         self.link_q = np.zeros((N, N))
         self.heard = np.zeros((N, N), bool)
         self.cooldown = np.zeros((N, T))         # (dirençli) i, t'yi bu andan önce tekrar deneyemez
@@ -139,6 +211,8 @@ class World:
         # Merkezi mimari
         self.gcs_done = np.zeros(T, bool)
         self.gcs_assign = np.full(N, -1)
+        self.gcs_plan = {}                    # (cbba) SGA planı: İHA -> görev listesi
+        self.next_gcs_plan = 0.0
         self.gcs_pos = np.full((N, 3), np.nan)
         self.gcs_seen = np.full(N, -np.inf)   # istasyon İHA'yı en son ne zaman duydu
         self.last_gcs = np.zeros(N)           # İHA istasyonu en son ne zaman duydu
@@ -149,11 +223,37 @@ class World:
         self.m = dict(redundant=0, false_done=0, retries=0, near_miss=0, pdr_sum=0.0, pdr_n=0,
                       locerr_sum=0.0, locerr_n=0, lam2_sum=0.0, lam2_n=0, msgs=0,
                       conn_sum=0.0, conn_n=0, form_sum=0.0, form_n=0, min_agl=np.inf, low_agl=0,
-                      relay_time=0.0, failures=0)
+                      relay_time=0.0, failures=0, reassign=0, task_dist=0.0)
         self.last_pdr = 1.0
         self.last_conn = 1.0
         self.finished_t = np.nan
         self.idle_since = np.nan
+
+        # Yapay zekâ eğitim verisi: her "İHA hedefe yöneldi" denemesinin özellikleri ve sonucu
+        self.attempts = []                       # (özellikler, sonuç 1/0, uzman kuralının rho'su)
+        self.att_task = np.full(N, -1)
+        self.att_feat = [None] * N
+
+    # ------------------------------------------------------------------ deneme kaydı
+    def _log_attempts(self):
+        """Görev evresinde yeni bir hedefe yönelen İHA için deneme açar; hedefi başka sebeple
+        değişen (teklifi geçildi, başkası yaptı, düştü) denemeler sayılmadan kapanır."""
+        for i in range(self.N):
+            t = self.my_task[i] if (self.alive[i] and not self.spoofer[i] and self.phase[i] == TASK) else -1
+            if self.att_task[i] == t:
+                continue
+            self.att_task[i] = -1                # önceki deneme sonuçsuz kapanır
+            if t >= 0:
+                self.att_task[i] = t
+                rule = np.exp(self.lnlam * (self.cfg.jam_penalty / self.cruise * float(self._tasks_in_jam(i)[t])
+                                            + self._search_time(i)))
+                self.att_feat[i] = (self._ai_features(i)[t].copy(), float(rule))
+
+    def _close_attempt(self, i, success):
+        if self.cfg.log_attempts and self.att_task[i] >= 0:
+            f, rule = self.att_feat[i]
+            self.attempts.append((f, int(success), rule))
+        self.att_task[i] = -1
 
     # ------------------------------------------------------------------ döngü
     def step(self):
@@ -171,11 +271,13 @@ class World:
         self._navigate()
         self._update_estimates()
         self._check_arrivals()
+        if c.log_attempts:
+            self._log_attempts()
         self._metrics()
-        if np.isnan(self.finished_t) and self.done.all():
+        if np.isnan(self.finished_t) and self.all_done():
             self.finished_t = self.t
         # Sürü "iş bitti" dedi mi? Tüm canlı dürüst İHA'lar boşta kaldıysa görev biter.
-        busy = (self.my_task >= 0) | (self.phase <= TRANSIT)
+        busy = (self.my_task >= 0) | (self.phase <= TRANSIT) | self.recover
         idle = not (busy & ~self.spoofer & self.alive).any()
         if not idle:
             self.idle_since = np.nan
@@ -186,7 +288,11 @@ class World:
         """Görev bitti mi? (deneyler burada durur)"""
         c = self.cfg
         stalled = not np.isnan(self.idle_since) and self.t - self.idle_since > c.idle_stop
-        return self.done.all() or self.t >= c.max_time or stalled
+        return self.all_done() or self.t >= c.max_time or stalled
+
+    def all_done(self):
+        """Planlanan tüm hedefler (henüz belirmemiş yeni hedefler dahil) yapıldı mı?"""
+        return bool(self.done[np.isfinite(self.appear)].all())
 
     def flight_over(self):
         """Uçuş bitti mi? (canlı gösterimde dönüş ve iniş de izlenir)"""
@@ -209,14 +315,97 @@ class World:
         return float(np.sqrt(self.sig0[i] ** 2 + q * q * self.dr_t[i] ** 3 / 3))
 
     def _tasks_in_jam(self, j):
-        cells = self.jam_cells[j]
-        return np.array([tc in cells for tc in self.task_cells]) if cells else np.zeros(self.T, bool)
+        return self.jam_grid[j, self.task_ix, self.task_iy]
 
     def _ttl(self, j):
         ttl = np.full(self.T, self.cfg.claim_ttl)
         if self.resilient:
             ttl[self._tasks_in_jam(j)] = self.cfg.claim_ttl_jam
         return ttl
+
+    def _ttl_all(self):
+        """Tüm İHA'lar için görev sahiplenme geçerlilik süreleri (N, T)."""
+        if not self.resilient:
+            return np.full((self.N, self.T), self.cfg.claim_ttl)
+        return np.where(self.jam_grid[:, self.task_ix, self.task_iy], self.cfg.claim_ttl_jam, self.cfg.claim_ttl)
+
+    def _plan_start(self, i, pos=None):
+        """Planın başladığı yer ve an. İntikaldeki İHA görev alanına varınca başlar."""
+        c = self.cfg
+        if self.phase[i] in (TAKEOFF, TRANSIT):
+            rest = self.paths[TRANSIT].length - self.lead_s[i]
+            return self.rally.copy(), self.t + max(c.takeoff_time - self.t, 0.0) + rest / c.transit_speed
+        return (self.est[i, :2] if pos is None else pos[:2]).copy(), self.t
+
+    def _rho(self, i):
+        """İHA i'nin her görevi başarma çarpanı (0-1). Düz CBBA: hepsi 1.
+        Dirençli (uzman kuralı): karıştırma bölgesindeki görev 'jam_penalty' metre daha uzakmış gibi,
+        konum belirsizliği de beklenen arama süresi kadar gecikme gibi değerlendirilir.
+        Yapay zekâ: sinir ağı başarı olasılığını kestirir."""
+        if self.ai is not None:
+            return self.ai(self._ai_features(i))
+        rho = np.ones(self.T)
+        if self.resilient and self.cfg.ew_valuation:
+            rho[self._tasks_in_jam(i)] = np.exp(self.lnlam * self.cfg.jam_penalty / self.cruise)
+            rho *= np.exp(self.lnlam * self._search_time(i))
+        return rho
+
+    def _search_time(self, i):
+        """Konum belirsizliğinin zaman maliyeti: hedefte beklenen spiral arama süresi (s).
+        Arşimet spirali yarıçapı R olan daireyi ~ R^2 / (2 b v) saniyede tarar."""
+        c = self.cfg
+        sig = self.sigma(i)
+        if sig <= c.task_radius / 2:
+            return 0.0
+        R = min(2.5 * sig + 10.0, 100.0)
+        return R * R / (2 * c.search_detect / np.pi * 9.0)
+
+    def _ai_features(self, i):
+        """Yapay zekânın her görev için gördüğü özellikler (decision.AI_FEATURES sırasıyla)."""
+        c, T = self.cfg, self.T
+        p = self.est[i, :2]
+        F = np.zeros((T, len(decision.AI_FEATURES)))
+        grid = self.jam_grid[i]
+        F[:, 0] = grid[self.task_ix, self.task_iy]
+        if grid.any():
+            s = np.linspace(0.0, 1.0, 6)[None, :, None]
+            pts = p[None, None, :] + s * (self.tasks[:, None, :2] - p[None, None, :])
+            ix, iy = cell_idx(pts[..., 0], pts[..., 1])
+            F[:, 1] = grid[ix, iy].mean(1)
+        F[:, 2] = float(not self.gps_ok[i])
+        F[:, 3] = np.log1p(self.sigma(i) / c.task_radius)
+        F[:, 4] = float(np.clip((self.jrx[i] + 100.0) / 30.0, 0, 1))
+        F[:, 5] = np.linalg.norm(self.tasks[:, :2] - p, axis=1) / 300.0
+        F[:, 6] = self.value / 3.0
+        F[:, 7] = float(self.heard[:, i].mean())
+        return F
+
+    def _set_task(self, i):
+        """Rotadaki ilk görev şimdiki görevdir."""
+        new = self.path[i][0] if self.path[i] else -1
+        old = self.my_task[i]
+        if new != old:
+            # Yarım bırakılan hedef (yeniden planlama). Yeni hedef belirince birkaç İHA aynı anda
+            # teklif verir, uzlaşma bir iki turda kazananı seçer; bu kısa ihale anları sayılmaz.
+            if old >= 0 and new >= 0 and not self.known_done[i, old] and self.phase[i] == TASK \
+                    and self.t - self.task_since[i] >= 2.0:
+                self.m["reassign"] += 1
+            self.my_task[i], self.search[i] = new, 0
+            self.task_since[i] = self.t
+
+    def _drop(self, i, t):
+        """Görevi İHA'nın paketinden ve rotasından çıkarır."""
+        if t in self.bundle[i]:
+            self.bundle[i].remove(t)
+        if t in self.path[i]:
+            self.path[i].remove(t)
+        self.my_task[i] = -1
+        self.search[i] = 0
+        self._set_task(i)
+
+    def _clear_plan(self, i):
+        self.bundle[i], self.path[i] = [], []
+        self.my_task[i], self.search[i] = -1, 0
 
     def _bids(self, j):
         """Teklif = -(göreve uzaklık). Yakın olan kazanır."""
@@ -238,7 +427,7 @@ class World:
     def _release_claim(self, i):
         mine = self.cl_id[i] == i
         self.cl_bid[i, mine], self.cl_id[i, mine], self.cl_time[i, mine] = -np.inf, -1, -np.inf
-        self.my_task[i], self.search[i] = -1, 0
+        self._clear_plan(i)
 
     # ----------------------------------------------------------- arızalar
     def _failures(self):
@@ -253,7 +442,8 @@ class World:
                 return
             i = int(self.rng.choice(cand))
         self.alive[i] = False
-        self.my_task[i], self.relay_for[i], self.search[i] = -1, -1, 0
+        self._clear_plan(i)
+        self.relay_for[i], self.recover[i] = -1, False
         self.m["failures"] += 1
 
     # ----------------------------------------------------------- haberleşme
@@ -276,12 +466,33 @@ class World:
             self.m["pdr_n"] += 1
         self.m["msgs"] += int(self.alive.sum())
 
+        self._discover()
         if self.central:
             self._gcs_link()
         else:
+            if self.n_popup or np.isfinite(self.appear[self.popup]).any():
+                self._gcs_broadcast()
             self._gossip(heard)
         if self.resilient:
             self._coop_localize(heard)
+
+    def _discover(self):
+        """Yeni beliren hedefi, yakınından geçen İHA'nın sensörü görür."""
+        new = (self.appear <= self.t) & self.popup
+        if not new.any():
+            return
+        idx = np.nonzero(new)[0]
+        d = np.linalg.norm(self.pos[:, None, :2] - self.tasks[None, idx, :2], axis=2)
+        seen = (d < self.cfg.detect_range) & (self.alive & ~self.spoofer)[:, None]
+        self.known_task[:, idx] |= seen
+
+    def _gcs_broadcast(self):
+        """Merkeziyetsiz stratejilerde yer istasyonu sadece yeni hedef ihbarını yayınlar;
+        görev dağıtmaz. Karıştırılan İHA ihbarı duyamayabilir (komşusundan öğrenir)."""
+        c = self.cfg
+        per_dn, _ = radio.link_per(self.gcs, self.pos, self.jrx, c, gain_db=c.gcs_gain_db, max_range=np.inf)
+        dn = (self.rng.random(self.N) > per_dn[0]) & self.alive
+        self.known_task[dn] |= (self.appear <= self.t)[None, :]
 
     def _gossip(self, heard):
         c, N, now = self.cfg, self.N, self.t
@@ -290,55 +501,105 @@ class World:
             self.st_t[i, i], self.st_pos[i, i] = now, self.est[i]
             self.st_task[i, i], self.st_phase[i, i], self.st_relay[i, i] = self.my_task[i], self.phase[i], self.relay_for[i]
             if self.spoofer[i]:
-                # Saldırgan: tüm açık görevleri "ben buradayım" (teklif 0) diye sahiplenir
-                open_ = ~self.known_done[i]
-                self.cl_bid[i, open_], self.cl_id[i, open_], self.cl_time[i, open_] = 0.0, i, now
+                # Saldırgan: tüm açık görevleri "ben tam oradayım" diye en yüksek teklifle sahiplenir
+                open_ = ~self.known_done[i] & self.known_task[i]
+                top = self.value[open_] if self.cbba else 0.0
+                self.cl_bid[i, open_], self.cl_id[i, open_], self.cl_time[i, open_] = top, i, now
                 continue
             t = self.my_task[i]
-            if t >= 0:
+            if t >= 0 and not self.cbba:
                 self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = self._bids(i)[t], i, now
             # Karıştırma algılama: alıcıdaki gürültü tabanı yükseldi ya da GPS kesildi
             if self.resilient and (not self.gps_ok[i] or self.jrx[i] + self.rng.normal(0, 2) > c.jam_detect_dbm):
-                self.jam_cells[i].add(cell_of(self.est[i]))
+                ix, iy = cell_idx(self.est[i, 0], self.est[i, 1])
+                self.jam_grid[i, ix, iy] = True
 
-        # 2) Mesajlar: herkes, duyduğu komşuların (gönderim anındaki) tablosunu birleştirir
+        # 2) Mesajlar: herkes, duyduğu komşuların (gönderim anındaki) tablosunu birleştirir.
+        # Her gönderen için tüm alıcılar birlikte işlenir (alıcı başına sıra, gönderen numarasıyla aynı).
         snap_b, snap_id, snap_t = self.cl_bid.copy(), self.cl_id.copy(), self.cl_time.copy()
-        snap_done, snap_est = self.known_done.copy(), self.est.copy()
-        snap_cells = [set(s) for s in self.jam_cells]
+        snap_done, snap_known, snap_est = self.known_done.copy(), self.known_task.copy(), self.est.copy()
+        snap_grid = self.jam_grid.copy()
         sn_t, sn_pos, sn_task = self.st_t.copy(), self.st_pos.copy(), self.st_task.copy()
         sn_phase, sn_relay = self.st_phase.copy(), self.st_relay.copy()
-        for j in np.nonzero(self.alive)[0]:
-            ttl = self._ttl(j)
-            for i in np.nonzero(heard[:, j])[0]:
-                if self.distrust[j, i]:
+        ttl_all = self._ttl_all()
+        implausible = self._implausible(snap_b, snap_id, snap_t, snap_est) if self.resilient else None
+        for k in np.nonzero(self.alive)[0]:
+            R = np.nonzero(heard[k] & self.alive)[0]
+            R = R[~self.distrust[R, k]]
+            if len(R) == 0:
+                continue
+            # Sürü durum tablosu: daha yeni bilgiyi al
+            st_before = self.st_t[R].copy()
+            newer = sn_t[k][None, :] > st_before
+            if newer.any():
+                self.st_t[R] = np.where(newer, sn_t[k][None, :], st_before)
+                self.st_pos[R] = np.where(newer[..., None], sn_pos[k][None], self.st_pos[R])
+                self.st_task[R] = np.where(newer, sn_task[k][None, :], self.st_task[R])
+                self.st_phase[R] = np.where(newer, sn_phase[k][None, :], self.st_phase[R])
+                self.st_relay[R] = np.where(newer, sn_relay[k][None, :], self.st_relay[R])
+            keep = ~self.spoofer[R]
+            R, st_before = R[keep], st_before[keep]
+            if len(R) == 0:
+                continue
+            if self.resilient:
+                if implausible[k]:
+                    # Makul olmayan teklif veren gönderene artık güvenme, onun tekliflerini sil
+                    self.distrust[R, k] = True
+                    bad = self.cl_id[R] == k
+                    rows = np.broadcast_to(R[:, None], bad.shape)
+                    self.cl_bid[rows[bad], np.nonzero(bad)[1]] = -np.inf
+                    self.cl_id[rows[bad], np.nonzero(bad)[1]] = -1
+                    self.cl_time[rows[bad], np.nonzero(bad)[1]] = -np.inf
                     continue
-                # Sürü durum tablosu: daha yeni bilgiyi al
-                newer = sn_t[i] > self.st_t[j]
-                if newer.any():
-                    self.st_t[j, newer], self.st_pos[j, newer] = sn_t[i, newer], sn_pos[i, newer]
-                    self.st_task[j, newer], self.st_phase[j, newer] = sn_task[i, newer], sn_phase[i, newer]
-                    self.st_relay[j, newer] = sn_relay[i, newer]
-                if self.spoofer[j]:
-                    continue
-                if self.resilient:
-                    # Makullük kontrolü: i'nin kendi adına verdiği teklif, bildirdiği
-                    # konumdan göreve olan uzaklıkla tutarlı mı?
-                    own = (snap_id[i] == i) & (snap_t[i] >= now)   # i'nin bu turda verdiği teklifler
-                    if own.any():
-                        plausible = -np.linalg.norm(self.tasks[own, :2] - snap_est[i, :2], axis=1) + 30.0
-                        if (snap_b[i, own] > plausible).any():
-                            self.distrust[j, i] = True
-                            bad = self.cl_id[j] == i
-                            self.cl_bid[j, bad], self.cl_id[j, bad], self.cl_time[j, bad] = -np.inf, -1, -np.inf
-                            continue
-                    self.jam_cells[j] |= snap_cells[i]
-                self.known_done[j] |= snap_done[i]
-                fresh = snap_t[i] > now - ttl
-                better = fresh & ((snap_b[i] > self.cl_bid[j]) |
-                                  ((snap_id[i] == self.cl_id[j]) & (snap_t[i] > self.cl_time[j])))
-                self.cl_bid[j, better] = snap_b[i, better]
-                self.cl_id[j, better] = snap_id[i, better]
-                self.cl_time[j, better] = snap_t[i, better]
+                self.jam_grid[R] |= snap_grid[k]
+            self.known_done[R] |= snap_done[k]
+            self.known_task[R] |= snap_known[k]
+            if self.cbba:
+                self._merge_cbba(R, k, snap_b[k], snap_id[k], snap_t[k], sn_t[k], st_before)
+            else:
+                fresh = snap_t[k][None, :] > now - ttl_all[R]
+                better = fresh & ((snap_b[k][None, :] > self.cl_bid[R]) |
+                                  ((snap_id[k][None, :] == self.cl_id[R]) & (snap_t[k][None, :] > self.cl_time[R])))
+                self.cl_bid[R] = np.where(better, snap_b[k][None, :], self.cl_bid[R])
+                self.cl_id[R] = np.where(better, snap_id[k][None, :], self.cl_id[R])
+                self.cl_time[R] = np.where(better, snap_t[k][None, :], self.cl_time[R])
+
+    def _implausible(self, snap_b, snap_id, snap_t, snap_est):
+        """Makullük kontrolü: gönderenin bu turda kendi adına verdiği teklif, bildirdiği
+        konumdan göreve olan uzaklıkla tutarlı mı? (sahte bilgiye karşı)"""
+        now = self.t
+        bad = np.zeros(self.N, bool)
+        for k in np.nonzero(self.alive)[0]:
+            own = (snap_id[k] == k) & (snap_t[k] >= now)
+            if not own.any():
+                continue
+            d = np.linalg.norm(self.tasks[own, :2] - snap_est[k, :2], axis=1)
+            if self.cbba:
+                # En iyi ihtimalle azami hızla dümdüz gitse bile alabileceği ödülden fazlası olamaz
+                late = np.maximum(now + d / self.cfg.max_speed - self.ref_t[own], 0.0)
+                ub = self.value[own] * np.exp(self.lnlam * late) * 1.02 + 1e-6
+            else:
+                ub = -d + 30.0
+            bad[k] = bool((snap_b[k, own] > ub).any())
+        return bad
+
+    def _merge_cbba(self, R, k, yk, zk, tk, sk, st_before):
+        """CBBA uzlaşması: k'nın kazanan listesini alıcılarınkiyle Choi kurallarına göre birleştir."""
+        zk = zk.copy()
+        yk = yk.copy()
+        upd, rst = decision.cbba_merge(R, k, yk, zk, sk, self.cl_bid, self.cl_id, st_before)
+        # Alıcının güvenmediği İHA'yı kazanan gösteren bilgi alınmaz
+        if self.resilient:
+            dz = np.maximum(zk, 0)
+            untrusted = (zk[None, :] >= 0) & self.distrust[R][:, dz]
+            upd &= ~untrusted
+        rows = np.broadcast_to(R[:, None], upd.shape)
+        if upd.any():
+            r, t = rows[upd], np.nonzero(upd)[1]
+            self.cl_bid[r, t], self.cl_id[r, t], self.cl_time[r, t] = yk[t], zk[t], tk[t]
+        if rst.any():
+            r, t = rows[rst], np.nonzero(rst)[1]
+            self.cl_bid[r, t], self.cl_id[r, t], self.cl_time[r, t] = -np.inf, -1, -np.inf
 
     def _gcs_link(self):
         c, N, now = self.cfg, self.N, self.t
@@ -363,33 +624,68 @@ class World:
             else:
                 self.gcs_done |= self.known_done[i]
 
+        # İstasyon yeni hedefleri ihbar anında bilir; İHA'ların sensörüyle gördüklerini de yukarı bağlantıdan alır
+        gcs_known = (self.appear <= now) | self.known_task[up].any(0)
         # Uzun süredir duyulmayan İHA'nın görevi serbest kalır
         self.gcs_assign[now - self.gcs_seen > c.gcs_release] = -1
-        # Açgözlü atama: boştaki her İHA'ya en yakın sahipsiz görev
-        for i in np.nonzero(dn & ~np.isnan(self.gcs_pos[:, 0]))[0]:
-            a = self.gcs_assign[i]
-            if a >= 0 and not self.gcs_done[a]:
-                continue
-            taken = set(self.gcs_assign[self.gcs_assign >= 0])
-            free = [t for t in range(self.T) if not self.gcs_done[t] and t not in taken]
-            if free:
-                d = np.linalg.norm(self.tasks[free, :2] - self.gcs_pos[i, :2], axis=1)
-                self.gcs_assign[i] = free[int(np.argmin(d))]
-            else:
-                self.gcs_assign[i] = -1
-        # Hiç açık görev yoksa istasyon "eve dön" emri verir
-        if np.isinf(self.gcs_return_t) and self.gcs_done.all():
+        if self.cbba:
+            if now >= self.next_gcs_plan:
+                self.next_gcs_plan = now + c.gcs_replan
+                self._gcs_sga(gcs_known)
+        else:
+            # Açgözlü atama: boştaki her İHA'ya en yakın sahipsiz görev
+            for i in np.nonzero(dn & ~np.isnan(self.gcs_pos[:, 0]))[0]:
+                a = self.gcs_assign[i]
+                if a >= 0 and not self.gcs_done[a]:
+                    continue
+                taken = set(self.gcs_assign[self.gcs_assign >= 0])
+                free = [t for t in range(self.T) if gcs_known[t] and not self.gcs_done[t] and t not in taken]
+                if free:
+                    d = np.linalg.norm(self.tasks[free, :2] - self.gcs_pos[i, :2], axis=1)
+                    self.gcs_assign[i] = free[int(np.argmin(d))]
+                else:
+                    self.gcs_assign[i] = -1
+        # Bilinen tüm görevler yapıldıysa istasyon "eve dön" emri verir
+        if np.isinf(self.gcs_return_t) and self.gcs_done[gcs_known].all():
             self.gcs_return_t = now
-        # Aşağı bağlantı: görev emri ve düzen ilerlemesi İHA'ya ulaşır
+        # Aşağı bağlantı: görev emri, yeni hedef ihbarı ve düzen ilerlemesi İHA'ya ulaşır
         for i in np.nonzero(dn)[0]:
             self.last_gcs[i] = now
             self.known_done[i] |= self.gcs_done
+            self.known_task[i] |= gcs_known
             if self.phase[i] == TRANSIT:
                 self.lead_s[i] = max(self.lead_s[i], c.transit_speed * (now - c.takeoff_time))
-            if not self.spoofer[i]:
-                if self.my_task[i] != self.gcs_assign[i]:
-                    self.search[i] = 0
-                self.my_task[i] = self.gcs_assign[i]
+            if self.spoofer[i]:
+                continue
+            if self.cbba:
+                self.path[i] = [t for t in self.gcs_plan.get(int(i), []) if not self.known_done[i, t]]
+                self.bundle[i] = list(self.path[i])
+                self._set_task(i)
+            else:
+                self.path[i] = [self.gcs_assign[i]] if self.gcs_assign[i] >= 0 else []
+                self._set_task(i)
+
+    def _gcs_sga(self, gcs_known):
+        """Merkezi plan: istasyonun bildiği konumlarla sıralı açgözlü atama (SGA)."""
+        c, now = self.cfg, self.t
+        agents = np.nonzero((now - self.gcs_seen <= c.gcs_release) & ~np.isnan(self.gcs_pos[:, 0])
+                            & (self.phase < RETURN))[0]
+        open_ = gcs_known & ~self.gcs_done
+        if len(agents) == 0:
+            self.gcs_plan = {}
+            return
+        starts, t0s = np.zeros((self.N, 2)), np.zeros(self.N)
+        for i in agents:
+            starts[i], t0s[i] = self._plan_start(i, self.gcs_pos[i])
+        rho = np.ones((self.N, self.T))
+        for i, plan in self.gcs_plan.items():
+            if plan and i in agents:
+                rho[i, plan[0]] = 1.05          # şu an gidilen hedefi gereksiz yere değiştirme
+        self.gcs_plan = decision.sga(agents, starts, t0s, self.tasks[:, :2], self.value, self.ref_t, rho, open_,
+                                     c.bundle_size, self.lnlam, self.cruise)
+        for i in range(self.N):
+            p = self.gcs_plan.get(i, [])
+            self.gcs_assign[i] = p[0] if p else -1
 
     def _coop_localize(self, heard):
         """GPS'i olmayan İHA, GPS'i sağlam en az 3 komşusunu duyuyorsa onlara
@@ -405,30 +701,95 @@ class World:
     # ----------------------------------------------------------- karar alma
     def _decide(self):
         for j in range(self.N):
-            if not self.alive[j] or self.phase[j] >= RETURN:
+            if not self.alive[j]:
+                continue
+            if self.phase[j] >= RETURN:
+                if self.path[j] or self.bundle[j]:
+                    self._clear_plan(j)
                 continue
             if self.spoofer[j] or self.relay_for[j] >= 0:
-                self.my_task[j] = -1
+                self._clear_plan(j)
                 continue
-            t = self.my_task[j]
-            if t >= 0 and self.known_done[j, t]:
-                self.my_task[j], self.search[j] = -1, 0
+            if self.resilient and self._gps_recovery(j):
+                continue
+            done = [t for t in self.path[j] if self.known_done[j, t]]
+            for t in done:
+                self._drop(j, t)
             if self.central:
                 continue
+            if self.cbba:
+                self._decide_cbba(j)
+                continue
+            # Açgözlü tek görev açık artırması (eski yöntem)
             ttl = self._ttl(j)
             valid = (self.cl_time[j] > self.t - ttl) & (self.cl_id[j] >= 0)
             bids = self._bids(j)
             t = self.my_task[j]
             # Görevimi benden iyi teklif veren biri aldıysa bırakırım
             if t >= 0 and valid[t] and self.cl_id[j, t] != j and self.cl_bid[j, t] > bids[t]:
-                self.my_task[j], self.search[j] = -1, 0
+                self._drop(j, t)
             if self.my_task[j] < 0:
-                free = ~self.known_done[j] & (~valid | (self.cl_id[j] == j) | (self.cl_bid[j] < bids))
+                free = self.known_task[j] & ~self.known_done[j] & (~valid | (self.cl_id[j] == j) | (self.cl_bid[j] < bids))
                 free &= self.cooldown[j] <= self.t
                 if free.any():
                     t = int(np.argmax(np.where(free, bids, -np.inf)))
-                    self.my_task[j] = t
+                    self.path[j] = [t]
+                    self._set_task(j)
                     self.cl_bid[j, t], self.cl_id[j, t], self.cl_time[j, t] = bids[t], j, self.t
+
+    def _gps_recovery(self, j):
+        """(Dirençli) GPS kurtarma: konumunu çok kaybeden İHA görevlerini bırakır, son GPS aldığı
+        noktaya döner; GPS ya da komşu düzeltmesi gelince göreve döner. O nokta çok uzaksa ya da
+        varınca da GPS yoksa (her yer karıştırılıyor) kurtarmayı bir süre denemez.
+        Döndürür: İHA şu an kurtarmada mı."""
+        now, c = self.t, self.cfg
+        sig = self.sigma(j)
+        back = float(np.linalg.norm(self.est[j, :2] - self.last_fix[j]))
+        if self.recover[j]:
+            if sig < 5.0:
+                self.recover[j] = False
+            elif back < 15.0:
+                self.recover[j] = False
+                self.recover_block[j] = now + 60.0
+        elif (sig > c.recover_sigma and self.search[j] == 0 and now >= self.recover_block[j]
+              and back < 300.0 and self.phase[j] == TASK):
+            self.recover[j] = True
+            self._close_attempt(j, False)        # konumunu kaybedip görevi bıraktı: başarısız deneme
+            self._release_claim(j)
+        return bool(self.recover[j])
+
+    def _decide_cbba(self, j):
+        """CBBA: geçersiz teklifleri sil, teklifi geçilen görevi bırak, paketi yeniden doldur."""
+        c, now = self.cfg, self.t
+        z = self.cl_id[j]
+        # 1) Kazananı uzun süredir duyulmayan (düşmüş ya da kopmuş) ya da güvenilmeyen teklifler geçersiz
+        other = (z >= 0) & (z != j)
+        if other.any():
+            zz = np.maximum(z, 0)
+            stale = other & ((now - self.st_t[j, zz] > self._ttl(j)) | self.distrust[j, zz])
+            self.cl_bid[j, stale], self.cl_id[j, stale], self.cl_time[j, stale] = -np.inf, -1, -np.inf
+        # 2) Teklifi geçilen ilk görevden sonrasını bırak (sonrakiler ona göre hesaplanmıştı)
+        b = self.bundle[j]
+        for n, t in enumerate(b):
+            if self.cl_id[j, t] != j:
+                for t2 in b[n + 1:]:
+                    if self.cl_id[j, t2] == j:
+                        self.cl_bid[j, t2], self.cl_id[j, t2], self.cl_time[j, t2] = -np.inf, -1, -np.inf
+                b = b[:n]
+                break
+        path = [t for t in self.path[j] if t in b]
+        # 3) Tekliflerini güncelle ve paketi doldur
+        p0, t0 = self._plan_start(j)
+        X, V, A = self.tasks[:, :2], self.value, self.ref_t
+        rho = self._rho(j)
+        bids = decision.refresh_bids(b, path, p0, t0, X, V, A, rho, self.lnlam, self.cruise)
+        cand = self.known_task[j] & ~self.known_done[j] & (self.cooldown[j] <= now)
+        b, path, bids = decision.build_bundle(list(b), path, bids, p0, t0, X, V, A, rho, self.cl_bid[j], self.cl_id[j],
+                                              j, cand, c.bundle_size, self.lnlam, self.cruise, c.outbid_margin)
+        for t, y in zip(b, bids):
+            self.cl_bid[j, t], self.cl_id[j, t], self.cl_time[j, t] = y, j, now
+        self.bundle[j], self.path[j] = b, path
+        self._set_task(j)
 
     # ----------------------------------------------------------- sürü zekâsı
     def _swarm_logic(self):
@@ -448,7 +809,7 @@ class World:
                     if known.sum() and (self.st_phase[i, known] >= REGROUP).mean() > 0.5:
                         self._set_phase(i, REGROUP)
                     continue
-                idle = self.my_task[i] < 0 and self.relay_for[i] < 0
+                idle = self.my_task[i] < 0 and self.relay_for[i] < 0 and not self.recover[i]
                 self.idle_t[i] = self.idle_t[i] + dt if idle else 0.0
                 if self.idle_t[i] >= c.regroup_wait:
                     self._set_phase(i, REGROUP)
@@ -495,7 +856,7 @@ class World:
         """Sanal lider ilerlemesi için uzlaşma: s_i <- s_i + g * ortalama(s_j - s_i)."""
         g = self.cfg.consensus_gain
         s = self.lead_s.copy()
-        for i in np.nonzero(self.alive & np.isin(self.phase, (TRANSIT, RETURN)))[0]:
+        for i in np.nonzero(self.alive & M_FORM[self.phase])[0]:
             nb = self.heard[:, i] & self.alive & (self.phase == self.phase[i]) & ~self.distrust[i]
             if nb.any():
                 self.lead_s[i] = s[i] + g * float(np.mean(s[nb] - s[i]))
@@ -519,10 +880,9 @@ class World:
             lost = (age > c.relay_after) & (age < 60.0) & ~self.distrust[i]
             lost &= (self.st_phase[i] == TASK) & (self.st_task[i] >= 0) & (self.st_relay[i] < 0)
             lost[i] = False
-            if self.jam_cells[i]:
-                for k in np.nonzero(lost)[0]:
-                    if cell_of(self.st_pos[i, k]) in self.jam_cells[i]:
-                        lost[k] = False
+            if lost.any() and self.jam_grid[i].any():
+                ix, iy = cell_idx(self.st_pos[i, :, 0], self.st_pos[i, :, 1])
+                lost &= ~self.jam_grid[i, ix, iy]
             if not lost.any():
                 continue
             relaying = fresh & (self.st_relay[i] >= 0)
@@ -589,17 +949,17 @@ class World:
 
         # Düzen grupları: 0 üste halka (kalkış/iniş), 1 toplanma noktasında halka (toplanma + boştakiler),
         # 2 intikal düzeni, 3 dönüş düzeni, -1 düzende değil (görev, röle, saldırgan)
-        idle = (self.my_task < 0) & (self.relay_for < 0) & ~self.spoofer
+        idle = (self.my_task < 0) & (self.relay_for < 0) & ~self.spoofer & ~self.recover
         lost_link = self.central & (self.t - self.last_gcs > c.gcs_timeout)
         group = np.full(N, -1)
-        group[np.isin(self.phase, (TAKEOFF, LAND, LANDED))] = 0
+        group[M_GROUND[self.phase]] = 0
         group[(self.phase == REGROUP) | ((self.phase == TASK) & idle & ~lost_link)] = 1
         group[self.phase == TRANSIT] = 2
         group[self.phase == RETURN] = 3
         group[~alive] = -1
 
         # Sanal lider ilerlemesi (intikal/dönüş): düzen hatası büyüyünce yavaşlar ki geride kalanlar yetişsin
-        for i in np.nonzero(alive & np.isin(self.phase, (TRANSIT, RETURN)))[0]:
+        for i in np.nonzero(alive & M_FORM[self.phase])[0]:
             v = c.transit_speed * float(np.clip(1.0 - (self.slot_err[i] - 6.0) / 20.0, 0.3, 1.0))
             self.lead_s[i] = min(self.lead_s[i] + v * dt, self.paths[self.phase[i]].length)
 
@@ -639,15 +999,17 @@ class World:
                 formation[i] = True
                 continue
             t = self.my_task[i]
-            if self.relay_for[i] >= 0:
+            if self.recover[i]:
+                target[i] = self.last_fix[i]     # GPS'i geri almak için son GPS alınan noktaya
+            elif self.relay_for[i] >= 0:
                 target[i] = self.relay_pos[i]
             elif self.spoofer[i]:
                 a = 0.05 * self.t + i
                 target[i] = self.rally + [80 * np.cos(a), 80 * np.sin(a)]
             elif t >= 0:
                 target[i] = self.tasks[t, :2]
-                if self.search[i] > 0:   # Arşimet spirali: r = b * açı, tur aralığı ~10 m
-                    r = 1.6 * self.search[i]
+                if self.search[i] > 0:   # Arşimet spirali: r = b * açı, tur aralığı = kameranın tarama genişliği
+                    r = c.search_detect / np.pi * self.search[i]
                     target[i] = self.tasks[t, :2] + [r * np.cos(self.search[i]), r * np.sin(self.search[i])]
             else:
                 target[i] = self.home            # merkezi, bağlantı kaybı: istasyona doğru dön
@@ -682,11 +1044,11 @@ class World:
         # Dirençli: hedefim karıştırma bölgesinde değilse oradan transit geçme
         if self.resilient:
             for i in np.nonzero(alive & (self.phase == TASK))[0]:
-                cells = self.jam_cells[i]
+                grid = self.jam_grid[i]
                 t = self.my_task[i]
-                if not cells or self.spoofer[i] or (t >= 0 and self.task_cells[t] in cells):
+                if self.spoofer[i] or not grid.any() or (t >= 0 and grid[self.task_ix[t], self.task_iy[t]]):
                     continue
-                ctr = (np.array(list(cells), float) + 0.5) * CELL
+                ctr = cell_centers(grid)
                 v = self.est[i, :2] - ctr
                 d = np.linalg.norm(v, axis=1, keepdims=True)
                 w = np.clip((90.0 - d) / 90.0, 0, None)
@@ -711,7 +1073,7 @@ class World:
         vz = np.clip(0.8 * (z_goal - self.pos[:, 2]), -c.max_climb, c.max_climb)
         vz = np.where(landing, np.maximum(vz, -2.5), vz)
         # Yere yakınken (kalkış) önce yüksel, sonra yatay hareket et
-        low = (agl_now < 8.0) & np.isin(self.phase, (TAKEOFF, TRANSIT))
+        low = (agl_now < 8.0) & M_EARLY[self.phase]
         desired[low, :2] *= 0.15
         desired[:, 2] = vz
 
@@ -749,6 +1111,7 @@ class World:
         ok = self.gps_ok
         gps = self.pos[ok] + self.rng.normal(0, 1.5, (int(ok.sum()), 3)) * [1, 1, 0.5]
         self.est[ok] += 0.3 * (gps - self.est[ok])
+        self.last_fix[ok] = self.est[ok, :2]
         self.bias[ok] = 0
         self.dr_t = np.where(ok, 0.0, self.dr_t + c.dt)
         self.sig0[ok] = 1.5
@@ -759,33 +1122,39 @@ class World:
             t = self.my_task[i]
             if t < 0 or self.spoofer[i] or not self.alive[i] or self.phase[i] not in (TRANSIT, TASK, REGROUP):
                 continue
-            if np.linalg.norm(self.pos[i, :2] - self.tasks[t, :2]) < c.task_radius:
-                # Kamera hedefi gerçekten gördü
+            d_true = np.linalg.norm(self.pos[i, :2] - self.tasks[t, :2])
+            if d_true < c.task_radius or (self.search[i] > 0 and d_true < c.search_detect):
+                # Kamera hedefi gerçekten gördü (aramada tanıyınca görsel güdümle üstüne gelir)
                 if self.done[t]:
                     self.m["redundant"] += 1
                 else:
                     self.done[t], self.done_time[t] = True, self.t
                 self.known_done[i, t] = True
-                self.my_task[i], self.search[i] = -1, 0
+                if self.att_task[i] == t:
+                    self._close_attempt(i, True)
+                self._drop(i, t)
                 continue
             if self.phase[i] != TASK:
                 continue
             if self.search[i] > 0:
-                self.search[i] += 8.0 / max(1.6 * self.search[i], 5.0) * c.dt
-                if 1.6 * self.search[i] > self.search_r[i]:
+                b = c.search_detect / np.pi
+                self.search[i] += 9.0 / max(b * self.search[i], 5.0) * c.dt
+                if b * self.search[i] > self.search_r[i]:
                     # Dirençli İHA görmediği hedefe "bitti" demez: bırakır, GPS'i geri
                     # kazanınca (kendisi ya da bir arkadaşı) yeniden dener.
                     self.m["retries"] += 1
+                    if self.att_task[i] == t:
+                        self._close_attempt(i, False)
                     self.cooldown[i, t] = self.t + self.cfg.retry_cooldown
                     self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = -np.inf, -1, -np.inf
-                    self.my_task[i], self.search[i] = -1, 0
+                    self._drop(i, t)
             elif np.linalg.norm(self.est[i, :2] - self.tasks[t, :2]) < 0.4 * c.task_radius:
                 # "Vardım" sanıyor ama hedef kamerada yok: konum kestirimi yanlış
                 sig = self.sigma(i)
                 if self.resilient and sig > c.task_radius / 2:
                     # Dirençli: belirsizlik çemberini (2.5 sigma) kapsayan spiral arama
                     self.search[i] = 1.0
-                    self.search_r[i] = min(2.5 * sig + 10.0, 120.0)
+                    self.search_r[i] = min(2.5 * sig + 10.0, 100.0)
                 else:
                     self._give_up(i, t)
 
@@ -793,8 +1162,10 @@ class World:
         """İHA görevi bitti sanar ama aslında bitmedi -> yanlış tamamlanma."""
         if not self.done[t]:
             self.m["false_done"] += 1
+        if self.att_task[i] == t:
+            self._close_attempt(i, False)
         self.known_done[i, t] = True
-        self.my_task[i], self.search[i] = -1, 0
+        self._drop(i, t)
 
     # ----------------------------------------------------------- ölçümler
     def _metrics(self):
@@ -802,14 +1173,17 @@ class World:
         honest = ~self.spoofer & self.alive
         self.m["locerr_sum"] += float(np.linalg.norm(self.est[honest] - self.pos[honest], axis=1).mean())
         self.m["locerr_n"] += 1
+        # Görev alanında katedilen yol (enerji göstergesi)
+        work = honest & M_WORK[self.phase]
+        self.m["task_dist"] += float(np.linalg.norm(self.vel[work, :2], axis=1).sum()) * c.dt
         # Arazi açıklığı: düzen ve görev uçuşu sırasında yerden yükseklik
-        cruise = self.alive & np.isin(self.phase, (TRANSIT, TASK, REGROUP, RETURN))
+        cruise = self.alive & M_CRUISE[self.phase]
         if cruise.any():
             agl = self.pos[cruise, 2] - self.terrain.height(self.pos[cruise, 0], self.pos[cruise, 1])
             self.m["min_agl"] = min(self.m["min_agl"], float(agl.min()))
             self.m["low_agl"] += int((agl < 10.0).sum())
         # Düzen hatası: intikal ve dönüşte yuvaya uzaklık
-        fm = self.alive & np.isin(self.phase, (TRANSIT, RETURN))
+        fm = self.alive & M_FORM[self.phase]
         if fm.any():
             self.m["form_sum"] += float(self.slot_err_true[fm].mean())
             self.m["form_n"] += 1
@@ -822,16 +1196,33 @@ class World:
                 self.m["lam2_sum"] += float(np.sort(np.linalg.eigvalsh(L))[1])
                 self.m["lam2_n"] += 1
             # Bağlantılılık: görev evresinde dürüst İHA'lar tek ağ mı?
-            ti = np.nonzero(honest & np.isin(self.phase, (TASK, REGROUP)))[0]
+            ti = np.nonzero(honest & M_WORK[self.phase])[0]
             if len(ti) >= 2:
                 self.last_conn = largest_component(A[np.ix_(ti, ti)])
                 self.m["conn_sum"] += self.last_conn
                 self.m["conn_n"] += 1
 
+    def score(self):
+        """Görev puanı (0-1): yapılan görevlerin zamanla azalan değerlerinin toplamı / tüm değerler.
+        1 = her görev belirdiği an yapıldı. Yapılmayan görev 0 puan."""
+        sched = np.isfinite(self.appear)
+        late = np.maximum(np.nan_to_num(self.done_time, nan=0.0) - self.ref_t, 0.0)
+        got = np.where(self.done & sched, self.value * np.exp(self.lnlam * late), 0.0)
+        return float(got.sum() / max(self.value[sched].sum(), 1e-9))
+
     def summary(self):
         m = self.m
+        sched = np.isfinite(self.appear)
+        pop = self.popup & sched & self.done
+        hi = sched & self.done & (self.value >= 3)
         return dict(
-            completion=float(self.done.mean()),
+            completion=float(self.done[sched].mean()),
+            score=self.score(),
+            popup_done=float(self.done[self.popup & sched].mean()) if (self.popup & sched).any() else np.nan,
+            popup_resp=float(np.mean(self.done_time[pop] - self.appear[pop])) if pop.any() else np.nan,
+            high_time=float(np.mean(self.done_time[hi] - self.ref_t[hi])) if hi.any() else np.nan,
+            reassign=m["reassign"],
+            task_dist=m["task_dist"],
             finish_time=float(self.finished_t),
             mean_task_time=float(np.nanmean(self.done_time)) if self.done.any() else np.nan,
             redundant=m["redundant"],
@@ -855,6 +1246,29 @@ class World:
         k = FORMATIONS.index(self.form_kind) if self.form_kind in FORMATIONS else -1
         self.form_kind = FORMATIONS[(k + 1) % len(FORMATIONS)]
 
+    def add_popup(self, xy=None):
+        """Canlı gösterim: yedek hedeflerden birini şimdi belirtir (yer istasyonu ihbarı). Görev
+        alanında rastgele bir yer seçilir. Döndürür: hedef numarası (yedek kalmadıysa -1)."""
+        free = np.nonzero(np.isinf(self.appear))[0]
+        if len(free) == 0:
+            return -1
+        t = int(free[0])
+        if xy is None:
+            ac, h = np.asarray(self.cfg.area_center, float), self.cfg.area_half - 40
+            xy = ac + self.rng.uniform(-h, h, 2)
+        g = float(self.terrain.height(xy[0], xy[1]))
+        self.tasks[t] = [xy[0], xy[1], g + self.cfg.agl]
+        self.task_ground[t] = g
+        self.task_ix[t], self.task_iy[t] = cell_idx(xy[0], xy[1])
+        self.appear[t] = self.ref_t[t] = self.t
+        self.finished_t = np.nan
+        # Görev bitip sürü dönüşe geçtiyse, dönen İHA'lar görev alanına geri çağrılır
+        self.gcs_return_t = np.inf
+        for i in np.nonzero(self.alive & (self.phase == RETURN))[0]:
+            self._set_phase(i, TASK)
+            self.idle_t[i] = 0.0
+        return t
+
     # ----------------------------------------------------------- Unity karesi
     def frame(self):
         """Unity'ye gönderilen anlık durum. Koordinatlar ENU (x doğu, y kuzey, z yukarı)."""
@@ -862,20 +1276,27 @@ class World:
         r = lambda v: [round(float(x), 2) for x in v]
         claimed = set(int(t) for t in self.my_task if t >= 0)
         believed = self.known_done[~self.spoofer].any(0) | self.gcs_done
+        known = self.known_task[self.alive & ~self.spoofer].any(0)
         tasks = []
         for t in range(self.T):
-            s = 2 if self.done[t] else 3 if believed[t] else 1 if t in claimed else 0
-            tasks.append({"p": r(self.tasks[t]), "s": s})
+            if self.appear[t] > self.t:
+                s = -1                                   # henüz belirmedi
+            else:
+                s = 2 if self.done[t] else 3 if believed[t] else 1 if t in claimed else 0
+            tasks.append({"p": r(self.tasks[t]), "s": s, "v": int(self.value[t]),
+                          "age": round(float(self.t - self.appear[t]), 1) if self.popup[t] and s >= 0 else -1.0,
+                          "k": int(known[t])})
         drones = []
         for i in range(self.N):
             mode = (4 if not self.alive[i] else 2 if self.spoofer[i] else 3 if self.relay_for[i] >= 0
-                    else 1 if self.search[i] > 0 else 0)
+                    else 1 if self.search[i] > 0 else 5 if self.recover[i] else 0)
+            plan = [int(t) for t in self.path[i]] if self.alive[i] and not self.spoofer[i] else []
             drones.append({
                 "id": i, "p": r(self.pos[i]), "e": r(self.est[i]), "v": r(self.vel[i]),
                 "jam": round(float(np.clip((self.jrx[i] + 100.0) / 30.0, 0, 1)), 3),
                 "gps": int(self.gps_ok[i]), "task": int(self.my_task[i]), "mode": mode,
                 "sigma": round(self.sigma(i), 1), "phase": int(self.phase[i]),
-                "relay": int(self.relay_for[i]),
+                "relay": int(self.relay_for[i]), "plan": plan,
             })
         links = []
         for i in range(self.N):
@@ -883,14 +1304,16 @@ class World:
                 q = 0.5 * (self.link_q[i, j] + self.link_q[j, i])
                 if q > 0.05:
                     links += [i, j, round(float(q), 3)]
-        cells = set().union(*self.jam_cells) if self.resilient else set()
-        jam_cells = [v for cx, cy in cells for v in ((cx + 0.5) * CELL, (cy + 0.5) * CELL)]
+        ctr = cell_centers(self.jam_grid.any(0)) if self.resilient else np.zeros((0, 2))
+        jam_cells = [round(float(v), 1) for v in ctr.ravel()]
         live = self.phase[self.alive]
         dominant = int(np.bincount(live, minlength=7).argmax()) if len(live) else LANDED
-        fm = self.alive & np.isin(self.phase, (TRANSIT, RETURN))
+        fm = self.alive & M_FORM[self.phase]
+        sched = np.isfinite(self.appear) & (self.appear <= self.t)
         return {
             "t": round(self.t, 2),
             "strategy": c.strategy,
+            "planner": c.planner,
             "phase": PHASE_NAMES[dominant],
             "formation": self.form_kind,
             "drones": drones,
@@ -901,7 +1324,9 @@ class World:
             "cell": CELL,
             "jamCells": jam_cells,
             "m": {
-                "done": int(self.done.sum()), "total": self.T,
+                "done": int(self.done.sum()), "total": int(sched.sum()),
+                "score": round(self.score(), 3), "reassign": self.m["reassign"],
+                "popups": int((sched & self.popup).sum()),
                 "falseDone": self.m["false_done"], "redundant": self.m["redundant"],
                 "pdr": round(self.last_pdr, 3),
                 "locErr": round(float(np.linalg.norm(self.est[self.alive] - self.pos[self.alive], axis=1).mean()), 2)

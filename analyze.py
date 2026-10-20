@@ -1,6 +1,6 @@
 """Deney sonuçlarını analiz eder: grafikler + istatistiksel testler.
 
-    python analyze.py          # results/results.csv ve (varsa) results/swarm.csv okunur
+    python analyze.py          # results/results.csv ve (varsa) results/swarm.csv, results/decision.csv okunur
 Çıktılar: results/figures/*.png ve results/istatistik.txt
 """
 import argparse
@@ -13,7 +13,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from suru import STRATEGIES, STRATEGY_NAMES
+from suru import PLANNER_NAMES, STRATEGIES, STRATEGY_NAMES
+
+PLANNER_COLORS = {"greedy": "#9a9890", "cbba": "#378ADD", "ai": "#B5359A"}
+# Karar alma deneyinin koşulları (run_experiments.DECISION_CONDS ile aynı sıra)
+DEC_CONDS = [(-1, 0.0, 0, "Karıştırma yok"), (20, 0.0, 0, "20 dBm"), (30, 0.0, 0, "30 dBm"),
+             (-1, 0.2, 0, "%20 saldırgan"), (20, 0.0, 3, "20 dBm + 3 arıza")]
 
 METRICS = {
     "completion": ("Görev tamamlama oranı (%)", 100),
@@ -93,7 +98,96 @@ def plot_swarm(sw, outdir):
         plt.close(fig)
 
 
+def cond_rows(df, power, spoof, fails):
+    return df[(df.jammer_dbm == power) & (np.isclose(df.spoof, spoof)) & (df.failures_cfg == fails)]
+
+
+def valuation_variants(dc):
+    """Dirençli CBBA'nın görev değerlendirme türleri: kural yok / uzman kuralı / yapay zekâ."""
+    pl = dc[(dc.experiment == "plan") & (dc.strategy == "resilient")]
+    out = {}
+    if (dc.experiment == "degerleme").any():
+        out["Kural yok"] = dc[dc.experiment == "degerleme"]
+    if (pl.planner == "cbba").any():
+        out["Uzman kuralı"] = pl[pl.planner == "cbba"]
+    if (pl.planner == "ai").any():
+        out["Yapay zekâ"] = pl[pl.planner == "ai"]
+    return out
+
+
+def plot_decision(dc, outdir):
+    pl = dc[dc.experiment == "plan"]
+    x = np.arange(len(DEC_CONDS))
+    for col, label, scale, name in (("score", "Görev puanı (0-100)", 100, "karar_puan"),
+                                    ("completion", "Görev tamamlama oranı (%)", 100, "karar_tamamlama"),
+                                    ("task_dist", "Görev alanında katedilen yol (km)", 0.001, "karar_yol"),
+                                    ("popup_resp", "Yeni hedefe tepki süresi (s)", 1, "karar_yeni_hedef")):
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2), dpi=150, sharey=True)
+        for ax, s in zip(axes, STRATEGIES):
+            planners = [p for p in PLANNER_NAMES if ((pl.strategy == s) & (pl.planner == p)).any()]
+            w = 0.8 / max(len(planners), 1)
+            for j, p in enumerate(planners):
+                sub = pl[(pl.strategy == s) & (pl.planner == p)]
+                vals = [cond_rows(sub, pw, sp, f)[col].dropna() * scale for pw, sp, f, _ in DEC_CONDS]
+                ax.bar(x + (j - (len(planners) - 1) / 2) * w, [v.mean() if len(v) else np.nan for v in vals], w * 0.92,
+                       yerr=[1.96 * v.sem() if len(v) > 1 else 0 for v in vals], capsize=2,
+                       color=PLANNER_COLORS[p], label=PLANNER_NAMES[p], error_kw=dict(lw=0.8))
+            ax.set_xticks(x, [c[3] for c in DEC_CONDS], rotation=25, fontsize=7)
+            ax.set_title(STRATEGY_NAMES[s], fontsize=9)
+            ax.grid(alpha=0.3, axis="y")
+            ax.legend(fontsize=7)
+        axes[0].set_ylabel(label)
+        fig.suptitle(f"Otonom karar alma: {label.split(' (')[0].lower()}", fontsize=10)
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, f"{name}.png"))
+        plt.close(fig)
+
+    variants = valuation_variants(dc)
+    if len(variants) > 1:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4), dpi=150)
+        cols = {"Kural yok": "#9a9890", "Uzman kuralı": "#378ADD", "Yapay zekâ": "#B5359A"}
+        for ax, (col, label) in zip(axes, (("score", "Görev puanı (0-100)"), ("completion", "Görev tamamlama oranı (%)"))):
+            w = 0.8 / len(variants)
+            for j, (name, sub) in enumerate(variants.items()):
+                vals = [cond_rows(sub, pw, sp, f)[col] * 100 for pw, sp, f, _ in DEC_CONDS]
+                ax.bar(x + (j - (len(variants) - 1) / 2) * w, [v.mean() for v in vals], w * 0.92,
+                       yerr=[1.96 * v.sem() for v in vals], capsize=2, color=cols[name], label=name,
+                       error_kw=dict(lw=0.8))
+            ax.set_xticks(x, [c[3] for c in DEC_CONDS], rotation=20, fontsize=7)
+            ax.set_ylabel(label)
+            ax.grid(alpha=0.3, axis="y")
+            ax.legend(fontsize=7)
+        fig.suptitle("Görev değerlendirme: kural yok / uzman kuralı / yapay zekâ (dirençli strateji, CBBA, test haritaları)",
+                     fontsize=10)
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, "yapay_zeka.png"))
+        plt.close(fig)
+
+    pk = dc[dc.experiment == "paket"]
+    if len(pk):
+        fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.8), dpi=150)
+        for ax, (col, label, scale) in zip(axes, (("score", "Görev puanı (0-100)", 100),
+                                                  ("task_dist", "Katedilen yol (km)", 0.001))):
+            for power, c in ((-1, "#1D9E75"), (20, "#D85A30")):
+                sub = pk[pk.jammer_dbm == power]
+                g = sub.groupby("bundle_size")[col]
+                keys = sorted(sub.bundle_size.unique())
+                ax.errorbar(keys, g.mean().reindex(keys) * scale, yerr=1.96 * g.sem().reindex(keys) * scale,
+                            marker="o", capsize=4, lw=2, color=c, label=f"karıştırıcı {POWER_LABEL.get(power, power)}")
+            ax.set_xlabel("Paket büyüklüğü (bir İHA'nın planladığı görev sayısı)")
+            ax.set_ylabel(label)
+            ax.set_xticks(keys)
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=8)
+        fig.suptitle("CBBA paket büyüklüğünün etkisi (dirençli strateji, 6 yeni hedef)", fontsize=10)
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, "paket_boyutu.png"))
+        plt.close(fig)
+
+
 def wilcoxon_line(a, b, label):
+    ok = ~(np.isnan(np.asarray(a, float)) | np.isnan(np.asarray(b, float)))
+    a, b = np.asarray(a, float)[ok], np.asarray(b, float)[ok]
     d = a - b
     if len(d) < 2 or not (d != 0).any():
         return f"  {label}: fark yok"
@@ -101,7 +195,70 @@ def wilcoxon_line(a, b, label):
     return f"  {label}: fark {d.mean():+.3f}, Wilcoxon p={p:.4g} {'(anlamlı)' if p < 0.05 else '(anlamsız)'}"
 
 
-def statistics(df, sw):
+def decision_statistics(dc):
+    lines = ["\n##### KARAR ALMA DENEYİ: açgözlü tek görev / CBBA paket planlama / CBBA + yapay zekâ #####",
+             "(her koşulda 6 yeni hedef görev sırasında belirir; puan = zamanla azalan görev değerleri, 0-100)"]
+    pl = dc[dc.experiment == "plan"]
+    for pw, sp, f, name in DEC_CONDS:
+        sub = cond_rows(pl, pw, sp, f)
+        if not len(sub):
+            continue
+        lines.append(f"\n=== {name} ===")
+        for s in STRATEGIES:
+            for p in PLANNER_NAMES:
+                x = sub[(sub.strategy == s) & (sub.planner == p)]
+                if not len(x):
+                    continue
+                lines.append(f"  {STRATEGY_NAMES[s]:28s} {PLANNER_NAMES[p]:20s} puan {x.score.mean() * 100:5.1f} ± "
+                             f"{x.score.std() * 100:4.1f}  tamamlama %{x.completion.mean() * 100:5.1f}  süre "
+                             f"{x.mission_time.mean():5.0f} s  yol {x.task_dist.mean() / 1000:5.2f} km  yeni hedef tepkisi "
+                             f"{x.popup_resp.mean():5.1f} s  yeniden plan {x.reassign.mean():4.1f}  (n={len(x)})")
+            piv = sub[sub.strategy == s].pivot_table(index="seed", columns="planner", values=["score", "task_dist"])
+            if ("score", "cbba") in piv and ("score", "greedy") in piv:
+                lines.append(wilcoxon_line(piv["score"]["cbba"], piv["score"]["greedy"], "  CBBA - açgözlü (puan)"))
+                lines.append(wilcoxon_line(piv["task_dist"]["cbba"], piv["task_dist"]["greedy"], "  CBBA - açgözlü (yol, m)"))
+            if ("score", "ai") in piv and ("score", "cbba") in piv:
+                lines.append(wilcoxon_line(piv["score"]["ai"], piv["score"]["cbba"], "  Yapay zekâ - uzman kuralı (puan)"))
+    variants = valuation_variants(dc)
+    if len(variants) > 1:
+        lines.append("\n##### GÖREV DEĞERLENDİRME: kural yok / uzman kuralı / yapay zekâ (dirençli, CBBA) #####")
+        for pw, sp, f, name in DEC_CONDS:
+            lines.append(f"\n=== {name} ===")
+            piv = {}
+            for vname, sub in variants.items():
+                x = cond_rows(sub, pw, sp, f)
+                piv[vname] = x.set_index("seed")
+                lines.append(f"  {vname:14s} puan {x.score.mean() * 100:5.1f} ± {x.score.std() * 100:4.1f}  tamamlama "
+                             f"%{x.completion.mean() * 100:5.1f}  süre {x.mission_time.mean():5.0f} s  (n={len(x)})")
+            for a, b in (("Uzman kuralı", "Kural yok"), ("Yapay zekâ", "Kural yok"), ("Yapay zekâ", "Uzman kuralı")):
+                if a in piv and b in piv:
+                    j = piv[a].join(piv[b], lsuffix="_a", rsuffix="_b", how="inner")
+                    lines.append(wilcoxon_line(j.score_a, j.score_b, f"{a} - {b} (puan)"))
+        tr = os.path.join("results", "ai_egitim.txt")
+        if os.path.exists(tr):
+            with open(tr, encoding="utf-8") as f:
+                lines.append("\n" + f.read())
+        es = os.path.join("results", "ai_es_deneme.csv")
+        if os.path.exists(es):
+            h = pd.read_csv(es)
+            d = h.ag_puani - h.uzman_kurali
+            lines.append(f"\n  İlk deneme, evrim stratejileri ({len(h)} kuşak): ağ - uzman puan farkı ilk 5 kuşak "
+                         f"{d.head(5).mean():+.3f}, son 5 kuşak {d.tail(5).mean():+.3f} (öğrenemedi)")
+    pk = dc[dc.experiment == "paket"]
+    if len(pk):
+        lines.append("\n##### PAKET BÜYÜKLÜĞÜ (dirençli strateji) #####")
+        for power, sub in pk.groupby("jammer_dbm"):
+            lines.append(f"\n=== Karıştırıcı: {POWER_LABEL.get(power, power)} ===")
+            for L, x in sub.groupby("bundle_size"):
+                lines.append(f"  paket {L}: puan {x.score.mean() * 100:5.1f} ± {x.score.std() * 100:4.1f}  süre "
+                             f"{x.mission_time.mean():5.0f} s  yol {x.task_dist.mean() / 1000:5.2f} km  (n={len(x)})")
+            piv = sub.pivot_table(index="seed", columns="bundle_size", values="score")
+            if 1 in piv and 3 in piv:
+                lines.append(wilcoxon_line(piv[3], piv[1], "Paket 3 - paket 1 (puan)"))
+    return lines
+
+
+def statistics(df, sw, dc=None):
     lines = ["İSTATİSTİK RAPORU (ortalama ± standart sapma; n = tekrar sayısı; Wilcoxon: aynı haritada eşleştirilmiş test)\n",
              "\n##### ANA DENEY: karıştırma ve sahte bilgi #####"]
     for (power, spoof), sub in df.groupby(["jammer_dbm", "spoof"]):
@@ -143,6 +300,8 @@ def statistics(df, sw):
             if 0 in piv_c and 1 in piv_c:
                 lines.append(wilcoxon_line(piv_c[1], piv_c[0], "Bağlantılılık (açık - kapalı)"))
                 lines.append(wilcoxon_line(piv_t[1], piv_t[0], "Görev süresi (açık - kapalı)"))
+    if dc is not None:
+        lines += decision_statistics(dc)
     return "\n".join(lines)
 
 
@@ -150,15 +309,19 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--csv", default="results/results.csv")
     p.add_argument("--swarm", default="results/swarm.csv")
+    p.add_argument("--decision", default="results/decision.csv")
     a = p.parse_args()
     df = pd.read_csv(a.csv)
     sw = pd.read_csv(a.swarm) if os.path.exists(a.swarm) else None
+    dc = pd.read_csv(a.decision) if os.path.exists(a.decision) else None
     outdir = os.path.join(os.path.dirname(a.csv), "figures")
     os.makedirs(outdir, exist_ok=True)
     plot_main(df, outdir)
     if sw is not None:
         plot_swarm(sw, outdir)
-    report = statistics(df, sw)
+    if dc is not None:
+        plot_decision(dc, outdir)
+    report = statistics(df, sw, dc)
     path = os.path.join(os.path.dirname(a.csv), "istatistik.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write(report)

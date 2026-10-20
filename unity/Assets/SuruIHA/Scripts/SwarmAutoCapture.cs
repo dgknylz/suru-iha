@@ -90,8 +90,21 @@ namespace SuruIHA
                 ("e_sinematik2", SwarmCamera.Mode.Cinematic, 14f, 0),
                 ("f_takip3", SwarmCamera.Mode.Follow, 7f, 7),
             };
+            int shotNo = 0;
             foreach (var s in shots)
             {
+                if (shotNo++ == 2)
+                {
+                    // Y komutu (görev evresinde): yeni hedef ekle, belirme dalgası ve yeniden planlama kuşbakışı görünsün
+                    int popBefore = vis.Frame?.m?.popups ?? 0;
+                    vis.Receiver.SendCommand("{\"cmd\":\"popup\"}");
+                    cam.mode = SwarmCamera.Mode.Top;
+                    float untilPop = Time.realtimeSinceStartup + 1.6f;
+                    while (Time.realtimeSinceStartup < untilPop) yield return null;
+                    Capture(cam.GetComponent<Camera>(), Path.Combine(outDir, "i_yeni_hedef.png"));
+                    log.AppendLine($"komut testi (Y yeni hedef): yeni hedef {popBefore} -> {vis.Frame?.m?.popups} " +
+                                   $"planlayici={vis.Frame?.planner} puan={vis.Frame?.m?.score:0.00} t={vis.Frame?.t:0.0}s");
+                }
                 cam.mode = s.mode;
                 cam.SetFollow(s.follow);
                 float until = Time.realtimeSinceStartup + s.wait;
@@ -124,6 +137,11 @@ namespace SuruIHA
             while (Time.realtimeSinceStartup < until3) yield return null;
             log.AppendLine($"komut testi (F1 merkezi): gelen strateji={vis.Frame?.strategy} t={vis.Frame?.t:0.0}s");
             vis.Receiver.SendCommand("{\"cmd\":\"strategy\",\"value\":\"resilient\"}");
+            string plBefore = vis.Frame?.planner;
+            vis.Receiver.SendCommand("{\"cmd\":\"planner\"}");
+            float until4 = Time.realtimeSinceStartup + 4f;
+            while (Time.realtimeSinceStartup < until4) yield return null;
+            log.AppendLine($"komut testi (F4 planlama): {plBefore} -> {vis.Frame?.planner} t={vis.Frame?.t:0.0}s");
 
             // Yer seviyesinden bir çekim (ot öbekleri ve arazi ayrıntısı için)
             var camComp = cam.GetComponent<Camera>();

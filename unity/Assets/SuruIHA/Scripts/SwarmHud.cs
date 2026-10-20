@@ -34,6 +34,14 @@ namespace SuruIHA
             _ => s?.ToUpperInvariant() ?? "-",
         };
 
+        static string PlannerName(string p, string strategy) => p switch
+        {
+            "greedy" => "açgözlü tek görev",
+            "cbba" => strategy == "centralized" ? "SGA (merkezi paket)" : "CBBA paket planlama",
+            "ai" => "CBBA + yapay zekâ",
+            _ => p ?? "-",
+        };
+
         void Start()
         {
             if (visualizer == null) visualizer = FindAnyObjectByType<SwarmVisualizer>();
@@ -49,6 +57,7 @@ namespace SuruIHA
             if (SwarmInput.Down(SwarmInput.K.G)) visualizer.showEstimates = !visualizer.showEstimates;
             if (SwarmInput.Down(SwarmInput.K.J)) visualizer.showJamMap = !visualizer.showJamMap;
             if (SwarmInput.Down(SwarmInput.K.B)) visualizer.showBeacons = !visualizer.showBeacons;
+            if (SwarmInput.Down(SwarmInput.K.P)) visualizer.showPlans = !visualizer.showPlans;
             // Grafik kalitesi: Yüksek (hacimsel sis, bulut gölgesi) -> Dengeli -> Performans
             if (SwarmInput.Down(SwarmInput.K.K))
             {
@@ -62,6 +71,8 @@ namespace SuruIHA
             if (SwarmInput.Down(SwarmInput.K.F1)) rx.SendCommand("{\"cmd\":\"strategy\",\"value\":\"centralized\"}");
             if (SwarmInput.Down(SwarmInput.K.F2)) rx.SendCommand("{\"cmd\":\"strategy\",\"value\":\"decentralized\"}");
             if (SwarmInput.Down(SwarmInput.K.F3)) rx.SendCommand("{\"cmd\":\"strategy\",\"value\":\"resilient\"}");
+            if (SwarmInput.Down(SwarmInput.K.F4)) rx.SendCommand("{\"cmd\":\"planner\"}");
+            if (SwarmInput.Down(SwarmInput.K.Y)) rx.SendCommand("{\"cmd\":\"popup\"}");
             if (SwarmInput.Down(SwarmInput.K.Plus)) rx.SendCommand("{\"cmd\":\"jammer\",\"step\":1}");
             if (SwarmInput.Down(SwarmInput.K.Minus)) rx.SendCommand("{\"cmd\":\"jammer\",\"step\":-1}");
             if (SwarmInput.Down(SwarmInput.K.X)) rx.SendCommand("{\"cmd\":\"spoof\"}");
@@ -113,6 +124,7 @@ namespace SuruIHA
             else
             {
                 GUILayout.Label(StrategyName(f.strategy), value);
+                Row("Görev paylaşımı", PlannerName(f.planner, f.strategy), line);
                 Row("Uçuş evresi", PhaseName(f.phase), line);
                 Row("Görev süresi", $"{f.t:0} s", line);
                 var m = f.m;
@@ -123,6 +135,8 @@ namespace SuruIHA
                     GUI.DrawTexture(r, bar);
                     GUI.DrawTexture(new Rect(r.x, r.y, r.width * (m.total > 0 ? m.done / (float)m.total : 0), r.height), barFill);
                     GUILayout.Space(6 * s);
+                    Row("Görev puanı", $"{m.score * 100:0} / 100", line);
+                    Row("Yeni hedef · yeniden plan", $"{m.popups} · {m.reassign}", line);
                     Row("Paket iletim oranı", $"%{m.pdr * 100:0}", line);
                     Row("GPS'i kesilen İHA", $"{m.gpsLost}", line);
                     Row("Ort. konum hatası", $"{m.locErr:0.0} m", line);
@@ -150,7 +164,8 @@ namespace SuruIHA
             GUILayout.Label("<b>İHA ışığı</b>  <color=#26ff8c>●</color> normal  <color=#ff9e1a>●</color> karıştırılıyor  " +
                             "<color=#ff2e26>●</color> GPS yok  <color=#4099ff>●</color> arıyor  <color=#cc40ff>●</color> saldırgan  <color=#1af2ff>●</color> röle  <color=#555555>●</color> arızalı", small);
             GUILayout.Label("<b>Görev</b>  <color=#d9e0f2>●</color> açık  <color=#ffc733>●</color> yolda  " +
-                            "<color=#33ff73>●</color> tamam  <color=#ff2640>●</color> yanlış tamam", small);
+                            "<color=#33ff73>●</color> tamam  <color=#ff2640>●</color> yanlış tamam  <color=#bf4dff>●</color> yeni, sürü bilmiyor  " +
+                            "· halka sayısı = öncelik (1-3) · renkli çizgi = İHA'nın planı", small);
             GUILayout.Label("<b>Bağlantı</b>  <color=#26ff8c>━</color> sağlam → <color=#ff1f14>━</color> karıştırılmış   " +
                             "<color=#ff5a4d>○</color> İHA'nın sandığı konum", small);
             GUILayout.Space(6 * s);
@@ -166,8 +181,9 @@ namespace SuruIHA
             GUILayout.Label($"Grafik: <b>{(ql < qn.Length ? qn[ql] : QualitySettings.names[ql])}</b> [K] değiştir · " +
                             $"{1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} FPS", small);
             GUILayout.Label($"Kamera: <b>{camName}</b>   [C] sinematik [O] serbest [F/Tab/1-9] takip [T] taktik\n" +
-                            "[L] bağlantılar  [G] konum hayaletleri  [J] karıştırma haritası  [B] uzak işaretler  [H] paneli gizle  [Esc] çıkış\n" +
-                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [+/-] karıştırıcı  [X] saldırgan  [N] yeni harita  [V] düzen  [Z] arıza", small);
+                            "[L] bağlantılar  [G] konum hayaletleri  [J] karıştırma haritası  [B] uzak işaretler  [P] planlar  [H] paneli gizle  [Esc] çıkış\n" +
+                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [F4] planlama algoritması  [+/-] karıştırıcı  [X] saldırgan  " +
+                            "[N] yeni harita  [V] düzen  [Z] arıza  [Y] yeni hedef", small);
             GUILayout.EndVertical();
             GUILayout.EndArea();
         }

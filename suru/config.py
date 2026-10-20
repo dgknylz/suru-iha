@@ -13,6 +13,14 @@ STRATEGY_NAMES = {
     "resilient": "Merkeziyetsiz + EH direnci",
 }
 
+# Görev paylaşım (planlama) algoritmaları
+PLANNERS = ("greedy", "cbba", "ai")
+PLANNER_NAMES = {
+    "greedy": "Açgözlü tek görev",
+    "cbba": "CBBA paket planlama",
+    "ai": "CBBA + yapay zekâ",
+}
+
 
 @dataclass
 class SimConfig:
@@ -38,7 +46,9 @@ class SimConfig:
     max_accel: float = 4.0          # m/s^2
     sep_dist: float = 10.0          # çarpışmadan kaçınma mesafesi (m)
     layer_step: float = 6.0         # görevde çarpışma önleyici irtifa katmanları arası fark (m)
-    task_radius: float = 6.0        # kamera hedefi bu yarıçap içinde görür (m)
+    task_radius: float = 6.0        # görev: hedefin bu yarıçap içine gelmek (m)
+    search_detect: float = 15.0     # (dirençli) spiral aramada kamera hedefi bu mesafeden tanır (m)
+    recover_sigma: float = 25.0     # (dirençli) konum belirsizliği bunu aşan İHA görevi bırakıp GPS'i geri almaya gider (m)
 
     # --- sürü zekâsı ---
     formation: str = "V"            # intikal ve dönüş düzeni: V | hat | kol | halka
@@ -65,6 +75,25 @@ class SimConfig:
     idle_stop: float = 40.0         # tüm sürü bu kadar boşta kalırsa görev biter
     gcs_timeout: float = 5.0        # (merkezi) yer istasyonu bu kadar duyulmazsa üsse dön
     gcs_release: float = 20.0       # (merkezi) bu kadar duyulmayan İHA'nın görevi başkasına verilir
+
+    # --- otonom karar alma ---
+    # greedy: her İHA en yakın tek görevi açık artırmayla alır (eski yöntem, karşılaştırma için)
+    # cbba  : her İHA birkaç görevlik paket planlar, komşularla uzlaşır (merkezide: SGA)
+    # ai    : cbba + görevlerin uygunluğunu yapay sinir ağı kestirir
+    planner: str = "cbba"
+    bundle_size: int = 3            # (cbba) bir İHA'nın aynı anda planladığı en fazla görev
+    discount: float = 0.99          # görev değerinin saniyelik azalma çarpanı (lambda)
+    outbid_margin: float = 0.03     # başkasının görevini almak için gereken en az teklif üstünlüğü
+    gcs_replan: float = 1.0         # (merkezi) yer istasyonu planı kaç saniyede bir yeniler
+    priorities: bool = True         # görev değerleri 1-3 (False: hepsi 1)
+    n_popup: int = 0                # görev sırasında beliren yeni hedef sayısı
+    popup_window: tuple = (60.0, 100.0)  # yeni hedeflerin belirdiği zaman aralığı (s)
+    detect_range: float = 120.0     # İHA sensörü yeni hedefi bu mesafeden görür (m)
+    live_reserve: int = 0           # (canlı) elle eklenebilecek yedek hedef sayısı
+    ew_valuation: bool = True       # (dirençli) görev değerlendirmede EH kuralları (karıştırma cezası, belirsizlik maliyeti)
+    ai_weights: str = ""            # yapay zekâ ağırlık dosyası (boş: suru/data/ai_politika.npz)
+    ai_theta: tuple = ()            # (eğitim) ağ ağırlıkları doğrudan verilirse dosya yerine bunlar kullanılır
+    log_attempts: bool = False      # (eğitim verisi) her görev denemesinin özelliklerini ve sonucunu kaydet
 
     # --- radyo: 2.4 GHz, log-mesafe yol kaybı modeli ---
     tx_power_dbm: float = 20.0      # İHA verici gücü (100 mW)

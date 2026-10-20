@@ -1,0 +1,19 @@
+YAPAY ZEKÂ: görev başarı olasılığı kestirimi (test haritaları, eğitimde hiç görülmedi)
+
+  n_egitim                 10757
+  n_dogrulama              2620
+  n_test                   3544
+  basari_orani_test        0.8282
+  auc_yapay_zeka           0.9601
+  auc_uzman_kurali         0.9227
+  dogruluk_yapay_zeka      0.9117
+  dogruluk_hep_basarili    0.8282
+  kayip_yapay_zeka         0.1894
+  brier_yapay_zeka         0.0599
+
+  Koşula göre test (gerçek başarı / yapay zekânın ortalama kestirimi / AUC yapay zekâ / AUC uzman):
+    karıştırma yok  n= 517  gerçek %100.0  kestirim %100.0  AUC nan / nan
+    15 dBm          n= 520  gerçek % 99.2  kestirim % 99.0  AUC 0.995 / 0.997
+    20 dBm          n=1130  gerçek % 93.3  kestirim % 94.1  AUC 0.972 / 0.911
+    25 dBm          n= 774  gerçek % 70.0  kestirim % 69.8  AUC 0.921 / 0.839
+    30 dBm          n= 603  gerçek % 50.7  kestirim % 51.9  AUC 0.795 / 0.737

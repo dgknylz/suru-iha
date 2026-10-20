@@ -33,6 +33,13 @@ SHOTS = [
     (r"C:\SuruIHA\models\preview_village.png", "19_koy_modelleri_blender.jpg"),
     (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\completion_saldirgan0.png", "15_grafik_tamamlama_saldirgansiz.jpg"),
     (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\completion_saldirgan20.png", "16_grafik_tamamlama_saldirganli.jpg"),
+    (r"C:\SuruIHA\autotest\i_yeni_hedef.png", "25_yeni_hedef_ve_planlar.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\karar_puan.png", "26_grafik_karar_puan.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\karar_yol.png", "27_grafik_karar_yol.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\paket_boyutu.png", "28_grafik_paket_boyutu.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\ai_dogruluk.png", "29_grafik_yapay_zeka_dogruluk.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\ai_ne_ogrendi.png", "30_grafik_yapay_zeka_ne_ogrendi.jpg"),
+    (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\yapay_zeka.png", "31_grafik_yapay_zeka_karsilastirma.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

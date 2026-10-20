@@ -16,17 +16,21 @@ namespace SuruIHA
         public float jam;      // 0..1 karıştırma seviyesi
         public int gps;        // 1 = GPS var
         public int task;       // hedef görev (-1 = yok)
-        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı
+        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma
         public int phase;      // 0 kalkış, 1 intikal, 2 görev, 3 toplanma, 4 dönüş, 5 iniş, 6 indi
         public int relay;      // röle ise bağlantısını koruduğu İHA (-1: değil)
         public float sigma;    // konum belirsizliği (m)
+        public int[] plan;     // planlanan rota: görev numaraları uçuş sırasıyla (ilki şimdiki hedef)
     }
 
     [Serializable]
     public class TaskState
     {
         public float[] p;
-        public int s;          // 0 açık, 1 sahiplenildi, 2 tamamlandı, 3 yanlış tamamlandı
+        public int s;          // -1 henüz belirmedi, 0 açık, 1 sahiplenildi, 2 tamamlandı, 3 yanlış tamamlandı
+        public int v;          // değer (öncelik) 1-3
+        public float age;      // yeni hedefse belireli kaç saniye oldu (-1: baştan beri var)
+        public int k;          // 1 = sürü bu hedefin varlığını biliyor
     }
 
     [Serializable]
@@ -50,6 +54,9 @@ namespace SuruIHA
     {
         public int done;
         public int total;
+        public float score;    // görev puanı 0-1 (zamanla azalan görev değerleri)
+        public int reassign;   // yeniden planlamada yarım bırakılan hedef sayısı
+        public int popups;     // şu ana kadar beliren yeni hedef sayısı
         public int falseDone;
         public int redundant;
         public float pdr;
@@ -76,6 +83,7 @@ namespace SuruIHA
     {
         public float t;
         public string strategy;
+        public string planner;     // görev paylaşım algoritması: greedy | cbba | ai
         public string phase;       // sürünün çoğunluğunun evresi
         public string formation;   // intikal düzeni
         public DroneState[] drones;

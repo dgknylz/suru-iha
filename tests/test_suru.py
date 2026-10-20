@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from suru import World, make_config, radio  # noqa: E402
+from suru import World, decision, make_config, radio  # noqa: E402
 from suru.config import SimConfig  # noqa: E402
 from suru.swarm import Path, formation_offsets, largest_component  # noqa: E402
 from suru.world import LANDED, TRANSIT  # noqa: E402
@@ -100,3 +100,110 @@ def test_ariza_sonrasi_sürü_gorevleri_paylasir():
 def test_aynı_seed_ayni_harita():
     a, b = World(make_config("centralized", 20.0, 0.0, 11)), World(make_config("resilient", 20.0, 0.0, 11))
     assert np.allclose(a.tasks, b.tasks), "eşleştirilmiş deney: stratejiler aynı haritayı görmeli"
+    c = World(make_config("resilient", 20.0, 0.0, 11, n_popup=5, planner="greedy", failures=2))
+    assert np.allclose(a.tasks, c.tasks[:20]) and np.allclose(a.value, c.value[:20]), \
+        "yeni hedef, arıza ve planlayıcı ayarı baştaki görevleri değiştirmemeli"
+
+
+# ------------------------------------------------------------------ otonom karar alma
+def test_ekleme_kazanci_rota_puanina_esit():
+    """En iyi ekleme hesabı, rotayı baştan puanlamakla aynı sonucu vermeli."""
+    rng = np.random.default_rng(0)
+    X, V, A = rng.uniform(0, 400, (6, 2)), rng.choice([1.0, 2.0, 3.0], 6), rng.uniform(0, 30, 6)
+    R, lnlam, sp, p0 = np.ones(6), np.log(0.99), 10.0, np.zeros(2)
+    path, cand = [0, 1, 2], [3, 4, 5]
+    gain, pos = decision.best_insertion(p0, 5.0, X[path], V[path], A[path], R[path], X[cand], V[cand], A[cand],
+                                        R[cand], lnlam, sp)
+    base = decision.path_score(p0, 5.0, X[path], V[path], A[path], R[path], lnlam, sp)
+    for c, g, q in zip(cand, gain, pos):
+        brute = []
+        for k in range(len(path) + 1):
+            p = path[:k] + [c] + path[k:]
+            brute.append(decision.path_score(p0, 5.0, X[p], V[p], A[p], R[p], lnlam, sp) - base)
+        assert g == pytest.approx(max(brute)) and q == int(np.argmax(brute))
+
+
+def test_cbba_uzlasma_kurallari():
+    """Choi 2009 tablosundan örnekler (alıcı 0, gönderen 1, üçüncü İHA 2)."""
+    R, k = np.array([0]), 1
+    Y = np.array([[0.5, 0.9, 0.4, -np.inf], [0, 0, 0, 0], [0, 0, 0, 0.0]])
+    Z = np.array([[0, 1, 2, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]])
+    yk = np.array([0.7, 0.3, 0.6, 0.2])
+    zk = np.array([1, 0, 2, 1])
+    sk = np.array([0.0, 10.0, 9.0])          # gönderen 2 hakkında daha yeni bilgiye sahip
+    si = np.array([[10.0, 8.0, 5.0]])
+    upd, rst = decision.cbba_merge(R, k, yk, zk, sk, Y, Z, si)
+    assert upd[0, 0], "gönderen daha yüksek teklifle kazanıyorsa alıcı güncellemeli"
+    assert rst[0, 1], "gönderen 'kazanan sensin' derken alıcı gönderenin kazandığını sanıyorsa sıfırlamalı"
+    assert upd[0, 2], "üçüncü İHA hakkında daha yeni bilgi gelirse güncellenmeli"
+    assert upd[0, 3], "alıcı kazanan bilmiyorsa gönderenin bilgisini almalı"
+
+
+def test_cbba_cakismasiz_plan():
+    """Bağlantı tamken CBBA uzlaşır: hiçbir görev iki İHA'nın paketinde olmaz, herkes kazananda hemfikir."""
+    w = World(make_config("decentralized", None, 0.0, 2, planner="cbba"))
+    while w.t < 40.0:                         # intikal sırasında (herkes birbirini duyuyor) planlama
+        w.step()
+    owners = {}
+    for i, b in enumerate(w.bundle):
+        for t in b:
+            assert t not in owners, f"görev {t} hem {owners[t]} hem {i} paketinde"
+            owners[t] = i
+    assert len(owners) == w.T, "10 İHA x 3 görevlik paket 20 görevin hepsini kapsamalı"
+    for t, i in owners.items():
+        assert (w.cl_id[:, t] == i).all(), "tüm İHA'lar aynı kazananı bilmeli"
+
+
+def test_cbba_acgozluden_iyi():
+    """Aynı haritalarda CBBA'nın görev puanı açgözlü tek görev yönteminden yüksek, yolu kısa olmalı."""
+    sc, ds = {}, {}
+    for pl in ("greedy", "cbba"):
+        runs = [fly(make_config("resilient", None, 0.0, s, planner=pl, n_popup=4)).summary() for s in (20, 21, 22)]
+        sc[pl] = np.mean([r["score"] for r in runs])
+        ds[pl] = np.mean([r["task_dist"] for r in runs])
+    assert sc["cbba"] > sc["greedy"] and ds["cbba"] < ds["greedy"]
+
+
+@pytest.mark.parametrize("strategy", ["centralized", "decentralized"])
+def test_yeni_hedefler_yapilir(strategy):
+    w = fly(make_config(strategy, None, 0.0, 8, n_popup=5))
+    assert w.done.all(), "görev sırasında beliren hedefler de yapılmalı"
+    assert w.summary()["popup_resp"] < 60.0
+
+
+def test_canli_hedef_ekleme():
+    w = World(make_config("resilient", None, 0.0, 9, live_reserve=2))
+    while w.t < 90.0:
+        w.step()
+    t = w.add_popup()
+    assert t >= 0 and w.appear[t] == pytest.approx(90.0, abs=0.2)
+    while not w.finished():
+        w.step()
+    assert w.done[t], "elle eklenen hedef de yapılmalı"
+    assert not w.done[-1] and np.isinf(w.appear[-1]), "kullanılmayan yedek hedef görünmemeli"
+    # Sürü dönüşteyken eklenen hedef için İHA'lar geri döner
+    while not (w.phase[w.alive] == 4).any():
+        w.step()
+    t2 = w.add_popup()
+    while not w.flight_over():
+        w.step()
+    assert w.done[t2], "dönüşteyken eklenen hedef de yapılmalı (sürü geri çağrılır)"
+
+
+def test_cbba_sahte_teklife_dayanir():
+    w = fly(make_config("resilient", None, 0.2, 10, planner="cbba"))
+    assert w.done.mean() >= 0.95, "dirençli CBBA sahte teklif yayan İHA'yı dışlamalı"
+
+
+def test_yapay_zeka_agi():
+    net = decision.AIValue()
+    F = np.random.default_rng(1).uniform(0, 1, (7, len(decision.AI_FEATURES)))
+    rho = net(F)
+    assert rho.shape == (7,) and np.allclose(rho, 0.5), "eğitimsiz ağ her göreve aynı değeri vermeli (düz CBBA)"
+    th = decision.AIValue.initial()
+    th[decision.AIValue.n_in * decision.AIValue.n_hid + decision.AIValue.n_hid:-1] += 0.3   # çıkış ağırlıkları
+    assert np.ptp(decision.AIValue(th)(F)) > 0.01, "çıkış ağırlıkları değişince karar değişmeli (öğrenme sinyali)"
+    rho = decision.AIValue.load()(F)
+    assert ((rho > 0) & (rho < 1)).all()
+    w = fly(make_config("resilient", 20.0, 0.0, 12, planner="ai"))
+    assert w.done.mean() >= 0.9

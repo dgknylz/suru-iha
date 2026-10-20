@@ -31,6 +31,8 @@ namespace SuruIHA
         public bool showDome = true;
         [Tooltip("Uzaktan görünen, durum renginde parlayan İHA işaretleri (B tuşu)")]
         public bool showBeacons = true;
+        [Tooltip("Her İHA'nın planlı görev rotası (P tuşu)")]
+        public bool showPlans = true;
 
         [Header("Zemin")]
         [Tooltip("Cesium/terrain varsa kökü zemin yüksekliğine oturtur")]
@@ -56,6 +58,7 @@ namespace SuruIHA
         readonly List<GameObject> jamCells = new List<GameObject>();
         readonly List<LineRenderer> gcsLinks = new List<LineRenderer>();
         readonly List<LineRenderer> relayLines = new List<LineRenderer>();
+        readonly List<LineRenderer> planLines = new List<LineRenderer>();
         Transform droneRoot, linkRoot, taskRoot, ewRoot;
         Transform gcs, gcsMastTop;
         MaterialPropertyBlock block;
@@ -191,6 +194,7 @@ namespace SuruIHA
                     relayLines[i].SetPosition(1, drones[k].transform.position);
                 }
             }
+            UpdatePlanLines();
             if (drones.Count > 0)
             {
                 Vector3 c = Vector3.zero;
@@ -245,9 +249,8 @@ namespace SuruIHA
             while (tasks.Count < f.tasks.Length) tasks.Add(new TaskMarker(this, taskRoot, tasks.Count));
             for (int i = 0; i < tasks.Count; i++)
             {
-                bool on = i < f.tasks.Length;
-                tasks[i].Root.gameObject.SetActive(on);
-                if (on) tasks[i].Set(f.tasks[i], block, this);
+                if (i < f.tasks.Length) tasks[i].Set(f.tasks[i], block, this);
+                else tasks[i].Root.gameObject.SetActive(false);
             }
         }
 
@@ -402,12 +405,16 @@ namespace SuruIHA
             return lr;
         }
 
-        // Görev noktası: yerden yükselen ışık sütunu + seyir irtifasında halka
+        // Görev noktası: yerden yükselen ışık sütunu + seyir irtifasında iç içe halkalar
+        // (halka sayısı = görevin değeri/önceliği). Yeni beliren hedeften dışa doğru bir dalga yayılır.
         class TaskMarker
         {
             public Transform Root;
+            public Vector3 Top => ring[0].transform.position;   // halkanın dünya konumu (plan çizgileri buraya)
+            public bool Visible { get; private set; }
             readonly Renderer beam;
-            readonly LineRenderer ring;
+            readonly LineRenderer[] ring = new LineRenderer[3];
+            readonly LineRenderer wave;
             readonly Transform beamT;
 
             public static readonly Color[] StateColors =
@@ -417,6 +424,7 @@ namespace SuruIHA
                 new Color(0.2f, 1f, 0.45f),       // tamamlandı
                 new Color(1f, 0.15f, 0.25f),      // yanlış tamamlandı (İHA bitti sandı)
             };
+            public static readonly Color ColUnknown = new Color(0.75f, 0.3f, 1f);   // belirdi ama sürü henüz bilmiyor
 
             public TaskMarker(SwarmVisualizer v, Transform parent, int id)
             {
@@ -426,25 +434,99 @@ namespace SuruIHA
                 beamT = b.transform;
                 beam = b.GetComponent<Renderer>();
                 beam.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                ring = MakeCircle(Root, 6f, 48, v.Mats.TaskRing, 0.22f);
+                for (int k = 0; k < ring.Length; k++)
+                    ring[k] = MakeCircle(Root, 6f + 3.2f * k, 48, v.Mats.TaskRing, 0.22f - 0.03f * k);
+                wave = MakeCircle(Root, 1f, 64, v.Mats.TaskRing, 0.6f);
+                wave.enabled = false;
             }
 
             float ground = float.NaN;
 
             public void Set(TaskState s, MaterialPropertyBlock block, SwarmVisualizer v)
             {
+                Visible = s.s >= 0;
+                Root.gameObject.SetActive(Visible);
+                if (!Visible) return;
                 var p = SwarmFrame.Enu(s.p);
-                if (float.IsNaN(ground)) ground = v.LocalGround(p.x, p.z);
+                if (float.IsNaN(ground) || (Root.localPosition - new Vector3(p.x, ground, p.z)).sqrMagnitude > 1f)
+                    ground = v.LocalGround(p.x, p.z);    // canlı eklenen hedef yeni bir yere konabilir
                 float h = Mathf.Max(p.y - ground, 1f);
                 Root.localPosition = new Vector3(p.x, ground, p.z);
+                int val = Mathf.Clamp(s.v, 1, 3);
+                float wBeam = s.s == 2 ? 0.3f : 0.45f + 0.2f * val;
                 beamT.localPosition = new Vector3(0, h * 0.5f, 0);
-                beamT.localScale = new Vector3(s.s == 2 ? 0.3f : 0.6f, h * 0.5f, s.s == 2 ? 0.3f : 0.6f);
-                ring.transform.localPosition = new Vector3(0, h, 0);
-                Color c = StateColors[Mathf.Clamp(s.s, 0, 3)];
-                SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.07f), c * 0.15f);
+                beamT.localScale = new Vector3(wBeam, h * 0.5f, wBeam);
+                bool unknown = s.s == 0 && s.k == 0;
+                float pulse = unknown ? 0.55f + 0.45f * Mathf.Sin(Time.time * 5f) : 1f;
+                Color c = unknown ? ColUnknown : StateColors[Mathf.Clamp(s.s, 0, 3)];
+                // Yeni hedef: ilk saniyelerde ışık sütunu parlar
+                float fresh = s.age >= 0 ? Mathf.Clamp01(1f - s.age / 6f) : 0f;
+                SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.07f + 0.25f * fresh), c * (0.15f + 1.5f * fresh));
                 beam.SetPropertyBlock(block);
-                SwarmMaterials.SetBlock(block, c * 0.3f, c * 1.4f);
-                ring.SetPropertyBlock(block);
+                for (int k = 0; k < ring.Length; k++)
+                {
+                    ring[k].enabled = k < val;
+                    ring[k].transform.localPosition = new Vector3(0, h, 0);
+                    SwarmMaterials.SetBlock(block, c * 0.3f, c * (1.4f - 0.25f * k) * pulse);
+                    ring[k].SetPropertyBlock(block);
+                }
+                // Belirme dalgası: 5 saniyede 90 m'ye yayılıp söner
+                bool waveOn = s.age >= 0 && s.age < 5f;
+                wave.enabled = waveOn;
+                if (waveOn)
+                {
+                    float k = s.age / 5f;
+                    wave.transform.localPosition = new Vector3(0, h, 0);
+                    wave.transform.localScale = Vector3.one * Mathf.Lerp(6f, 90f, Mathf.Sqrt(k));
+                    // Uzaktan (kuşbakışı) da görünsün: kalınlık kamera uzaklığıyla büyür
+                    var cam = Camera.main;
+                    float far = cam != null ? Vector3.Distance(cam.transform.position, Root.position) / 150f : 1f;
+                    wave.widthMultiplier = Mathf.Lerp(1.2f, 0.25f, k) * Mathf.Clamp(far, 1f, 6f);
+                    // Taban rengi de parlak: gündüz ışığında ışıma (emission) tek başına sönük kalıyor
+                    Color wc = ColUnknown * (1f - k) * 3f;
+                    SwarmMaterials.SetBlock(block, Color.Lerp(ColUnknown, Color.white, 0.25f), wc);
+                    wave.SetPropertyBlock(block);
+                }
+            }
+        }
+
+        // Her İHA'nın planlı rotası: İHA -> 1. hedef -> 2. hedef ... (P tuşu)
+        static readonly Color[] PlanColors =
+        {
+            new Color(0.35f, 0.75f, 1f), new Color(1f, 0.55f, 0.25f), new Color(0.6f, 1f, 0.35f), new Color(1f, 0.35f, 0.7f),
+            new Color(0.95f, 0.9f, 0.3f), new Color(0.45f, 0.45f, 1f), new Color(0.3f, 1f, 0.85f), new Color(1f, 0.3f, 0.3f),
+            new Color(0.8f, 0.55f, 1f), new Color(0.7f, 0.85f, 0.6f),
+        };
+
+        void UpdatePlanLines()
+        {
+            var D = Frame?.drones;
+            int n = D?.Length ?? 0;
+            while (planLines.Count < n) planLines.Add(MakeLine(linkRoot, Mats.TaskRing, 0.35f, 2, true));
+            var cam = Camera.main;
+            for (int i = 0; i < planLines.Count; i++)
+            {
+                var lr = planLines[i];
+                int[] plan = i < n ? D[i].plan : null;
+                bool on = showPlans && plan != null && plan.Length > 0 && i < drones.Count && D[i].mode != 4;
+                if (on)
+                    foreach (int t in plan)
+                        if (t < 0 || t >= tasks.Count || !tasks[t].Visible) { on = false; break; }
+                lr.enabled = on;
+                if (!on) continue;
+                lr.positionCount = plan.Length + 1;
+                Vector3 a = drones[i].transform.position;
+                lr.SetPosition(0, a);
+                for (int k = 0; k < plan.Length; k++) lr.SetPosition(k + 1, tasks[plan[k]].Top);
+                // Önce gidilecek hedefe giden kısım kalın, sonraki hedefler incelerek
+                var curve = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f / lr.positionCount, 1f),
+                                               new Keyframe(Mathf.Min(1f, 1.5f / lr.positionCount), 0.45f), new Keyframe(1f, 0.3f));
+                lr.widthCurve = curve;
+                float near = cam != null ? Vector3.Distance(cam.transform.position, a) : 200f;
+                lr.widthMultiplier = 0.3f * Mathf.Clamp(near / 180f, 0.12f, 2.2f);
+                Color c = PlanColors[i % PlanColors.Length];
+                SwarmMaterials.SetBlock(block, c * 0.15f, c * glow * 0.6f);
+                lr.SetPropertyBlock(block);
             }
         }
     }
