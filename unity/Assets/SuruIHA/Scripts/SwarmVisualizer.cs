@@ -44,6 +44,12 @@ namespace SuruIHA
         public SwarmReceiver Receiver { get; private set; }
         public Materials Mats => materials;
 
+        // Sahnedeki ana sürü (5065). Karşılaştırma modu ikinci bir görselleştirici ekler; FindAnyObjectByType
+        // ikisinden rastgele birini döndürebildiği için ana sürüye her zaman bununla ulaşılır.
+        public static SwarmVisualizer Main { get; private set; }
+        void OnEnable() { if (Main == null) Main = this; }
+        void OnDestroy() { if (Main == this) Main = null; }
+
         [Header("Malzemeler (Sahneyi Kur doldurur; boş kalanlar kodla üretilir)")]
         public Materials materials = new Materials();
         bool initialized;
@@ -98,6 +104,12 @@ namespace SuruIHA
         }
 
         void Awake() => Init();
+
+        // Film kesmesi: İHA'lar bir sonraki karede yumuşatmadan yerlerine konur
+        public void Snap()
+        {
+            foreach (var d in drones) d.Snap();
+        }
 
         // Editörde (Play'e basmadan) önizleme render'ı almak için de kullanılır
         public void PreviewFrame(SwarmFrame f)

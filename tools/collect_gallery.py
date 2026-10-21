@@ -47,6 +47,13 @@ SHOTS = [
     (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\olcekleme.png", "36_grafik_olcekleme.jpg"),
     (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\ayar_duyarlilik.png", "37_grafik_ayar_duyarlilik.jpg"),
     (r"C:\Users\Doğukan Yılmaz\OneDrive\Desktop\sürü_iha\results\figures\eh_arazi_golgesi.png", "38_grafik_arazi_golgesi.jpg"),
+    # Aşama 5: film modunda çekilen kareler (tools/record_film.py + SuruIHA.exe -suruFilm)
+    (r"C:\SuruIHA\film\poster2\kare_00000.jpg", "39_suru_karistirma_alanina_giriyor.jpg"),
+    (r"C:\SuruIHA\film\kareler\kare_01200.jpg", "40_takip_karistirma_bolgesinde.jpg"),
+    (r"C:\SuruIHA\film\poster\kare_00004.jpg", "41_cbba_planlari_tepeden.jpg"),
+    (r"C:\SuruIHA\film\poster\kare_00006.jpg", "42_yan_yana_gps_aldatma.jpg"),
+    (r"C:\SuruIHA\film\poster\kare_00008.jpg", "43_yan_yana_iki_karistirici.jpg"),
+    (r"C:\SuruIHA\film\kareler\kare_02100.jpg", "44_yan_yana_sinematik.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

@@ -38,7 +38,7 @@ namespace SuruIHA
             Application.runInBackground = true;
             Directory.CreateDirectory(outDir);
             var log = new StringBuilder();
-            var vis = FindAnyObjectByType<SwarmVisualizer>();
+            var vis = SwarmVisualizer.Main;
             var cam = FindAnyObjectByType<SwarmCamera>();
             float t0 = Time.realtimeSinceStartup;
             while (vis.Receiver == null || !vis.Receiver.Connected)

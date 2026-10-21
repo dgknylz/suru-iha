@@ -126,6 +126,9 @@ namespace SuruIHA
             ghost.gameObject.SetActive(false);
         }
 
+        // Film kesmesi: bir sonraki karede yumuşatmadan yeni konuma geç
+        public void Snap() => hasState = false;
+
         public void SetState(DroneState s)
         {
             State = s;

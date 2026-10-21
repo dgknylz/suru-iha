@@ -59,6 +59,17 @@ namespace SuruIHA
             }
         }
 
+        // Film modu: kaydedilmiş kareyi UDP yerine doğrudan verir
+        public void Feed(SwarmFrame f)
+        {
+            Latest = f;
+            LastFrameTime = Time.time;
+            FramesReceived++;
+        }
+
+        // Film modu: bu kaynak artık yayın yapmıyor (karşılaştırma ekranı hemen kapansın)
+        public void Disconnect() => LastFrameTime = -999f;
+
         // Python'a senaryo komutu yolla (ör. {"cmd":"strategy","value":"centralized"})
         public void SendCommand(string json)
         {

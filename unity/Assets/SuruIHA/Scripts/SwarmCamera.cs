@@ -16,6 +16,7 @@ namespace SuruIHA
         public float orbitDistance = 230f;
         public float rotateSpeed = 4f;
         public float panSpeed = 120f;
+        public float topHeight = 650f;      // taktik görünümün yüksekliği (film modu çekime göre değiştirir)
 
         public int FollowIndex { get; private set; }
 
@@ -59,7 +60,7 @@ namespace SuruIHA
                     return;
 
                 case Mode.Top:
-                    pos = pivot + Vector3.up * 650f + Vector3.back * 1f;
+                    pos = pivot + Vector3.up * topHeight + Vector3.back * 1f;
                     rot = Quaternion.Euler(89.9f, 0, 0);
                     Blend(pos, rot, 2.5f);
                     return;
@@ -102,9 +103,20 @@ namespace SuruIHA
             }
         }
 
+        bool cut;
+
+        // Film modu: bir sonraki karede yumuşatmadan doğrudan yeni açıya geç (sahne kesmesi)
+        public void Cut(float yawDeg = float.NaN)
+        {
+            cut = true;
+            if (!float.IsNaN(yawDeg)) yaw = yawDeg;
+            if (visualizer != null && visualizer.Drones.Count > 0) pivot = visualizer.Centroid;
+        }
+
         void Blend(Vector3 pos, Quaternion rot, float sharpness)
         {
-            float k = 1f - Mathf.Exp(-sharpness * Time.deltaTime);
+            float k = cut ? 1f : 1f - Mathf.Exp(-sharpness * Time.deltaTime);
+            cut = false;
             smoothPos = Vector3.Lerp(smoothPos, pos, k);
             smoothRot = Quaternion.Slerp(smoothRot, rot, k);
             transform.SetPositionAndRotation(smoothPos, smoothRot);

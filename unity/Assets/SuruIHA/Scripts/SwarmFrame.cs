@@ -96,6 +96,7 @@ namespace SuruIHA
         public float power;    // karıştırıcı gücü (dBm), -1 = kapalı
         public float spoof;    // saldırgan oranı
         public string spoofMode; // saf | sinsi saldırgan ("naive" | "sneaky")
+        public string side;      // karşılaştırmada "sol" / "sag"
         public int seed;       // harita numarası
         public int finished;   // 1 = sürü indi, yeni komut bekleniyor
         public int missionDone; // 1 = görevler bitti (sürü dönüşte)

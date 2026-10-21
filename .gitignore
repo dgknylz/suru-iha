@@ -15,3 +15,6 @@ unity/UserSettings/
 
 # Derlenmiş uygulamanın sıkıştırılmış yedeği (OneDrive ile buluta gider, git'e girmez)
 yedek/
+
+# Tanıtım videosu (tools/render_film.ps1 yeniden üretir)
+sunum/*.mp4
