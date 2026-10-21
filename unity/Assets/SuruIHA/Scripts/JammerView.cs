@@ -67,11 +67,32 @@ namespace SuruIHA
             }
         }
 
+        MaterialPropertyBlock block;
+        string band = "";
+
         public void Set(JammerState s)
         {
             var p = SwarmFrame.Enu(s.p);
             transform.localPosition = new Vector3(p.x, vis.GroundAt(transform.parent.TransformPoint(new Vector3(p.x, 0, p.z))) - vis.transform.position.y, p.z);
             radius = Mathf.Max(s.r, 5f);
+            // Hareketli karıştırıcı: araç gittiği yöne döner
+            var v = SwarmFrame.Enu(s.v);
+            var flat = new Vector3(v.x, 0, v.z);
+            if (flat.sqrMagnitude > 0.5f)
+                transform.localRotation = Quaternion.Slerp(transform.localRotation, Quaternion.LookRotation(flat.normalized),
+                                                           Application.isPlaying ? 0.1f : 1f);
+            // Tür rengi: geniş bant kırmızı, nokta (yalnızca haberleşme kanalı) kehribar
+            if (s.band != band)
+            {
+                band = s.band ?? "";
+                block ??= new MaterialPropertyBlock();
+                Color c = band == "nokta" ? new Color(1f, 0.7f, 0.1f) : new Color(1f, 0.3f, 0.18f);
+                SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.045f), c * vis.glow * 0.05f);
+                dome.GetComponent<Renderer>().SetPropertyBlock(block);
+                SwarmMaterials.SetBlock(block, c * 0.3f, c * vis.glow * 0.5f);
+                edge.SetPropertyBlock(block);
+                foreach (var w in waves) w.SetPropertyBlock(block);
+            }
             if (!Application.isPlaying) Animate(1.3f);
         }
 

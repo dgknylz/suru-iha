@@ -83,6 +83,9 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --planner greedy` | Eski yöntem: her İHA en yakın tek görevi alır (karşılaştırma için) |
 | `python run_live.py --planner ai --jammer 30` | CBBA + yapay zekâ, güçlü karıştırma |
 | `python run_live.py --popups 0` | Görev sırasında yeni hedef belirmesin (varsayılan 4) |
+| `python run_live.py --jammer-mode hareketli` | Karıştırıcı araç görev alanının çevresinde devriye gezer (ayrıca: `iki`, `nokta`, `tepe`, `sirt`) |
+| `python run_live.py --jammer off --gps-spoof hizli` | GPS aldatıcı (İHA'ların konumunu 2 m/s sürükler; `yavas` 0,5 m/s) |
+| `python run_live.py --jammer off --spoof 0.2 --spoof-mode sneaky` | Sinsi saldırgan İHA'lar |
 
 ### Unity kısayolları
 
@@ -101,7 +104,9 @@ simülasyon bekler, N ile yeni harita başlar.
 | **F4** | Planlama algoritması: açgözlü tek görev → CBBA → CBBA + yapay zekâ |
 | **Y** | Görev alanına yeni bir hedef ekle (en fazla 8; yer istasyonu ihbarı gibi) |
 | **+ / -** | Karıştırıcı gücü: kapalı → 10 → 20 → 30 dBm |
-| **X** | Saldırgan (sahte bilgi yayan) İHA'ları aç/kapat (%20) |
+| **M** | Karıştırıcı türü: sabit → hareketli → iki → nokta (FHSS testi) → tepede → sırt arkasında |
+| **U** | GPS aldatıcı: yok → hızlı → yavaş |
+| **X** | Saldırgan İHA'lar (%20): yok → saf → sinsi |
 | **N** | Yeni harita (farklı görev noktaları) |
 | **V** | Düzen tipi: V → hat → kol → halka (uçuşu yeniden başlatmadan) |
 | **Z** | Rastgele bir İHA'yı arızalandır (düşer, sürü görevlerini ve düzeni yeniden dağıtır) |
@@ -114,6 +119,9 @@ arama yapıyor, mor = saldırgan, camgöbeği = röle (koruduğu arkadaşına ç
 Görev halkası beyaz = açık, sarı = bir İHA yolda, yeşil = tamamlandı, kırmızı = yanlış tamamlandı,
 yanıp sönen mor = yeni belirdi ama sürü henüz bilmiyor. İç içe halka sayısı görevin önceliğidir (1-3).
 Renkli çizgiler her İHA'nın planıdır: ilk hedefe giden kısım kalın, sonrakiler ince.
+Pembe İHA = GPS'i aldatılıyor (henüz fark etmedi), sarı = aldatmayı fark etti. Kırmızı kubbe = geniş bant,
+kehribar = nokta karıştırıcı, camgöbeği kubbe = GPS aldatıcı. Turuncu nişangâh, sürünün karıştırıcının
+yeri için tahminidir; beyaz çizgi tahmin ile gerçek karıştırıcı arasındaki hatayı gösterir.
 
 ---
 
@@ -143,7 +151,65 @@ Renkli çizgiler her İHA'nın planıdır: ilk hedefe giden kısım kalın, sonr
    - **GPS kurtarma:** konum belirsizliği 25 m'yi aşan İHA görevini bırakıp son GPS aldığı noktaya
      döner, konumu düzelince geri gelir (her yer karıştırılıyorsa denemez)
    - konum belirsizliğinin zaman maliyetini (beklenen arama süresi) tekliflere katma
-   - teklifi konumuyla tutarsız olan İHA'ya güvenmeme (**makullük kontrolü**, sahte bilgiye karşı)
+   - **güven sistemi**: makullük kontrolü + itibar (sinsi saldırgana karşı, aşağıda)
+   - **karıştırıcıyı bulma**, **frekans atlama (FHSS)**, **GPS aldatma tespiti** (aşağıda)
+
+   Her mekanizma ayrı bir ayarla kapatılabilir (`ew_jam_map`, `ew_trust`...); ablasyon deneyi bunlarla yapılır.
+
+### Elektronik harp (`suru/ew.py`, `suru/radio.py`)
+- **Arazi gölgesi:** Tepeler radyo sinyalini keser. Verici ile alıcı arasındaki görüş hattını en çok
+  kesen tepe bulunur ve ITU-R P.526 tek bıçak sırtı kırınım kaybı eklenir:
+  `v = h·√(2d/(λ·d1·d2))`, `J(v) = 6,9 + 20·log10(√((v−0,1)²+1) + v − 0,1)` dB. Hat tepeyi rahatça
+  aşıyorsa kayıp 0, tepe hattı tam kesiyorsa ~6 dB, arkasında kalınmışsa 15-30 dB. Hem İHA'lar
+  arası, hem yer istasyonu, hem de karıştırıcı sinyaline uygulanır.
+- **Karıştırıcı türleri:** *Geniş bant* bütün 2,4 GHz bandına ve GPS'e gürültü basar. *Nokta*
+  karıştırıcı gücünü haberleşme kanalına yığar: kanalda 6,2 dB daha güçlüdür, GPS'e dokunmaz.
+  Karıştırıcı **hareket edebilir** (araç görev alanının çevresinde 5 m/s ile devriye gezer), **birden
+  fazla** olabilir, **tepeye** (her yeri yukarıdan görür) ya da **sırtın arkasına** (tepeler sinyalinin
+  bir kısmını keser) konabilir. Dirençli sürünün karıştırma haritası zaman damgalıdır;
+  hareketli karıştırıcının eski konumu 90 s içinde unutulur.
+- **Frekans atlama (FHSS):** Dirençli sürü haberleşme frekansını sürekli değiştirir. Nokta karıştırıcı
+  paketlerin yalnızca %24'üne (20/83,5 MHz) denk gelir. Geniş bant karıştırıcıya karşı ise işe yaramaz;
+  bu klasik sonuç simülasyonda da görülür.
+- **Karıştırıcıyı bulma:** Her dirençli İHA saniyede bir ölçtüğü karıştırma gücünü (konum, dBm)
+  kaydeder; ölçümler dedikoduyla yayılır. Model `ölçülen = P − PL(mesafe)`. Her aday konum için en
+  iyi güç kapalı formda bulunur (en küçük kareler), en iyi aday kaba → ince ızgarayla aranır. Tek
+  kaynak modeli şüpheliyse iki kaynaklı model denenir: en güçlü ölçümler k-ortalamalarla iki kümeye
+  ayrılır, kaynaklar dönüşümlü ve yeniden ağırlıklandırılmış en küçük karelerle aranır. Bulunan
+  karıştırıcıdan karıştırma alanı **önceden kestirilir**: sürü henüz girmediği karıştırılan hücreleri
+  de bilir ve GPS kurtarmada en yakın güvenli kenara gider. Konumundan emin olmayan İHA ölçüm
+  kaydetmez. Karıştırıcının en fazla 2 W olduğu kabul edilir; bu, "uzakta tek bir aşırı güçlü kaynak"
+  gibi yanıltıcı çözümleri engeller.
+- **GPS aldatma:** Yerdeki aldatıcı, 250 m içine giren İHA'nın GPS alıcısını sahte sinyalle ele
+  geçirir ve bildirdiği konumu doğuya doğru sürükler (hızlı: 2 m/s, yavaş: 0,5 m/s). İHA "GPS
+  sağlam" sanır ve hedefe vardığını zanneder. Dirençli sürünün tespit yolları:
+  1. **IMU tutarlılığı:** Son 10 s'de GPS'in söylediği yer değiştirme, IMU'nun ölçtüğünden 5σ'dan fazla
+     sapıyorsa GPS'e güvenilmez (hızlı sürükleme ~8 s'de yakalanır).
+  2. **Komşu menzili:** İHA'lar birbirine uzaklığı telsizle ölçer (±1 m). GPS konumlarından hesaplanan
+     uzaklıklar komşuların çoğunda tutmuyorsa GPS sahtedir.
+  3. **"Hedef yok" çıkarımı:** GPS'i sağlamken hedefin üstüne geldiği hâlde aramada da bulamayan İHA,
+     konumunun yanlış olduğunu anlar. Yavaş sürükleme genellikle böyle yakalanır.
+
+  Aldatmayı fark eden İHA IMU ile devam eder, belirsizliğini büyütür, aldatma bölgesinden çıkar.
+  GPS hem IMU hem komşularla 10 s tutarlı olunca yeniden güvenir.
+- **Sinsi saldırgan ve güven sistemi:** Saf saldırgan her görevi "ben oradayım" diye ister ve kolay
+  yakalanır. Sinsi saldırgan daha kurnazdır:
+  - en fazla 2 görevi konumuyla tutarlı (makul) tekliflerle kilitler ama oraya gitmez,
+  - her 10 s'de bir açık bir görevi "tamamladım" diye yayar ve o an kendini hedefin üstünde gösterir.
+
+  Dirençli İHA'lar her komşu için bir **itibar** (Beta dağılımı) tutar ve üç tür kanıt toplar:
+  - **menzil:** komşunun bildirdiği konum, telsizle ölçülen uzaklıkla tutuyor mu?
+  - **hız:** bildirdiği konum uçamayacağı kadar mı sıçradı?
+  - **ilerleme:** "gidiyorum" dediği hedefe 30 s'dir yaklaşmıyor mu?
+
+  Kendi konumu bozuk olan İHA herkesi suçlamasın diye, bir komşu ancak diğerlerine göre aykırıysa
+  suçlanır. İtibarı düşen İHA dışlanır. Güvenilen **en az iki ayrı** arkadaşın dışladığı İHA da
+  dışlanır (iki bağımsız tanık: tek bir yalancı kimseyi karalayamaz). "Tamamlandı" bilgisi ilk
+  bildireni (kaynağı) ile yayılır. Bir İHA dışlanınca onun bildirdiği "tamamlandı"lar geri alınır ve
+  görev yeniden açılır.
+- **Öngörülü çarpışma önleme:** Her İHA çifti için en yakın yaklaşma noktası (CPA) hesaplanır. 5 s
+  içinde 10 m'den yakına gelecekler varsa biri yükselir, öbürü alçalır ve yana açılırlar. (Kafa kafaya
+  24 m/s yaklaşan iki İHA, 10 m kala fark etse ivme sınırı yüzünden kaçamaz.)
 
 ### Otonom karar alma (`suru/decision.py`)
 - **Görev değeri ve aciliyet:** Her hedefin bir önceliği (1-3) vardır, değeri beklendikçe azalır:
@@ -207,11 +273,15 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-23 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe), arazi takibi,
-karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
+29 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
 elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ ağı.
+Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB kayıp, açıkta 0), nokta
+karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
+yol alması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
+sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 
 ---
 
@@ -230,92 +300,152 @@ elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ 
 .venv\Scripts\python.exe run_experiments.py --decision
 ```
 ```bash
+.venv\Scripts\python.exe run_experiments.py --ew
+```
+```bash
+.venv\Scripts\python.exe run_experiments.py --tune
+```
+```bash
+.venv\Scripts\python.exe run_experiments.py --ablation
+```
+```bash
+.venv\Scripts\python.exe run_experiments.py --scaling
+```
+```bash
 .venv\Scripts\python.exe analyze.py
 ```
 
-- **Ana deney:** 3 strateji × 4 karıştırıcı gücü (kapalı, 10, 20, 30 dBm) × 2 saldırgan oranı
-  (%0, %20) × 30 tekrar = **720 simülasyon** (~20 dakika, 8 işlem).
-- **Sürü deneyleri (`--swarm`):** üye kaybı (0/2/4 İHA düşer) ve röle (menzil 180 m, açık/kapalı)
-  = **660 simülasyon**.
-- **Karar alma deneyleri (`--decision`):** her uçuşta 6 yeni hedef belirir. 3 strateji × planlama
-  algoritması (açgözlü / CBBA / dirençlide ayrıca yapay zekâ ve kuralsız kontrol) × 5 koşul
-  (karıştırma yok, 20 dBm, 30 dBm, %20 saldırgan, 20 dBm + 3 arıza) × 30 tekrar, ayrıca paket
-  büyüklüğü 1/2/3/4/6 = **1500 simülasyon**.
-- **Yapay zekâ eğitimi (`tools/train_ai.py`):** 570 uçuştan ~17 000 görev denemesi (eğitim / doğrulama /
-  test haritaları ayrı). Deney haritalarından (seed 0-29) da ayrı.
+| Deney | İçerik | Koşu |
+|---|---|---|
+| Ana | 3 strateji × 4 karıştırıcı gücü × 2 saldırgan oranı × 30 tekrar | 720 |
+| Sürü (`--swarm`) | üye kaybı (0/2/4 İHA düşer) ve röle (menzil 180 m) | 660 |
+| Karar alma (`--decision`) | açgözlü / CBBA / yapay zekâ / kuralsız × 5 koşul × 30, 6 yeni hedef; paket büyüklüğü 1-6 | 1500 |
+| Elektronik harp (`--ew`) | 9 senaryo × 3 strateji × 30; arazi gölgesi kapalı karşılaştırması | 1080 |
+| Ayar (`--tune`) | 4 parametre × 3 değer × 3 senaryo, **ayrı ayar haritaları** (seed 500-519) | 540 |
+| Ablasyon (`--ablation`) | 11 mekanizma tek tek kapalı + tam + korumasız × 6 senaryo × 12 | 936 |
+| Ölçekleme (`--scaling`) | 5 / 10 / 20 İHA × 3 strateji × 3 koşul × 20 | 540 |
+| Yapay zekâ (`tools/train_ai.py`) | eğitim / doğrulama / test haritaları ayrı, ~20 000 görev denemesi | 570 uçuş |
+
 - Aynı tohum (seed) = aynı görev haritası olduğu için stratejiler birebir aynı koşulda
   karşılaştırılır (eşleştirilmiş deney → Wilcoxon testi).
-
-Çıktılar: `results/results.csv`, `results/swarm.csv`, `results/decision.csv`, `results/ai_egitim.txt`,
-`results/figures/*.png`, `results/istatistik.txt`
+- Test haritaları (seed 0-29) ne parametre ayarında ne yapay zekâ eğitiminde kullanıldı.
+- Çıktılar: `results/*.csv`, `results/figures/*.png`, `results/istatistik.txt`, `results/ai_egitim.txt`.
 
 ### Öne çıkan bulgular: elektronik harp (görev tamamlama oranı, ortalama ± std, n=30)
 
 | Koşul | Merkezi | Merkeziyetsiz | **Dirençli** |
 |---|---|---|---|
 | Karıştırıcı yok | %100 | %100 | **%100** |
-| 10 dBm karıştırma | %99,5 ± 1,5 | %99,7 ± 1,3 | **%100** |
-| 20 dBm karıştırma | %88,8 ± 6,1 | %88,7 ± 6,1 | **%99,8 ± 0,9** |
-| 30 dBm karıştırma | %12,5 ± 7,7 | %17,3 ± 10,1 | **%57,7 ± 18,8** |
-| %20 saldırgan, karıştırma yok | %20,2 ± 3,8 | %0,0 | **%100** |
-| %20 saldırgan + 20 dBm | %22,2 ± 6,9 | %0,0 | **%99,8 ± 0,9** |
-| 20 dBm + görevde 4 İHA düşer | %87,3 ± 9,9 | %90,0 ± 5,3 | **%100** |
+| 10 dBm karıştırma | %99,3 ± 2,2 | %99,7 ± 1,3 | **%100** |
+| 20 dBm karıştırma | %87,3 ± 7,8 | %87,5 ± 8,9 | **%100** |
+| 30 dBm karıştırma | %12,3 ± 7,2 | %16,7 ± 10,5 | **%66,5 ± 19,4** |
+| %20 saldırgan, karıştırma yok | %20,7 ± 3,7 | %0,0 | **%100** |
+| %20 saldırgan + 20 dBm | %22,7 ± 7,2 | %0,0 | **%100** |
+| 20 dBm + görevde 4 İHA düşer | %86,2 ± 7,5 | %88,3 ± 7,6 | **%100** |
 
-- **20 dBm, 30 dBm ve saldırgan koşullarında** dirençli sürü diğer ikisinden anlamlı şekilde iyi
-  (Wilcoxon, hepsinde p < 10⁻⁵). 10 dBm'de fark anlamsız (sistemler zaten dayanıklı).
-- **20 dBm'de dirençli sürü hem daha başarılı hem daha hızlı:** görev süresi 117 s, diğerleri 155-159 s.
-  Yanlış "bitti" sayısı 0 (diğerlerinde 2,5-3,1).
+Elektronik harp senaryoları (her uçuşta 6 yeni hedef, n=30; dirençli diğer ikisinden hepsinde anlamlı iyi, p < 10⁻⁶):
+
+| Senaryo | Merkezi | Merkeziyetsiz | **Dirençli** |
+|---|---|---|---|
+| Sabit 20 dBm | %86,9 | %89,4 | **%100** |
+| Hareketli 20 dBm | %83,7 | %85,9 | **%100** |
+| İki karıştırıcı 20 dBm | %40,4 | %39,4 | **%99,5** |
+| Nokta 25 dBm (yalnızca haberleşme) | %74,5 | %99,9 | **%100** |
+| Tepede 25 dBm | %73,7 | %79,0 | **%100** |
+| Sırt arkasında 30 dBm | %91,5 | %92,1 | **%100** |
+| GPS aldatma, hızlı (2 m/s) | %51,9 | %50,5 | **%98,6** |
+| GPS aldatma, yavaş (0,5 m/s) | %61,2 | %61,4 | **%99,1** |
+| Sinsi saldırgan %20 | %32,4 | %86,8 | **%100** |
+
+- **20 dBm'de dirençli sürü hem başarılı hem hızlı:** görev süresi 113 s, diğerleri 145-169 s.
+  Yanlış "bitti" sayısı 0 (diğerlerinde 2,7-3,2).
 - **30 dBm'de** bütün alan karıştırılıyor ve GPS kalkıştan itibaren yok. Merkezi ve korumasız sürüler
-  %12-17'de kalırken dirençli sürü %57,7'ye ulaşıyor (p < 10⁻⁵). Bunu sağlayanlar: arama ile "görmeden
-  bitti dememe" ve 15 m'lik kamera taramasına göre ayarlanmış spiral. Düzenini koruyan tek sürü de o:
-  gerçek yuva hatası 26 m, diğerlerinde 129-140 m (işbirlikçi konum düzeltmesi).
-- **Saldırı altında korumasız merkeziyetsiz sürü tamamen çöküyor (%0)**, merkezi mimariden bile kötü.
-  Merkeziyetsizlik tek başına yetmiyor, **güven mekanizması** şart.
-- **Üye kaybı:** Karıştırma yokken 4 İHA düşse bile üç mimari de görevlerin hepsini bitiriyor. Görev
-  süresi merkezide 96 → 126 s, merkeziyetsizde 96 → 119 s, dirençlide 96 → 116 s uzuyor. 20 dBm'de
-  4 İHA düşünce de dirençli sürü %100 bitiriyor.
-- **Röle:** Kısa menzilde (180 m) bağlantılılığı %74'ten %81'e çıkarıyor (p < 0,001) ama görevi
-  64-72 s uzatıyor (röle İHA paketini bırakıp görev yapamıyor). Görevler zaten %100 bitiyor; röle,
-  sürekli bağlantı gereken görevlerde (canlı video gibi) anlamlı. Bu bir **ödünleşim** olarak raporlanmalı.
-- **Bedel:** Dirençli sürü zayıf karıştırmada (10 dBm) biraz yavaş: 115 s, diğerleri 96-97 s. Karıştırma
-  algısı oradaki görevlere teklif süresini uzatıyor ve konumdan emin olmayan İHA hedefte arama yapıyor.
+  %12-17'de kalıyor, dirençli sürü %66,5'e ulaşıyor (p < 10⁻⁵). Düzenini koruyan da yalnızca o:
+  gerçek yuva hatası 39 m, diğerlerinde 126-145 m.
+- **GPS aldatmada** korumasız sürüler hedefe vardığını sanıp ortalama 10-13 yanlış "bitti" diyor.
+  Dirençli sürü hızlı sürüklemeyi ortalama 9,4 s'de yakalıyor (uçuş başına 0,03 yanlış alarm). Yavaş
+  sürüklemeyi 52 s'de, çoğunlukla "hedefin üstündeyim ama göremiyorum, demek ki konumum yanlış"
+  çıkarımıyla yakalıyor. Bedeli: görev 2 kat uzun sürüyor (206-236 s), çünkü aldatma bölgesinde GPS'siz
+  çalışılıyor.
+- **Sinsi saldırganı** dirençli sürü her uçuşta dışlıyor (%100), dürüst bir arkadaşı yanlışlıkla dışlama
+  oranı %0,1. Korumasız merkeziyetsiz sürü saf saldırgana karşı tamamen çöküyor (%0). Sinsi saldırgan
+  ise onu %86,8'de bırakıyor: daha az zarar veriyor ama fark edilmiyor. Merkezilikte sahte "tamamlandı"
+  raporları sürüyü %32'ye düşürüyor.
+- **Karıştırıcıyı bulma:**
+  - Sabit karıştırıcı her uçuşta ilk ~30 s'de 50 m'den iyi bulunuyor (görev sonunda ortalama 40 m hata).
+  - Hareketli karıştırıcı uçuşların %97'sinde bir noktada 50 m'den iyi yakalanıyor, ama ortalama takip
+    hatası 136 m.
+  - İki karıştırıcıyı ayırmak zor: ortalama hata 362 m, uçuşların %93'ünde bir noktada (ortalama 168 s)
+    50 m'den iyi.
+  - Sırt arkasındaki karıştırıcı bulunamıyor (~580 m), çünkü kestirim modeli tepelerin sinyali
+    kestiğini hesaba katmıyor.
+- **Arazi gölgesi:** Ovadaki karıştırıcıda arazinin etkisi yok (sonuçlar birebir aynı). Sırt arkasındaki
+  30 dBm karıştırıcıda tepeler kalkan oluyor: arazi yok sayılsaydı merkezi ve korumasız sürüler
+  %67 ve %65'te kalırdı, gerçekte %92 tamamlıyorlar (p < 10⁻⁸). Gerçekçi arazi modeli sonucu değiştiriyor.
+- **Frekans atlama:** Nokta karıştırıcı haberleşmeyi bozar ama GPS'e dokunmaz. Bu yüzden korumasız
+  merkeziyetsiz sürü bile %99,9 tamamlıyor. Frekans atlamanın ablasyondaki katkısı küçük (−1,5 puan,
+  p = 0,052). Yıldız mimarideki merkezi sürü yer istasyonu bağlantısı kopunca %74,5'e düşüyor.
+- **Üye kaybı:** Karıştırma yokken 4 İHA düşünce görev süresi merkezide 95 → 124 s, merkeziyetsizde
+  97 → 116 s, dirençlide 97 → 118 s uzuyor. 20 dBm'de 4 İHA düşünce de dirençli sürü %100 bitiriyor.
+- **Röle:** Kısa menzilde (180 m) bağlantılılığı %74-75'ten %81'e çıkarıyor (p < 10⁻⁵) ama görevi
+  69-74 s uzatıyor. Görevler zaten %100 bitiyor. Bu bir **ödünleşim**.
+- **Bedel:** Zayıf karıştırmada (10 dBm) dirençli sürü daha yavaş: 121 s, diğerleri 95-98 s.
 
 ### Öne çıkan bulgular: otonom karar alma (görev puanı 0-100, n=30, 6 yeni hedef)
 
 | Koşul | Mimari | Açgözlü | **CBBA** | Fark (p) |
 |---|---|---|---|---|
-| Karıştırma yok | Merkezi (SGA) | 73,4 | **82,9** | +9,6 (p < 10⁻⁸) |
-| Karıştırma yok | Merkeziyetsiz | 75,7 | **79,6** | +3,9 (p < 10⁻⁶) |
-| Karıştırma yok | Dirençli | 75,7 | **79,7** | +4,0 (p < 10⁻⁷) |
-| 20 dBm | Merkezi (SGA) | 59,1 | **67,7** | +8,6 (p < 10⁻⁶) |
-| 20 dBm | Dirençli | 71,2 | **76,7** | +5,5 (p < 10⁻⁸) |
-| 30 dBm | Dirençli | 13,7 | **19,4** | +5,7 (p = 0,005) |
-| %20 saldırgan | Dirençli | 71,6 | **76,7** | +5,1 (p < 10⁻⁶) |
-| 20 dBm + 3 arıza | Dirençli | 65,5 | **70,7** | +5,3 (p < 10⁻⁶) |
+| Karıştırma yok | Merkezi (SGA) | 73,3 | **83,0** | +9,7 (p < 10⁻⁸) |
+| Karıştırma yok | Merkeziyetsiz | 75,5 | **79,6** | +4,1 (p < 10⁻⁶) |
+| Karıştırma yok | Dirençli | 75,4 | **79,5** | +4,1 (p < 10⁻⁶) |
+| 20 dBm | Merkezi (SGA) | 58,5 | **66,9** | +8,4 (p < 10⁻⁷) |
+| 20 dBm | Merkeziyetsiz | 63,9 | **70,6** | +6,7 (p < 10⁻⁵) |
+| 20 dBm | Dirençli | 72,5 | **77,8** | +5,3 (p < 10⁻⁷) |
+| 30 dBm | Dirençli | 24,5 | 26,8 | +2,3 (p = 0,17, anlamsız) |
+| %20 saldırgan | Dirençli | 71,5 | **77,0** | +5,6 (p < 10⁻⁷) |
+| 20 dBm + 3 arıza | Dirençli | 69,8 | **73,5** | +3,7 (p < 10⁻⁴) |
 
-- **CBBA paket planlama**, açgözlü tek görev yöntemine göre görev puanını her mimaride ve
-  karıştırma altında da anlamlı artırıyor. Karıştırma yokken görev alanında katedilen yol 6,2 km'den
-  5,1 km'ye, görev süresi 121 s'den 110 s'ye iniyor. Merkezi SGA'da kazanç en büyük (yol 8,1 → 5,1 km).
-  Tek istisna, korumasız merkeziyetsiz sürünün 30 dBm'de zaten çöktüğü durum (fark anlamsız).
-- **Yeni hedefe tepki:** Karıştırma yokken yeni beliren hedefe ortalama varış süresi merkezide 29 → 13 s,
-  dirençlide 21 → 18 s.
-- **Paket büyüklüğü:** 1 görevlik paketten 3'e çıkınca puan anlamlı artıyor (karıştırma yok +2,1;
-  20 dBm +3,7 puan, p < 10⁻⁵). 3'ten sonrası düz. Kullanılan değer 3.
-- **Yeniden planlama:** CBBA'da bir İHA uçuş başına ~10-18 kez yarım kalan hedefini bırakıyor:
-  yeni hedef beliriyor, daha yakın bir arkadaş teklifi geçiyor ya da biri düşüyor.
-  Bu, dinamik ortama uyumun bedeli; açgözlü yöntem hiç değiştirmiyor ama daha kötü sonuç alıyor.
-- **Yapay zekâ:** Görev başarısını uzman kuralından daha iyi tahmin ediyor. Test haritalarında ROC AUC
-  0,960, uzman kuralında 0,923. 25 dBm'de 0,921'e 0,839, 30 dBm'de 0,795'e 0,737. Kestirimleri
-  iyi kalibre: 25 dBm'de gerçek başarı %70,0, kestirim %69,8. Görev puanına etkisi ise sınırlı.
-  Karıştırma yokken +0,6 puan (p = 0,011), %20 saldırganla +1,5 puan (p < 10⁻⁴) anlamlı iyi.
-  20 dBm, 30 dBm ve arızada uzman kuralından farkı anlamsız. Sebep: görev değerlendirmenin puana
-  etkisi küçük. Uzman kuralının kuralsız CBBA'ya üstünlüğü bile yalnızca 20 dBm'de anlamlı
-  (+1,1 puan). Sürüyü dayanıklı yapan şey değerlendirme değil davranış kuralları (GPS kurtarma,
-  arama, makullük kontrolü).
-- **Yapay zekâ ne öğrendi** (`results/figures/ai_ne_ogrendi.png`): Konum belirsizliği 12 m'yi aşınca
-  uzman kuralı başarı şansını 0,3'e kadar düşürüyor. Ağ ise spiral arama sayesinde başarının ~%80
-  sürdüğünü öğrenmiş (uzman kuralı fazla kötümser). Karıştırma bölgesindeki göreve uzman kuralı
-  herkese ceza veriyor. Ağ ise "İHA'nın şu an GPS'i varsa oraya gidip başarır" diyor.
+- **CBBA paket planlama**, açgözlü tek görev yöntemine göre görev puanını her mimaride anlamlı artırıyor.
+  Karıştırma yokken görev alanında katedilen yol dirençlide 6,3 km'den 5,2 km'ye, merkezide 8,1 km'den
+  5,1 km'ye iniyor. Yeni hedefe varış merkezide 29 s'den 13 s'ye düşüyor.
+- **30 dBm'de** fark anlamsız: her yer GPS'siz olunca planlamanın inceliği önemini yitiriyor. Açgözlü
+  yöntem burada daha çok görev tamamlıyor (%67 / %58), CBBA ise önemli hedeflere öncelik veriyor.
+- **Paket büyüklüğü:** 1 görevlik paketten 3'e çıkınca puan anlamlı artıyor (karıştırma yok +1,7;
+  20 dBm +3,1 puan, p < 10⁻³). 3'ten sonrası düz. Kullanılan değer 3.
+- **Yapay zekâ:**
+  - Görev başarısını uzman kuralından daha iyi tahmin ediyor. Test haritalarında ROC AUC 0,978,
+    uzman kuralında 0,948; 30 dBm'de 0,880'e 0,760. Doğruluk %92,8 ("hep başarır" demek %73,2 verirdi).
+    Kestirimler iyi kalibre: 25 dBm'de gerçek başarı %59,9, kestirim %60,8.
+  - Görev puanına katkısı küçük: karıştırma yokken +0,6 (p = 0,017), %20 saldırganla +0,9 (p = 0,002).
+    20 dBm, 30 dBm ve arızada fark anlamsız. Sebep: görev değerlendirmenin puana etkisi zaten küçük.
+    Uzman kuralının kuralsız CBBA'ya üstünlüğü bile hiçbir koşulda anlamlı değil.
+  - Sürüyü dayanıklı yapan değerlendirme değil, davranış kuralları; bunu aşağıdaki ablasyon gösteriyor.
+- **Yapay zekâ ne öğrendi** (`results/figures/ai_ne_ogrendi.png`): Uzman kuralı konumunu kaybetmiş
+  İHA'ya fazla kötümser bakıyor, ağ spiral arama sayesinde başarının sürdüğünü öğrenmiş. Karıştırma
+  bölgesindeki göreve uzman kuralı herkese ceza veriyor. Ağ ise "İHA'nın şu an GPS'i varsa oraya gidip
+  başarır" diyor.
+
+### Öne çıkan bulgular: bilimsel kanıt (Aşama 4)
+
+- **Ayar ve test ayrımı:** Dirençli stratejinin 4 parametresi ayrı ayar haritalarında tarandı. Hiçbir
+  alternatif değer kullanılandan anlamlı iyi değil (en iyi alternatif ile fark ≤ 0,6 puan, p ≥ 0,31).
+  Sonuçlar parametre seçimine duyarsız. Tek belirgin etki GPS kurtarma eşiğinde: 25 m en iyisi,
+  15 ve 40 m'de puan ~1,5 düşüyor (`results/figures/ayar_duyarlilik.png`).
+- **Ablasyon** (`results/figures/ablasyon.png`, mekanizma kapatılınca puan farkı, n=12):
+  - **Spiral arama** en önemli mekanizma: hızlı GPS aldatmada −26,7, 30 dBm'de −14,1, hareketli
+    karıştırıcıda −6,8, sabit 20 dBm'de −5,9 puan.
+  - **Aldatma tespiti** (−19,3) ve **işbirlikçi konum** (−16,6) GPS aldatmasına karşı kritik.
+  - **Karıştırıcı bulma** 30 dBm'de −16,0, hareketli karıştırıcıda −3,4 puan.
+  - **Güven sistemi** yalnızca sinsi saldırgana karşı önemli (−6,5).
+  - **Uzun TTL** hareketli karıştırıcıda −1,9 puan.
+  - **Karıştırma bölgesinden kaçınma** sabit 20 dBm'de kapatılınca puan *artıyor* (+1,4, p = 0,024):
+    bu kural fazla temkinli; kaçınmanın yolu uzatması, karıştırmadan kaçmanın kazancından büyük.
+  - Hiçbir mekanizma tek başına korumasız sürüyle tam sistem arasındaki farkı (−6 ila −28 puan)
+    açıklamıyor; dayanıklılık birbirini tamamlayan mekanizmalardan geliyor.
+- **Ölçekleme** (`results/figures/olcekleme.png`): Dirençli sürü 5, 10 ve 20 İHA'da tüm koşullarda
+  %100 tamamlıyor ve İHA sayısı arttıkça puanı yükseliyor (20 dBm'de 73,0 → 76,7 → 78,5). Korumasız
+  merkeziyetsiz sürü 20 dBm'de 20 İHA ile %81'e düşüyor. Hesap yükü İHA sayısıyla yaklaşık doğrusal
+  artıyor (dirençlide 5 → 20 İHA: simülasyon saniyesi başına 66 → 208 ms).
 
 ---
 
@@ -358,8 +488,8 @@ ve görev durumunu yazar.
 
 ## 5. Sınırlılıklar (jüriye dürüstçe söylenecekler)
 
-- Radyo modeli istatistiksel bir yaklaşımdır: çok yollu yayılım ve arazi gölgelemesi yoktur
-  (tepeler İHA'ların uçuşunu etkiler ama sinyali henüz kesmez).
+- Radyo modeli istatistiksel bir yaklaşımdır. Arazi gölgesi tek bıçak sırtı kırınımıyla hesaplanır;
+  çok yollu yayılım (yansıma), bitki örtüsü ve atmosfer etkileri yoktur.
 - Uçuş dinamiği nokta-kütle modelidir (ivme ve hız sınırlı). Motor ve aerodinamik modellenmemiştir.
 - Karıştırma **yalnızca yazılımda** modellenmiştir. Gerçek RF yayını yapılmamıştır ve yapılmamalıdır.
 - Sonuçlar simülasyon ortamına aittir. Gerçek uçuş testiyle doğrulanmamıştır.
@@ -369,8 +499,15 @@ ve görev durumunu yazar.
 - CBBA'da İHA'lar konumları değiştikçe tekliflerini günceller. Bu, klasik CBBA'nın yakınsama
   ispatının dışındadır. Pratikte yeni hedef belirdiğinde 0,2-1 s süren kısa "teklif savaşları" görülür
   (uzlaşma bunları hep çözdü, testler çakışmasız plana yakınsamayı doğruluyor).
-- Makullük kontrolü yalnızca gönderenin o turda kendi adına verdiği teklifleri denetler. Zaman damgasıyla
-  oynayan daha kurnaz bir saldırgan bunu atlatabilir (sıradaki aşamada güven sistemiyle ele alınacak).
+- Güven sistemi menzil ölçümüne dayanır. Fiziksel olarak söylediği yerde duran ve konumu hakkında hiç
+  yalan söylemeyen bir saldırganı (ör. gerçekten hedefe gidip "yaptım" diyen ama kamerası kapalı)
+  yakalayamaz. Bu tür bir saldırgan da en azından zaman ve enerji harcamak zorunda kalır.
+- Karıştırıcı bulma modeli tepelerin sinyali kestiğini hesaba katmaz. Bu yüzden sırt arkasındaki
+  karıştırıcı bulunamaz (~580 m hata) ve iki karıştırıcıyı ayırmak zordur (ortalama 362 m). Arazi bilgisi
+  kestirime eklenebilir ama hesap yükü ~20 kat artar.
+- GPS aldatma modeli basitleştirilmiştir: aldatıcının yarıçapındaki her alıcı aynı yöne sürüklenir;
+  gerçek bir aldatıcının sinyal gücü, alıcının ele geçirilme anı ve uydu geometrisi modellenmemiştir.
+- Hareketli karıştırıcının takibi sabit hız varsaymayan basit bir pencereyle yapılır; ortalama hata ~136 m.
 - Yapay zekâ bu simülatörün verisiyle eğitildi. Gerçek İHA'da yeniden eğitilmesi gerekir. Görev puanına
   katkısı küçük; asıl katkısı başarıyı daha doğru tahmin etmesi.
 
@@ -379,7 +516,7 @@ ve görev durumunu yazar.
 ## 6. Klasör yapısı
 
 ```
-suru/                 Python simülasyon paketi (config, radio, world, decision, swarm, terrain, bridge)
+suru/                 Python simülasyon paketi (config, radio, world, decision, ew, swarm, terrain, bridge)
 suru/data/            Unity'den aktarılan arazi yükseklik haritası, eğitilmiş yapay zekâ ağırlıkları
 tests/                Otomatik doğrulama testleri (pytest)
 run_live.py           Unity'ye canlı yayın

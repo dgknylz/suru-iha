@@ -16,7 +16,8 @@ namespace SuruIHA
         public float jam;      // 0..1 karıştırma seviyesi
         public int gps;        // 1 = GPS var
         public int task;       // hedef görev (-1 = yok)
-        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma
+        public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma,
+                               // 6 GPS'i aldatılıyor (henüz fark etmedi), 7 aldatmayı fark etti (GPS'e güvenmiyor)
         public int phase;      // 0 kalkış, 1 intikal, 2 görev, 3 toplanma, 4 dönüş, 5 iniş, 6 indi
         public int relay;      // röle ise bağlantısını koruduğu İHA (-1: değil)
         public float sigma;    // konum belirsizliği (m)
@@ -39,6 +40,23 @@ namespace SuruIHA
         public float[] p;
         public float pw;       // güç (dBm)
         public float r;        // etkili yarıçap (m)
+        public string band;    // "genis" (haberleşme + GPS) ya da "nokta" (yalnızca haberleşme kanalı)
+        public float[] v;      // hız (hareketli karıştırıcı)
+    }
+
+    [Serializable]
+    public class JamEstState   // sürünün kestirdiği karıştırıcı konumu
+    {
+        public float[] p;
+        public float pw;
+        public float r;
+    }
+
+    [Serializable]
+    public class SpooferState  // GPS aldatıcı
+    {
+        public float[] p;
+        public float r;
     }
 
     [Serializable]
@@ -66,6 +84,10 @@ namespace SuruIHA
         public float formErr;  // düzen hatası (m)
         public int relays;
         public int alive;
+        public float jamErr;   // sürünün karıştırıcı konum kestiriminin hatası (m), -1: kestirim yok
+        public int spoofed;    // GPS'i şu an aldatılan İHA
+        public int spoofSeen;  // aldatmayı fark edip GPS'e güvenmeyen İHA
+        public float liars;    // dürüst İHA'ların saldırganları dışlama oranı (-1: saldırgan yok)
     }
 
     [Serializable]
@@ -73,6 +95,7 @@ namespace SuruIHA
     {
         public float power;    // karıştırıcı gücü (dBm), -1 = kapalı
         public float spoof;    // saldırgan oranı
+        public string spoofMode; // saf | sinsi saldırgan ("naive" | "sneaky")
         public int seed;       // harita numarası
         public int finished;   // 1 = sürü indi, yeni komut bekleniyor
         public int missionDone; // 1 = görevler bitti (sürü dönüşte)
@@ -90,6 +113,9 @@ namespace SuruIHA
         public float[] links;      // [i, j, kalite, i, j, kalite, ...]
         public TaskState[] tasks;
         public JammerState[] jammers;
+        public JamEstState[] jamEst;
+        public SpooferState[] spoofers;
+        public int fhss;           // 1 = dirençli sürü frekans atlıyor
         public GcsState gcs;
         public float cell;
         public float[] jamCells;   // [x, y, x, y, ...] sürünün ortak karıştırma haritası

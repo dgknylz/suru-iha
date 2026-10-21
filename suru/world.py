@@ -15,9 +15,13 @@ Görev akışı (her İHA kendi evresini yürütür, lider yoktur):
                   2) karıştırma bölgesindeki arkadaşın sessizliğini "meşgul" sayma (uzun TTL)
                   3) karıştırma bölgesinden transit geçmeme ve bu görevlere ceza
                   4) GPS yokken komşulardan işbirlikçi konum düzeltmesi
-                  5) belirsizlik büyükse hedefte spiral arama
-                  6) makul olmayan teklifleri yayan İHA'ya güvenmeme (sahte bilgiye karşı)
-                  7) bağlantı koruma: kopan arkadaşa ulaşmak için kendiliğinden röle olma
+                  5) görmediği hedefe "bitti" dememe, hedefte spiral arama
+                  6) GPS kurtarma: konumunu kaybeden İHA GPS'i geri almaya gider
+                  7) güven sistemi: makul olmayan teklif, konum yalanı ve sahte "tamamlandı"ya karşı
+                  8) karıştırıcıyı bulma ve karıştırma alanını önceden kestirme
+                  9) frekans atlama (FHSS) ve GPS aldatma tespiti (suru/ew.py)
+                  (isteğe bağlı) bağlantı koruma: kopan arkadaşa ulaşmak için kendiliğinden röle olma
+                  Her mekanizma ayrı bir ayarla kapatılabilir (ablasyon deneyi).
 
 Sürü zekâsı (suru/swarm.py): lidersiz düzen uçuşu (konsensüs), Reynolds kuralları,
 arazi takibi, röle ile bağlantı koruma, üye kaybında görev ve düzenin yeniden dağıtımı.
@@ -26,10 +30,12 @@ Otonom karar alma (suru/decision.py): görevlerin değeri (önceliği) vardır v
 Görev sırasında yeni hedefler belirir (yer istasyonu ihbarı ya da İHA sensörü). Görev paylaşımı
 CBBA (merkeziyetsiz paket planlama ve uzlaşma), SGA (merkezi) ya da eski açgözlü yöntemle yapılır.
 """
+from types import SimpleNamespace
+
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from . import decision, radio
+from . import decision, ew, radio
 from .config import SimConfig
 from .swarm import FORMATIONS, Path, formation_offsets, largest_component, place, reynolds
 from .terrain import Terrain
@@ -99,6 +105,12 @@ class World:
                        else decision.AIValue.load(c.ai_weights or decision.AI_WEIGHTS))
         self.lnlam = float(np.log(c.discount))
         self.cruise = 0.9 * c.max_speed           # plan yaparken kullanılan seyir hızı tahmini
+        # Dirençli stratejinin mekanizmaları (her biri ablasyon için ayrı kapatılabilir)
+        R = self.resilient
+        self.ew = SimpleNamespace(**{k: R and getattr(c, "ew_" + k) for k in (
+            "jam_map", "long_ttl", "avoid", "coop_loc", "search", "recover", "trust", "localize", "fhss",
+            "spoof_detect", "valuation")})
+        self.sneaky = c.spoof_mode == "sneaky"
 
         # Görevler ve saldırganlar aynı tohumla önce çekilir: aynı seed'de
         # üç strateji de AYNI görev haritasıyla karşılaşır (eşleştirilmiş deney).
@@ -154,11 +166,36 @@ class World:
         self.vel = np.zeros((N, 3))
         self.est = self.pos.copy()          # İHA'nın kendi konum kestirimi
         self.bias = np.zeros((N, 3))        # GPS yokken biriken IMU hatası
-        self.gps_ok = np.ones(N, bool)
         self.dr_t = np.zeros(N)             # son konum düzeltmesinden beri geçen süre
         self.sig0 = np.full(N, 1.5)         # son düzeltmedeki konum belirsizliği (m)
-        self.jammers = [(np.asarray(j["pos"], float), float(j["power_dbm"])) for j in c.jammers]
-        self.jrx = np.full(N, -300.0)
+
+        # Elektronik harp
+        self.jammers = [ew.Jammer(j, self.terrain) for j in c.jammers]
+        self.spot = any(j.band == "nokta" for j in self.jammers)
+        self.gps_spoofers = [ew.GpsSpoofer(s) for s in c.gps_spoofers]
+        self.jrx = np.full(N, -300.0)       # haberleşme kanalına düşen karıştırma (dBm)
+        self.jrx_bar = np.full(N, -300.0)   # yalnızca geniş bant karıştırma (GPS'i ve FHSS'i de etkiler)
+        self.gps_rx = np.ones(N, bool)      # alıcı GPS çözümü üretiyor mu (gerçek ya da sahte)
+        self.gps_trust = np.ones(N, bool)   # İHA GPS'ine güveniyor mu (aldatma tespit edilince hayır)
+        self.gps_ok = np.ones(N, bool)      # İHA konumu için GPS kullanıyor mu (= alıyor ve güveniyor)
+        self.spoofed = np.zeros(N, bool)    # gerçek durum: GPS'i aldatıcı tarafından ele geçirilmiş
+        self.spoof_off = np.zeros((N, 3))   # aldatıcının İHA'nın GPS konumuna eklediği kayma
+        self.gps_hist = np.full((N, 12, 4), np.nan)   # IMU tutarlılık testi: 1 Hz (GPS x, y, gerçek x, y)
+        self.peer_bad = np.zeros(N, int)    # komşu menzil testinde art arda tutarsızlık sayısı
+        self.peer_good = np.zeros(N, int)
+        self.m_spoof_detect = []            # aldatma tespit süreleri (ele geçirilmeden tespite, s)
+        self.spoof_log = []                 # (t, İHA, sebep, gerçekten aldatılıyor mu, sigma)
+        self.captured_at = np.full(N, np.nan)
+        self.last_spoofed = np.full(N, -np.inf)
+        # Karıştırıcı konum bulma: her İHA 1 Hz'de ölçtüğü karıştırma gücünü kaydeder (halka tampon)
+        self.MB = 60
+        self.meas_t = np.full((N, self.MB), -np.inf)
+        self.meas_xy = np.zeros((N, self.MB, 2))
+        self.meas_db = np.zeros((N, self.MB))
+        self.meas_n = np.zeros(N, int)
+        self.loc_est = [[] for _ in range(N)]   # her İHA'nın kestirdiği karıştırıcılar [(xy, dBm)]
+        self.loc_err_log = []                   # (t, hata) sürünün en iyi kestirimi
+        self.t_locate = np.nan
 
         self.done = np.zeros(T, bool)       # gerçek durum
         self.done_time = np.full(T, np.nan)
@@ -176,11 +213,34 @@ class World:
         self.path = [[] for _ in range(N)]       # (cbba) rota: görevler uçuş sırasıyla; ilki my_task
         self.search = np.zeros(N)                # spiral arama açısı (0 = arama yok)
         self.search_r = np.zeros(N)              # aramanın biteceği yarıçap (m)
+        self.search_sig = np.zeros(N)            # aramaya başlarkenki konum belirsizliği
         self.recover = np.zeros(N, bool)         # (dirençli) GPS'i geri almaya gidiyor
+        self.recover_to = np.zeros((N, 2))       # GPS'i geri almak için gidilen nokta
         self.recover_block = np.zeros(N)         # bu andan önce yeniden kurtarma denenmez
         self.last_fix = self.pos[:, :2].copy()   # son GPS alınan nokta
         self.distrust = np.zeros((N, N), bool)   # distrust[j, i]: j, i'ye güvenmiyor
-        self.jam_grid = np.zeros((N, GRID_N, GRID_N), bool)   # her İHA'nın karıştırma haritası
+        # Güven sistemi (Beta itibarı): olumlu ve olumsuz kanıt sayıları; güven = (a+1)/(a+b+2)
+        self.tr_a = np.zeros((N, N))
+        self.tr_b = np.zeros((N, N))
+        self.hard_bad = np.zeros((N, N), bool)   # kesin kanıt (makul olmayan teklif)
+        self.soft_bad = np.zeros((N, N), bool)   # itibarı düşük
+        self.own_bad = np.zeros((N, N), bool)    # kendi kanıtıyla güvenmedikleri
+        self.hold_task = np.full((N, N), -1)
+        self.sneaky_hold = [[] for _ in range(N)]
+        self.accuse = np.zeros((N, N, N), bool)  # accuse[i, k, w]: i, w'nin k'yi suçladığını biliyor
+        self.done_by = np.full((N, T), -1)       # done_by[i, t]: i'ye t'nin yapıldığını bildiren (kaynak) İHA
+        self.st_sig = np.zeros((N, N))           # i'nin bildiği k'nın konum belirsizliği
+        self.prev_claim = np.full((N, N, 3), np.nan)   # i'nin k'den en son duyduğu konum (hız kontrolü)
+        self.prev_claim_t = np.full((N, N), -np.inf)
+        self.hold_since = np.full((N, N), np.inf)      # i'ye göre k ne zamandan beri görev tutuyor
+        self.hold_dist = np.full((N, N), np.inf)       # o andaki hedefe uzaklığı
+        self.next_fake_done = np.full(N, c.takeoff_time + 60.0)
+        # Karıştırma haritası: her hücrenin en son karıştırıldığı görülen an (hareketli karıştırıcı için eskir)
+        self.jam_t = np.full((N, GRID_N, GRID_N), -np.inf)
+        gx, gy = np.meshgrid(np.arange(GRID_N), np.arange(GRID_N), indexing="ij")
+        self._cell_xy = np.c_[gx.ravel(), gy.ravel()].astype(float) * CELL + GRID_O + CELL / 2
+        self.jam_grid = np.zeros((N, GRID_N, GRID_N), bool)   # şu an geçerli karıştırma hücreleri
+        self.spf_t = np.full((N, GRID_N, GRID_N), -np.inf)   # GPS aldatma görülen hücreler
         self.link_q = np.zeros((N, N))
         self.heard = np.zeros((N, N), bool)
         self.cooldown = np.zeros((N, T))         # (dirençli) i, t'yi bu andan önce tekrar deneyemez
@@ -223,7 +283,7 @@ class World:
         self.m = dict(redundant=0, false_done=0, retries=0, near_miss=0, pdr_sum=0.0, pdr_n=0,
                       locerr_sum=0.0, locerr_n=0, lam2_sum=0.0, lam2_n=0, msgs=0,
                       conn_sum=0.0, conn_n=0, form_sum=0.0, form_n=0, min_agl=np.inf, low_agl=0,
-                      relay_time=0.0, failures=0, reassign=0, task_dist=0.0)
+                      relay_time=0.0, failures=0, reassign=0, task_dist=0.0, spoof_false_alarm=0)
         self.last_pdr = 1.0
         self.last_conn = 1.0
         self.finished_t = np.nan
@@ -261,13 +321,21 @@ class World:
         self.t += c.dt
         self.k += 1
         self._failures()
+        for j in self.jammers:
+            j.step(c.dt)
         if self.jammers:
-            self.jrx = radio.jam_power_dbm(self.pos, self.jammers, c)
-        self.gps_ok = self.jrx < c.gps_jam_dbm
+            self.jrx = radio.jam_power_dbm(self.pos, self.jammers, c, self.terrain, band="comm")
+            self.jrx_bar = radio.jam_power_dbm(self.pos, self.jammers, c, self.terrain, band="gps")
+        self.gps_rx = self.jrx_bar < c.gps_jam_dbm
+        if self.gps_spoofers:
+            self._gps_spoofing()
+        self.gps_ok = self.gps_rx & self.gps_trust
         if self.k % c.comm_every == 0:
             self._communicate()
             self._decide()
             self._swarm_logic()
+        if self.k % 10 == 0:                     # 1 Hz: ölçümler, aldatma testi, karıştırıcı konum bulma
+            self._ew_1hz()
         self._navigate()
         self._update_estimates()
         self._check_arrivals()
@@ -319,13 +387,13 @@ class World:
 
     def _ttl(self, j):
         ttl = np.full(self.T, self.cfg.claim_ttl)
-        if self.resilient:
+        if self.ew.long_ttl:
             ttl[self._tasks_in_jam(j)] = self.cfg.claim_ttl_jam
         return ttl
 
     def _ttl_all(self):
         """Tüm İHA'lar için görev sahiplenme geçerlilik süreleri (N, T)."""
-        if not self.resilient:
+        if not self.ew.long_ttl:
             return np.full((self.N, self.T), self.cfg.claim_ttl)
         return np.where(self.jam_grid[:, self.task_ix, self.task_iy], self.cfg.claim_ttl_jam, self.cfg.claim_ttl)
 
@@ -345,7 +413,7 @@ class World:
         if self.ai is not None:
             return self.ai(self._ai_features(i))
         rho = np.ones(self.T)
-        if self.resilient and self.cfg.ew_valuation:
+        if self.ew.valuation:
             rho[self._tasks_in_jam(i)] = np.exp(self.lnlam * self.cfg.jam_penalty / self.cruise)
             rho *= np.exp(self.lnlam * self._search_time(i))
         return rho
@@ -410,7 +478,7 @@ class World:
     def _bids(self, j):
         """Teklif = -(göreve uzaklık). Yakın olan kazanır."""
         b = -np.linalg.norm(self.tasks[:, :2] - self.est[j, :2], axis=1)
-        if self.resilient:
+        if self.ew.valuation:
             b = b - self.cfg.jam_penalty * self._tasks_in_jam(j)
         return b
 
@@ -449,7 +517,9 @@ class World:
     # ----------------------------------------------------------- haberleşme
     def _communicate(self):
         c, N = self.cfg, self.N
-        per, _ = radio.link_per(self.pos, self.pos, self.jrx, c)
+        self.jam_grid = self.jam_t > self.t - c.jam_cell_ttl
+        self.tl_dd = radio.terrain_loss_db(self.pos, self.pos, self.terrain) if c.terrain_radio else None
+        per = self._per(self.pos, self.pos, self.jrx, self.jrx_bar, extra=self.tl_dd)
         np.fill_diagonal(per, 1.0)
         dead = ~self.alive
         per[dead, :] = 1.0
@@ -473,8 +543,21 @@ class World:
             if self.n_popup or np.isfinite(self.appear[self.popup]).any():
                 self._gcs_broadcast()
             self._gossip(heard)
-        if self.resilient:
+        if self.ew.coop_loc:
             self._coop_localize(heard)
+
+    def _per(self, tx, rx, jam_all, jam_bar, gain=0.0, max_range=None, extra=None):
+        """Paket kaybı olasılığı. Nokta karıştırıcı varken frekans atlamalı (FHSS) İHA'nın paketlerinin
+        yalnızca %24'ü karıştırılan kanala düşer; geri kalanı yalnızca geniş bant karıştırmayı görür."""
+        c = self.cfg
+        per, _ = radio.link_per(tx, rx, jam_all, c, gain_db=gain, max_range=max_range, extra_loss_db=extra)
+        if self.spot and self.ew.fhss:
+            miss, _ = radio.link_per(tx, rx, jam_bar, c, gain_db=gain, max_range=max_range, extra_loss_db=extra)
+            per = ew.FHSS_HIT * per + (1 - ew.FHSS_HIT) * miss
+        return per
+
+    def _gcs_terrain(self):
+        return radio.terrain_loss_db(self.gcs, self.pos, self.terrain) if self.cfg.terrain_radio else None
 
     def _discover(self):
         """Yeni beliren hedefi, yakınından geçen İHA'nın sensörü görür."""
@@ -490,7 +573,7 @@ class World:
         """Merkeziyetsiz stratejilerde yer istasyonu sadece yeni hedef ihbarını yayınlar;
         görev dağıtmaz. Karıştırılan İHA ihbarı duyamayabilir (komşusundan öğrenir)."""
         c = self.cfg
-        per_dn, _ = radio.link_per(self.gcs, self.pos, self.jrx, c, gain_db=c.gcs_gain_db, max_range=np.inf)
+        per_dn = self._per(self.gcs, self.pos, self.jrx, self.jrx_bar, c.gcs_gain_db, np.inf, self._gcs_terrain())
         dn = (self.rng.random(self.N) > per_dn[0]) & self.alive
         self.known_task[dn] |= (self.appear <= self.t)[None, :]
 
@@ -500,29 +583,37 @@ class World:
         for i in np.nonzero(self.alive)[0]:
             self.st_t[i, i], self.st_pos[i, i] = now, self.est[i]
             self.st_task[i, i], self.st_phase[i, i], self.st_relay[i, i] = self.my_task[i], self.phase[i], self.relay_for[i]
+            self.st_sig[i, i] = self.sigma(i)
             if self.spoofer[i]:
-                # Saldırgan: tüm açık görevleri "ben tam oradayım" diye en yüksek teklifle sahiplenir
-                open_ = ~self.known_done[i] & self.known_task[i]
-                top = self.value[open_] if self.cbba else 0.0
-                self.cl_bid[i, open_], self.cl_id[i, open_], self.cl_time[i, open_] = top, i, now
+                if self.sneaky:
+                    self._sneaky_lies(i)
+                else:
+                    # Saf saldırgan: tüm açık görevleri "ben tam oradayım" diye en yüksek teklifle sahiplenir
+                    open_ = ~self.known_done[i] & self.known_task[i]
+                    top = self.value[open_] if self.cbba else 0.0
+                    self.cl_bid[i, open_], self.cl_id[i, open_], self.cl_time[i, open_] = top, i, now
                 continue
             t = self.my_task[i]
             if t >= 0 and not self.cbba:
                 self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = self._bids(i)[t], i, now
             # Karıştırma algılama: alıcıdaki gürültü tabanı yükseldi ya da GPS kesildi
-            if self.resilient and (not self.gps_ok[i] or self.jrx[i] + self.rng.normal(0, 2) > c.jam_detect_dbm):
+            if self.ew.jam_map and (not self.gps_rx[i] or self.jrx[i] + self.rng.normal(0, 2) > c.jam_detect_dbm):
                 ix, iy = cell_idx(self.est[i, 0], self.est[i, 1])
-                self.jam_grid[i, ix, iy] = True
+                self.jam_t[i, ix, iy] = now
+        if self.ew.trust:
+            self._trust_update(heard)
 
         # 2) Mesajlar: herkes, duyduğu komşuların (gönderim anındaki) tablosunu birleştirir.
         # Her gönderen için tüm alıcılar birlikte işlenir (alıcı başına sıra, gönderen numarasıyla aynı).
         snap_b, snap_id, snap_t = self.cl_bid.copy(), self.cl_id.copy(), self.cl_time.copy()
         snap_done, snap_known, snap_est = self.known_done.copy(), self.known_task.copy(), self.est.copy()
-        snap_grid = self.jam_grid.copy()
+        snap_by = self.done_by.copy()
+        snap_jt, snap_sp = self.jam_t.copy(), self.spf_t.copy()
+        snap_own = self.own_bad.copy()
         sn_t, sn_pos, sn_task = self.st_t.copy(), self.st_pos.copy(), self.st_task.copy()
-        sn_phase, sn_relay = self.st_phase.copy(), self.st_relay.copy()
+        sn_phase, sn_relay, sn_sig = self.st_phase.copy(), self.st_relay.copy(), self.st_sig.copy()
         ttl_all = self._ttl_all()
-        implausible = self._implausible(snap_b, snap_id, snap_t, snap_est) if self.resilient else None
+        implausible = self._implausible(snap_b, snap_id, snap_t, snap_est) if self.ew.trust else None
         for k in np.nonzero(self.alive)[0]:
             R = np.nonzero(heard[k] & self.alive)[0]
             R = R[~self.distrust[R, k]]
@@ -537,22 +628,31 @@ class World:
                 self.st_task[R] = np.where(newer, sn_task[k][None, :], self.st_task[R])
                 self.st_phase[R] = np.where(newer, sn_phase[k][None, :], self.st_phase[R])
                 self.st_relay[R] = np.where(newer, sn_relay[k][None, :], self.st_relay[R])
+                self.st_sig[R] = np.where(newer, sn_sig[k][None, :], self.st_sig[R])
             keep = ~self.spoofer[R]
             R, st_before = R[keep], st_before[keep]
             if len(R) == 0:
                 continue
-            if self.resilient:
+            if self.ew.trust:
                 if implausible[k]:
-                    # Makul olmayan teklif veren gönderene artık güvenme, onun tekliflerini sil
-                    self.distrust[R, k] = True
-                    bad = self.cl_id[R] == k
-                    rows = np.broadcast_to(R[:, None], bad.shape)
-                    self.cl_bid[rows[bad], np.nonzero(bad)[1]] = -np.inf
-                    self.cl_id[rows[bad], np.nonzero(bad)[1]] = -1
-                    self.cl_time[rows[bad], np.nonzero(bad)[1]] = -np.inf
+                    # Makul olmayan teklif veren gönderene artık güvenme (kesin kanıt)
+                    for r in R:
+                        self._mark_bad(r, k)
                     continue
-                self.jam_grid[R] |= snap_grid[k]
-            self.known_done[R] |= snap_done[k]
+                # Güvenilen gönderenin "kime güvenmiyorum" görüşü (iki bağımsız tanık kuralı için)
+                self.accuse[R, :, k] = snap_own[k][None, :]
+            if self.ew.jam_map:
+                self.jam_t[R] = np.maximum(self.jam_t[R], snap_jt[k][None])
+            if self.ew.spoof_detect:
+                self.spf_t[R] = np.maximum(self.spf_t[R], snap_sp[k][None])
+            # "Tamamlandı" bilgisi kaynağıyla (ilk bildiren İHA) birlikte yayılır; dirençli İHA,
+            # güvenmediği kaynaktan gelen tamamlandı bilgisini almaz
+            src = np.where(snap_by[k] >= 0, snap_by[k], k)
+            new = snap_done[k][None, :] & ~self.known_done[R]
+            if self.ew.trust:
+                new &= ~self.distrust[R][:, src]
+            self.known_done[R] |= new
+            self.done_by[R] = np.where(new, src[None, :], self.done_by[R])
             self.known_task[R] |= snap_known[k]
             if self.cbba:
                 self._merge_cbba(R, k, snap_b[k], snap_id[k], snap_t[k], sn_t[k], st_before)
@@ -563,6 +663,100 @@ class World:
                 self.cl_bid[R] = np.where(better, snap_b[k][None, :], self.cl_bid[R])
                 self.cl_id[R] = np.where(better, snap_id[k][None, :], self.cl_id[R])
                 self.cl_time[R] = np.where(better, snap_t[k][None, :], self.cl_time[R])
+        if self.ew.trust:
+            self._refresh_distrust()
+
+    # ----------------------------------------------------------- güven sistemi
+    def _sneaky_lies(self, i):
+        """Sinsi saldırgan: (1) kendine yakın en fazla 2 görevi, konumuyla tutarlı (makul) en yüksek
+        teklifle sahiplenir ama oraya gitmez (görevi kilitler); (2) her 10 s'de bir açık görevi
+        "tamamladım" diye yayar ve o anda kendini hedefin üstünde gösterir (konum yalanı)."""
+        c, now = self.cfg, self.t
+        open_ = np.nonzero(self.known_task[i] & ~self.known_done[i])[0]
+        held = [t for t in self.sneaky_hold[i] if t in open_]
+        rest = [t for t in open_ if t not in held]
+        if len(held) < 2 and rest:
+            d = np.linalg.norm(self.tasks[rest, :2] - self.est[i, :2], axis=1)
+            held += [rest[j] for j in np.argsort(d)[:2 - len(held)]]
+        self.sneaky_hold[i] = held
+        for t in held:
+            d = float(np.linalg.norm(self.tasks[t, :2] - self.est[i, :2]))
+            if self.cbba:
+                late = max(now + d / c.max_speed - self.ref_t[t], 0.0)      # makullük sınırının hemen altı
+                bid = self.value[t] * np.exp(self.lnlam * late)
+            else:
+                bid = -d + 25.0
+            self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = bid, i, now
+        self.st_task[i, i] = held[0] if held else -1                       # "oraya gidiyorum" der
+        rest = [t for t in open_ if t not in held]
+        if now >= self.next_fake_done[i] and self.phase[i] == TASK and rest:
+            self.next_fake_done[i] = now + c.spoof_period
+            t = int(self.rng.choice(rest))
+            self.known_done[i, t], self.done_by[i, t] = True, i
+            self.st_pos[i, i] = self.tasks[t]                              # konum yalanı
+
+    def _trust_update(self, heard):
+        """Doğrudan duyulan komşular hakkında kanıt toplar (Beta itibarı):
+        - menzil: komşunun bildirdiği konum, telsizle ölçülen uzaklıkla tutuyor mu?
+        - hız: bildirdiği konum bir öncekine göre uçamayacağı kadar mı sıçradı?
+        - ilerleme: görev evresinde "gidiyorum" dediği hedefe 30 s'dir yaklaşmıyor mu?
+        Kendi konumu bozuk olan (ör. GPS'i aldatılmış) İHA herkesi suçlamasın diye, bir komşu ancak
+        diğer komşulara göre aykırıysa suçlanır."""
+        c, now = self.cfg, self.t
+        for i in np.nonzero(self.alive & ~self.spoofer)[0]:
+            K = np.nonzero(heard[:, i] & self.alive)[0]
+            K = K[K != i]
+            if len(K) == 0:
+                continue
+            claim = self.st_pos[K, K]                                          # komşuların kendi bildirdiği konum
+            meas = np.linalg.norm(self.pos[K] - self.pos[i], axis=1) + self.rng.normal(0, 1.0, len(K))
+            err = np.abs(np.linalg.norm(claim[:, :2] - self.est[i, :2], axis=1) - meas)
+            tol = 15.0 + 2.5 * (self.sigma(i) + self.st_sig[K, K])
+            med = float(np.median(err))
+            neg = np.zeros(len(K))
+            outlier = err > np.maximum(tol, 3.0 * med)
+            neg += np.where(outlier & (err > 3 * tol), 5.0, np.where(outlier, 1.0, 0.0))
+            seen = np.isfinite(self.prev_claim_t[i, K])
+            dt = now - self.prev_claim_t[i, K]
+            jump = np.linalg.norm(claim - self.prev_claim[i, K], axis=1)
+            neg += np.where(seen & (jump > c.max_speed * 1.5 * dt + 20.0 + 3.0 * self.st_sig[K, K]), 5.0, 0.0)
+            self.prev_claim[i, K], self.prev_claim_t[i, K] = claim, now
+            for n, k in enumerate(K):
+                t = self.st_task[k, k]
+                if t < 0 or self.st_phase[k, k] != TASK:
+                    self.hold_task[i, k] = -1
+                    continue
+                d = float(np.linalg.norm(claim[n, :2] - self.tasks[t, :2]))
+                if self.hold_task[i, k] != t or d < self.hold_dist[i, k] - 20.0 or d < 120.0:
+                    self.hold_task[i, k], self.hold_since[i, k], self.hold_dist[i, k] = t, now, d
+                elif now - self.hold_since[i, k] > 30.0:
+                    neg[n] += 3.0
+                    self.hold_since[i, k] = now
+            self.tr_b[i, K] += neg
+            self.tr_a[i, K] += np.where(neg == 0, 0.05, 0.0)
+
+    def _mark_bad(self, r, k):
+        self.hard_bad[r, k] = True
+
+    def _refresh_distrust(self):
+        """Güvenmeme = kendi kanıtı (kesin ya da itibar < 0.35) VEYA güvendiği en az iki ayrı
+        arkadaşının güvenmemesi (iki bağımsız tanık; tek bir yalancı kimseyi karalayamaz)."""
+        E = (self.tr_a + 1.0) / (self.tr_a + self.tr_b + 2.0)
+        self.soft_bad = np.where(E < 0.35, True, np.where(E > 0.6, False, self.soft_bad))
+        own = self.hard_bad | self.soft_bad
+        np.fill_diagonal(own, False)
+        self.own_bad = own
+        votes = (self.accuse & ~own[:, None, :]).sum(2)
+        dis = own | (votes >= 2)
+        np.fill_diagonal(dis, False)
+        dis[self.spoofer] = False
+        newly = dis & ~self.distrust
+        self.distrust = dis
+        for i, x in zip(*np.nonzero(newly)):
+            mine = self.cl_id[i] == x
+            self.cl_bid[i, mine], self.cl_id[i, mine], self.cl_time[i, mine] = -np.inf, -1, -np.inf
+            fake = self.done_by[i] == x
+            self.known_done[i, fake], self.done_by[i, fake] = False, -1    # onun "tamamlandı"larını geri al
 
     def _implausible(self, snap_b, snap_id, snap_t, snap_est):
         """Makullük kontrolü: gönderenin bu turda kendi adına verdiği teklif, bildirdiği
@@ -589,7 +783,7 @@ class World:
         yk = yk.copy()
         upd, rst = decision.cbba_merge(R, k, yk, zk, sk, self.cl_bid, self.cl_id, st_before)
         # Alıcının güvenmediği İHA'yı kazanan gösteren bilgi alınmaz
-        if self.resilient:
+        if self.ew.trust:
             dz = np.maximum(zk, 0)
             untrusted = (zk[None, :] >= 0) & self.distrust[R][:, dz]
             upd &= ~untrusted
@@ -603,9 +797,14 @@ class World:
 
     def _gcs_link(self):
         c, N, now = self.cfg, self.N, self.t
-        gcs_jam = radio.jam_power_dbm(self.gcs, self.jammers, c) if self.jammers else np.array([-300.0])
-        per_up, _ = radio.link_per(self.pos, self.gcs, gcs_jam, c, gain_db=c.gcs_gain_db, max_range=np.inf)
-        per_dn, _ = radio.link_per(self.gcs, self.pos, self.jrx, c, gain_db=c.gcs_gain_db, max_range=np.inf)
+        if self.jammers:
+            gj = radio.jam_power_dbm(self.gcs, self.jammers, c, self.terrain, band="comm")
+            gjb = radio.jam_power_dbm(self.gcs, self.jammers, c, self.terrain, band="gps")
+        else:
+            gj = gjb = np.array([-300.0])
+        tl = self._gcs_terrain()
+        per_up = self._per(self.pos, self.gcs, gj, gjb, c.gcs_gain_db, np.inf, None if tl is None else tl.T)
+        per_dn = self._per(self.gcs, self.pos, self.jrx, self.jrx_bar, c.gcs_gain_db, np.inf, tl)
         up = (self.rng.random(N) > per_up[:, 0]) & self.alive
         dn = (self.rng.random(N) > per_dn[0]) & self.alive
         self.gcs_up = up & dn
@@ -691,9 +890,12 @@ class World:
         """GPS'i olmayan İHA, GPS'i sağlam en az 3 komşusunu duyuyorsa onlara
         olan menzil ölçümleriyle (UWB benzeri) konumunu düzeltir."""
         for j in np.nonzero(~self.gps_ok & self.alive)[0]:
-            helpers = np.nonzero(heard[:, j] & self.gps_ok & ~self.distrust[j])[0]
+            helpers = np.nonzero(heard[:, j] & self.gps_ok & ~self.distrust[j] & ~self.spoofer)[0]
             if len(helpers) >= 3:
-                fix = self.pos[j] + self.rng.normal(0, 3.0, 3) * [1, 1, 0.3]
+                # Menzil ölçümleriyle konum: yardımcıların kendi konum hataları (ör. fark edilmemiş GPS
+                # aldatması) düzeltmeye taşınır
+                carried = (self.est[helpers] - self.pos[helpers]).mean(0)
+                fix = self.pos[j] + carried + self.rng.normal(0, 3.0, 3) * [1, 1, 0.3]
                 self.est[j] += 0.5 * (fix - self.est[j])
                 self.bias[j] = 0
                 self.dr_t[j], self.sig0[j] = 0.0, 3.0
@@ -710,7 +912,7 @@ class World:
             if self.spoofer[j] or self.relay_for[j] >= 0:
                 self._clear_plan(j)
                 continue
-            if self.resilient and self._gps_recovery(j):
+            if self.ew.recover and self._gps_recovery(j):
                 continue
             done = [t for t in self.path[j] if self.known_done[j, t]]
             for t in done:
@@ -744,7 +946,9 @@ class World:
         Döndürür: İHA şu an kurtarmada mı."""
         now, c = self.t, self.cfg
         sig = self.sigma(j)
-        back = float(np.linalg.norm(self.est[j, :2] - self.last_fix[j]))
+        if not self.recover[j]:
+            self.recover_to[j] = self._recover_point(j)
+        back = float(np.linalg.norm(self.est[j, :2] - self.recover_to[j]))
         if self.recover[j]:
             if sig < 5.0:
                 self.recover[j] = False
@@ -757,6 +961,23 @@ class World:
             self._close_attempt(j, False)        # konumunu kaybedip görevi bıraktı: başarısız deneme
             self._release_claim(j)
         return bool(self.recover[j])
+
+    def _recover_point(self, j):
+        """GPS'i geri almak için gidilecek nokta:
+        - GPS aldatması tespit edildiyse bilinen aldatma bölgesinden dışarı,
+        - karıştırıcının yeri kestirildiyse GPS'in kesildiği dairenin en yakın kenarının biraz dışı,
+        - yoksa son GPS alınan nokta."""
+        c, p = self.cfg, self.est[j, :2]
+        sp = self.spf_t[j] > self.t - 120.0
+        if not self.gps_trust[j] and sp.any():
+            u = p - cell_centers(sp).mean(0)
+            return p + u / max(np.linalg.norm(u), 1.0) * 200.0
+        if self.ew.localize and self.loc_est[j]:
+            q, P = min(self.loc_est[j], key=lambda e: np.linalg.norm(e[0] - p))
+            r = 10 ** ((P - c.gps_jam_dbm - c.pl_d0_db) / (10 * c.pl_exponent))
+            u = p - q
+            return q + u / max(np.linalg.norm(u), 1.0) * (r + 40.0)
+        return self.last_fix[j].copy()
 
     def _decide_cbba(self, j):
         """CBBA: geçersiz teklifleri sil, teklifi geçilen görevi bırak, paketi yeniden doldur."""
@@ -1000,7 +1221,7 @@ class World:
                 continue
             t = self.my_task[i]
             if self.recover[i]:
-                target[i] = self.last_fix[i]     # GPS'i geri almak için son GPS alınan noktaya
+                target[i] = self.recover_to[i]   # GPS'i geri almak için karıştırma/aldatma dışına
             elif self.relay_for[i] >= 0:
                 target[i] = self.relay_pos[i]
             elif self.spoofer[i]:
@@ -1041,8 +1262,31 @@ class World:
             closing = max(0.0, -float(np.dot(self.vel[i] - self.vel[j], away)))   # yaklaşma hızı
             desired[i] += away * (w * 1.5 * c.max_speed + closing)
 
+        # Öngörülü çarpışma önleme: iki İHA'nın en yakın yaklaşma noktası (CPA) 5 s içinde ayrışma
+        # mesafesinin altına inecekse biri yükselir, diğeri alçalır ve yana açılırlar. (Kafa kafaya 24 m/s
+        # yaklaşan iki İHA, 10 m kala fark etse ivme sınırı yüzünden kaçamaz; erken davranmak gerekir.)
+        avoid_dz = np.zeros(N)
+        agl_true = self.pos[:, 2] - self.terrain.height(self.pos[:, 0], self.pos[:, 1])
+        air = flying & (agl_true > 5.0)
+        idx = np.nonzero(air)[0]
+        if len(idx) > 1:
+            dp = self.pos[idx][None, :, :] - self.pos[idx][:, None, :]          # i'den j'ye
+            dv = self.vel[idx][None, :, :] - self.vel[idx][:, None, :]
+            vv = np.maximum((dv ** 2).sum(-1), 1e-6)
+            tc = -(dp * dv).sum(-1) / vv
+            miss = dp + dv * tc[..., None]
+            dm = np.linalg.norm(miss, axis=-1)
+            risk = (tc > 0) & (tc < 5.0) & (dm < c.sep_dist) & (np.linalg.norm(dp, axis=-1) < 80.0)
+            np.fill_diagonal(risk, False)
+            for a, b in zip(*np.nonzero(risk)):
+                i, j = idx[a], idx[b]
+                up = 1.0 if (self.pos[i, 2] > self.pos[j, 2] + 0.5 or (abs(self.pos[i, 2] - self.pos[j, 2]) <= 0.5 and i > j)) else -1.0
+                avoid_dz[i] = up * 8.0
+                side = -miss[a, b, :2] / max(dm[a, b], 0.5)
+                desired[i, :2] += side * c.max_speed * 0.5 * (1.0 - tc[a, b] / 5.0)
+
         # Dirençli: hedefim karıştırma bölgesinde değilse oradan transit geçme
-        if self.resilient:
+        if self.ew.avoid:
             for i in np.nonzero(alive & (self.phase == TASK))[0]:
                 grid = self.jam_grid[i]
                 t = self.my_task[i]
@@ -1062,14 +1306,14 @@ class World:
         at_tgt = self.terrain.height(target[:, 0], target[:, 1])
         # Görevde her İHA kendi irtifa katmanında uçar (çapraz geçişlerde dikey ayrım)
         layer = np.where(formation, 0.0, ((np.arange(N) % 3) - 1) * c.layer_step)
-        z_goal = np.maximum.reduce([here, ahead, at_tgt]) + c.agl + layer
+        z_goal = np.maximum.reduce([here, ahead, at_tgt]) + c.agl + layer + avoid_dz
         ground_true = self.terrain.height(self.pos[:, 0], self.pos[:, 1])
         agl_now = self.pos[:, 2] - ground_true                                   # telemetre (radar altimetre)
         # Emniyet: konum kestirimi kaysa bile (GPS yok) gerçek yere olan yükseklik korunur
         z_goal = np.maximum(z_goal, ground_true + 0.75 * c.agl)
         landing = self.phase == LAND
         near_pad = dist[:, 0] < 4.0
-        z_goal = np.where(landing, np.where(near_pad, at_tgt + 0.3, self.pos[:, 2]), z_goal)
+        z_goal = np.where(landing, np.where(near_pad, at_tgt + 0.3, self.pos[:, 2] + avoid_dz), z_goal)
         vz = np.clip(0.8 * (z_goal - self.pos[:, 2]), -c.max_climb, c.max_climb)
         vz = np.where(landing, np.maximum(vz, -2.5), vz)
         # Yere yakınken (kalkış) önce yüksel, sonra yatay hareket et
@@ -1109,12 +1353,153 @@ class World:
             self.bias[lost] += self.rng.normal(0, c.imu_drift * np.sqrt(c.dt), (n_lost, 3)) * [1, 1, 0.2]
         self.est += (self.vel + self.bias) * c.dt
         ok = self.gps_ok
-        gps = self.pos[ok] + self.rng.normal(0, 1.5, (int(ok.sum()), 3)) * [1, 1, 0.5]
+        gps = self.pos[ok] + self.spoof_off[ok] + self.rng.normal(0, 1.5, (int(ok.sum()), 3)) * [1, 1, 0.5]
         self.est[ok] += 0.3 * (gps - self.est[ok])
         self.last_fix[ok] = self.est[ok, :2]
         self.bias[ok] = 0
         self.dr_t = np.where(ok, 0.0, self.dr_t + c.dt)
         self.sig0[ok] = 1.5
+
+    # ----------------------------------------------------------- elektronik harp (1 Hz)
+    def _gps_spoofing(self):
+        """GPS aldatıcı, yarıçapındaki İHA'nın (GPS'i karıştırılmıyorsa) alıcısını ele geçirir ve bildirilen
+        konumu sürükler. Bölgeden çıkınca alıcı gerçek uydulara döner (kayma sıfırlanır)."""
+        dt = self.cfg.dt
+        covered = np.zeros(self.N, bool)
+        for s in self.gps_spoofers:
+            cov = s.covers(self.pos) & self.alive & self.gps_rx & ~covered
+            if cov.any():
+                off = self.spoof_off[cov] + s.dir * s.drag * dt
+                n = np.linalg.norm(off, axis=1, keepdims=True)
+                self.spoof_off[cov] = off * np.minimum(1.0, s.max_offset / np.maximum(n, 1e-9))
+            covered |= cov
+        new = covered & ~self.spoofed
+        self.captured_at[new] = self.t
+        self.spoof_off[~covered] = 0.0
+        self.spoofed = covered
+        self.last_spoofed[covered] = self.t
+
+    def _spoof_flag(self, i, size=None, why=""):
+        """İHA GPS'ine artık güvenmez: IMU ile devam eder, belirsizliğini büyütür, bölgeyi paylaşır."""
+        if not self.gps_trust[i]:
+            return
+        self.spoof_log.append((round(self.t, 1), int(i), why, bool(self.spoofed[i]), round(self.sigma(i), 1)))
+        self.gps_trust[i] = False
+        self.gps_ok[i] = False
+        self.sig0[i] = max(self.sigma(i), (size or 20.0) + 10.0)
+        self.dr_t[i] = 0.0
+        self.peer_good[i] = 0
+        ix, iy = cell_idx(self.est[i, 0], self.est[i, 1])
+        self.spf_t[i, max(ix - 1, 0):ix + 2, max(iy - 1, 0):iy + 2] = self.t
+        if self.spoofed[i] and np.isfinite(self.captured_at[i]):
+            self.m_spoof_detect.append(self.t - self.captured_at[i])
+        elif self.t - self.last_spoofed[i] > 15.0:
+            self.m["spoof_false_alarm"] += 1     # (bölgeden yeni çıkınca GPS'in geri sıçramasını yakalamak yanlış alarm değil)
+
+    def _ew_1hz(self):
+        c, now, N = self.cfg, self.t, self.N
+        # IMU tutarlılık testi için GPS okuması ve (IMU'nun bildiği) gerçek yer değiştirme geçmişi
+        reading = self.pos[:, :2] + self.spoof_off[:, :2] + self.rng.normal(0, 1.5, (N, 2))
+        self.gps_hist = np.roll(self.gps_hist, -1, axis=1)
+        self.gps_hist[:, -1, :2] = np.where(self.gps_rx[:, None], reading, np.nan)
+        self.gps_hist[:, -1, 2:] = self.pos[:, :2]
+        if self.ew.spoof_detect:
+            self._spoof_tests()
+        if self.ew.trust:
+            self.tr_a *= 0.98                     # eski kanıt yavaş unutulur
+            self.tr_b *= 0.98
+        if self.ew.localize and self.jammers:
+            self._localize_tick()
+
+    def _spoof_tests(self):
+        c, now = self.cfg, self.t
+        W = 10
+        sw = c.imu_drift * np.sqrt(W ** 3 / 3.0)                      # IMU'nun 10 s'lik konum hatası (m)
+        thr = 5.0 * np.sqrt(sw ** 2 + 2 * 1.5 ** 2)                   # test başına yanlış alarm ~ 4/1 000 000
+        old, new = self.gps_hist[:, -1 - W], self.gps_hist[:, -1]
+        e = (new[:, :2] - old[:, :2]) - (new[:, 2:] - old[:, 2:]) + self.rng.normal(0, sw, (self.N, 2))
+        en = np.linalg.norm(e, axis=1)
+        valid = np.isfinite(en) & self.alive & ~self.spoofer
+        sp_cells = self.spf_t > now - 120.0
+        for i in np.nonzero(valid)[0]:
+            if self.gps_trust[i] and en[i] > thr:
+                self._spoof_flag(i, en[i], "imu")                      # 1) IMU ile tutmuyor
+        # 2) Komşu menzil testi: GPS'ten hesaplanan uzaklıklar telsizle ölçülenle tutuyor mu?
+        H = self.heard
+        for i in np.nonzero(self.alive & ~self.spoofer)[0]:
+            K = np.nonzero(H[:, i] & self.alive & ~self.distrust[i] & (self.st_t[i] > now - 1.5))[0]
+            K = K[K != i]
+            if len(K) < 3:
+                continue
+            meas = np.linalg.norm(self.pos[K] - self.pos[i], axis=1) + self.rng.normal(0, 1.0, len(K))
+            pred = np.linalg.norm(self.st_pos[i, K, :2] - self.est[i, :2], axis=1)
+            tol = 6.0 + 2.5 * (self.sigma(i) + self.st_sig[i, K])
+            bad = float(np.median(np.abs(pred - meas) / tol)) > 1.0
+            if self.gps_trust[i]:
+                self.peer_bad[i] = self.peer_bad[i] + 1 if bad else 0
+                if self.peer_bad[i] >= 3:
+                    self._spoof_flag(i, why="komsu")
+            else:
+                # Güveni geri kazanma: aldatma bölgesinin dışında ve GPS hem IMU hem komşularla tutarlı
+                ix, iy = cell_idx(self.est[i, 0], self.est[i, 1])
+                calm = (np.isfinite(en[i]) and en[i] < thr / 2) and not sp_cells[i, ix, iy] and self.gps_rx[i]
+                self.peer_good[i] = self.peer_good[i] + 1 if (calm and not bad) else 0
+                if self.peer_good[i] >= 10:
+                    self.gps_trust[i] = True
+                    self.peer_bad[i] = 0
+
+    def _localize_tick(self):
+        """Dirençli İHA'lar karıştırma gücü ölçer; her İHA 2 s'de bir bildiği ölçümlerle karıştırıcıyı bulur
+        ve kestirilen karıştırma alanını haritasına işler (henüz girmediği karıştırılan hücreler dahil)."""
+        c, now, N = self.cfg, self.t, self.N
+        honest = self.alive & ~self.spoofer
+        # Konumundan emin olmayan (GPS'siz, sigma büyük) İHA ölçüm kaydetmez: yanlış yerde ölçüm kestirimi bozar
+        sig = np.array([self.sigma(i) for i in range(N)])
+        rec = honest & (self.jrx > c.noise_dbm + 3.0) & (sig < 8.0)
+        for i in np.nonzero(rec)[0]:
+            k = self.meas_n[i] % self.MB
+            self.meas_t[i, k], self.meas_xy[i, k] = now, self.est[i, :2]
+            self.meas_db[i, k] = self.jrx[i] + self.rng.normal(0, 2.0)       # gölgeleme / ölçüm hatası
+            self.meas_n[i] += 1
+        tick = int(round(now))
+        errs = []
+        active = np.nonzero(honest & (self.phase >= TRANSIT) & (self.phase <= REGROUP))[0]
+        if len(active) == 0:
+            return
+        turn = set(active[(tick * 2 + np.arange(2)) % len(active)].tolist())   # her saniye sırayla 2 İHA
+        for i in active:
+            if i not in turn:
+                continue
+            know = np.maximum(self.st_t[i], -np.inf)
+            know[i] = now
+            # Son 20 s (hareketli karıştırıcıyı izlemek için); ölçüm azsa pencere 60 s'ye genişler
+            known = (self.meas_t <= know[:, None]) & ~self.distrust[i][:, None]
+            ok = known & (self.meas_t >= now - 20.0)
+            if ok.sum() < 40:
+                ok = known & (self.meas_t >= now - 60.0)
+            if ok.sum() < 6:
+                continue
+            X, Rm = self.meas_xy[ok], self.meas_db[ok]
+            if len(Rm) > 60:                                                # hesap yükü için alt örnekle
+                sel = self.rng.choice(len(Rm), 60, replace=False)
+                X, Rm = X[sel], Rm[sel]
+            est, _ = ew.localize(X, Rm, c)
+            self.loc_est[i] = est
+            if est and self.ew.jam_map:
+                pred = ew.predicted_jam_dbm(self._cell_xy, est, c).reshape(GRID_N, GRID_N)
+                self.jam_t[i][pred > c.jam_detect_dbm] = now
+            if est:
+                errs.append(self._loc_error(est))
+        if errs:
+            err = float(np.median(errs))
+            self.loc_err_log.append((now, err))
+            if np.isnan(self.t_locate) and err < 50.0:
+                self.t_locate = now
+
+    def _loc_error(self, est):
+        """Kestirimin hatası: her gerçek karıştırıcının en yakın kestirime uzaklığının ortalaması."""
+        q = np.array([e[0] for e in est])
+        return float(np.mean([np.linalg.norm(q - j.xy, axis=1).min() for j in self.jammers]))
 
     def _check_arrivals(self):
         c = self.cfg
@@ -1129,7 +1514,7 @@ class World:
                     self.m["redundant"] += 1
                 else:
                     self.done[t], self.done_time[t] = True, self.t
-                self.known_done[i, t] = True
+                self.known_done[i, t], self.done_by[i, t] = True, i
                 if self.att_task[i] == t:
                     self._close_attempt(i, True)
                 self._drop(i, t)
@@ -1148,13 +1533,18 @@ class World:
                     self.cooldown[i, t] = self.t + self.cfg.retry_cooldown
                     self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = -np.inf, -1, -np.inf
                     self._drop(i, t)
+                    # Konumundan emin olduğu (GPS sağlam) hâlde hedefi bulamadı: GPS yalan söylüyor olabilir
+                    if self.ew.spoof_detect and self.search_sig[i] < 8.0 and self.gps_ok[i]:
+                        self._spoof_flag(i, why="arama")
             elif np.linalg.norm(self.est[i, :2] - self.tasks[t, :2]) < 0.4 * c.task_radius:
                 # "Vardım" sanıyor ama hedef kamerada yok: konum kestirimi yanlış
                 sig = self.sigma(i)
-                if self.resilient and sig > c.task_radius / 2:
-                    # Dirençli: belirsizlik çemberini (2.5 sigma) kapsayan spiral arama
+                if self.ew.search:
+                    # Dirençli: görmediği hedefe "bitti" demez; belirsizlik çemberini (2.5 sigma)
+                    # kapsayan spiral arama yapar
                     self.search[i] = 1.0
                     self.search_r[i] = min(2.5 * sig + 10.0, 100.0)
+                    self.search_sig[i] = sig
                 else:
                     self._give_up(i, t)
 
@@ -1164,7 +1554,7 @@ class World:
             self.m["false_done"] += 1
         if self.att_task[i] == t:
             self._close_attempt(i, False)
-        self.known_done[i, t] = True
+        self.known_done[i, t], self.done_by[i, t] = True, i
         self._drop(i, t)
 
     # ----------------------------------------------------------- ölçümler
@@ -1210,6 +1600,41 @@ class World:
         got = np.where(self.done & sched, self.value * np.exp(self.lnlam * late), 0.0)
         return float(got.sum() / max(self.value[sched].sum(), 1e-9))
 
+    def _trust_stats(self):
+        """Dürüst İHA'ların saldırganları dışlama oranı ve dürüst bir arkadaşı yanlışlıkla dışlama oranı."""
+        hon = np.nonzero(self.alive & ~self.spoofer)[0]
+        sp = np.nonzero(self.spoofer)[0]
+        caught = float(self.distrust[np.ix_(hon, sp)].mean()) if len(hon) and len(sp) else np.nan
+        others = self.distrust[np.ix_(hon, hon)]
+        wrong = float(others.sum() / max(len(hon) * (len(hon) - 1), 1)) if len(hon) > 1 else 0.0
+        return caught, wrong
+
+    def _frame_jam_est(self):
+        """Sürünün kestirdiği karıştırıcılar (en çok ölçüm yapmış dürüst İHA'nın kestirimi)."""
+        cand = [i for i in range(self.N) if self.alive[i] and not self.spoofer[i] and self.loc_est[i]]
+        if not cand:
+            return []
+        i = max(cand, key=lambda k: self.meas_n[k])
+        return [{"p": [round(float(q[0]), 1), round(float(q[1]), 1), round(float(self.terrain.height(*q)), 1)],
+                 "pw": round(P, 1), "r": round(radio.jam_radius(P, self.cfg), 1)} for q, P in self.loc_est[i]]
+
+    def _ew_summary(self):
+        errs = [e for _, e in self.loc_err_log]
+        tail = [e for t, e in self.loc_err_log if t >= self.t - 60.0]
+        caught, wrong = self._trust_stats()
+        honest = ~self.spoofer
+        return dict(
+            jam_loc_err=float(np.mean(errs)) if errs else np.nan,          # karıştırıcı konum hatası (m)
+            jam_loc_err_end=float(np.mean(tail)) if tail else np.nan,
+            t_locate=float(self.t_locate),                                 # 50 m'den iyi bulunduğu an (s)
+            spoof_captured=int(np.isfinite(self.captured_at[honest]).sum()),
+            spoof_detect_time=float(np.mean(self.m_spoof_detect)) if self.m_spoof_detect else np.nan,
+            spoof_detected=len(self.m_spoof_detect),
+            spoof_false_alarm=self.m["spoof_false_alarm"],
+            liars_caught=caught,                                           # saldırganları dışlama oranı
+            honest_excluded=wrong,                                         # dürüst arkadaşı yanlış dışlama
+        )
+
     def summary(self):
         m = self.m
         sched = np.isfinite(self.appear)
@@ -1223,6 +1648,7 @@ class World:
             high_time=float(np.mean(self.done_time[hi] - self.ref_t[hi])) if hi.any() else np.nan,
             reassign=m["reassign"],
             task_dist=m["task_dist"],
+            **self._ew_summary(),
             finish_time=float(self.finished_t),
             mean_task_time=float(np.nanmean(self.done_time)) if self.done.any() else np.nan,
             redundant=m["redundant"],
@@ -1289,7 +1715,8 @@ class World:
         drones = []
         for i in range(self.N):
             mode = (4 if not self.alive[i] else 2 if self.spoofer[i] else 3 if self.relay_for[i] >= 0
-                    else 1 if self.search[i] > 0 else 5 if self.recover[i] else 0)
+                    else 1 if self.search[i] > 0 else 5 if self.recover[i]
+                    else 7 if not self.gps_trust[i] else 6 if self.spoofed[i] else 0)
             plan = [int(t) for t in self.path[i]] if self.alive[i] and not self.spoofer[i] else []
             drones.append({
                 "id": i, "p": r(self.pos[i]), "e": r(self.est[i]), "v": r(self.vel[i]),
@@ -1304,7 +1731,7 @@ class World:
                 q = 0.5 * (self.link_q[i, j] + self.link_q[j, i])
                 if q > 0.05:
                     links += [i, j, round(float(q), 3)]
-        ctr = cell_centers(self.jam_grid.any(0)) if self.resilient else np.zeros((0, 2))
+        ctr = cell_centers(self.jam_grid.any(0)) if self.ew.jam_map else np.zeros((0, 2))
         jam_cells = [round(float(v), 1) for v in ctr.ravel()]
         live = self.phase[self.alive]
         dominant = int(np.bincount(live, minlength=7).argmax()) if len(live) else LANDED
@@ -1319,7 +1746,12 @@ class World:
             "drones": drones,
             "links": links,
             "tasks": tasks,
-            "jammers": [{"p": r(p), "pw": pw, "r": round(radio.jam_radius(pw, c), 1)} for p, pw in self.jammers],
+            "jammers": [{"p": r(j.pos), "pw": j.power, "r": round(radio.jam_radius(j.comm_power, c), 1),
+                         "band": j.band, "v": r(j.vel)} for j in self.jammers],
+            "jamEst": self._frame_jam_est(),
+            "spoofers": [{"p": r(np.r_[s.xy, float(self.terrain.height(*s.xy))]), "r": s.radius}
+                         for s in self.gps_spoofers],
+            "fhss": int(self.ew.fhss),
             "gcs": {"p": r(self.gcs), "on": int(self.central), "up": [int(x) for x in self.gcs_up]},
             "cell": CELL,
             "jamCells": jam_cells,
@@ -1336,5 +1768,9 @@ class World:
                 "formErr": round(float(self.slot_err_true[fm].mean()), 1) if fm.any() else 0.0,
                 "relays": int((self.relay_for >= 0).sum()),
                 "alive": int(self.alive.sum()),
+                "jamErr": round(self.loc_err_log[-1][1], 1) if self.loc_err_log else -1.0,
+                "spoofed": int((self.spoofed & self.alive).sum()),
+                "spoofSeen": int((~self.gps_trust & self.alive).sum()),
+                "liars": round(float(np.nan_to_num(self._trust_stats()[0], nan=-1.0)), 2),
             },
         }

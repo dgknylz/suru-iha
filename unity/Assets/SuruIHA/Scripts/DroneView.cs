@@ -33,6 +33,8 @@ namespace SuruIHA
         public static readonly Color ColSpoof = new Color(0.8f, 0.25f, 1f);
         public static readonly Color ColRelay = new Color(0.1f, 0.95f, 1f);
         public static readonly Color ColFailed = new Color(0.05f, 0.05f, 0.05f);
+        public static readonly Color ColGpsSpoofed = new Color(1f, 0.35f, 0.75f);   // GPS'i aldatılıyor (fark etmedi)
+        public static readonly Color ColSpoofSeen = new Color(1f, 0.92f, 0.25f);    // aldatmayı fark etti
 
         bool Failed => State != null && State.mode == 4;
         bool Parked => State != null && (State.phase == 6 || (State.phase == 0 && transform.localPosition.y - GroundY < 0.8f));
@@ -136,6 +138,7 @@ namespace SuruIHA
                 hasState = true;
             }
             Color c = s.mode == 4 ? ColFailed : s.mode == 2 ? ColSpoof : s.mode == 3 ? ColRelay
+                    : s.mode == 7 ? ColSpoofSeen : s.mode == 6 ? ColGpsSpoofed
                     : s.gps == 0 ? ColNoGps : s.mode == 1 ? ColSearch : s.jam > 0.35f ? ColJammed : ColNormal;
             SwarmMaterials.SetBlock(block, c * 0.3f, c * vis.glow * 2f);
             foreach (var r in leds) r.SetPropertyBlock(block);

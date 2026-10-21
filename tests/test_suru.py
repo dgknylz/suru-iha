@@ -195,6 +195,80 @@ def test_cbba_sahte_teklife_dayanir():
     assert w.done.mean() >= 0.95, "dirençli CBBA sahte teklif yayan İHA'yı dışlamalı"
 
 
+# ------------------------------------------------------------------ elektronik harp (Aşama 3)
+def test_arazi_golgesi_kirinim():
+    """Bıçak sırtı kırınımı: düz arazide kayıp yok, tepenin arkası birkaç dB'den fazla kayıplı."""
+    assert radio.knife_edge_db(np.array([0.0]))[0] == pytest.approx(6.0, abs=0.1)
+    assert radio.knife_edge_db(np.array([-1.0]))[0] == 0.0
+
+    class Tepe:
+        flat = False
+
+        def height(self, x, y):
+            return np.where(np.abs(np.asarray(x) - 500.0) < 50.0, 80.0, 0.0)
+    a, b = np.array([[0.0, 0.0, 20.0]]), np.array([[1000.0, 0.0, 20.0]])
+    assert radio.terrain_loss_db(a, b, Tepe())[0, 0] > 20.0
+    assert radio.terrain_loss_db(a, b + [0, 0, 300.0], Tepe())[0, 0] == 0.0
+
+
+def test_nokta_karistirici_ve_fhss():
+    from suru import ew
+    cfg = SimConfig()
+    terrain = World(make_config("resilient", None, 0.0, 0)).terrain
+    j = ew.Jammer({"pos": (0.0, 0.0, 15.0), "power_dbm": 20.0, "band": "nokta"}, terrain)
+    p = np.array([[100.0, 0.0, 40.0]])
+    assert radio.jam_power_dbm(p, [j], cfg, band="gps")[0] < -200, "nokta karıştırıcı GPS'e dokunmaz"
+    w = World(make_config("resilient", 25.0, 0.0, 0, jammer_mode="nokta"))
+    w2 = World(make_config("resilient", 25.0, 0.0, 0, jammer_mode="nokta", ew_fhss=False))
+    for x in (w, w2):
+        x.jrx = radio.jam_power_dbm(x.pos, x.jammers, x.cfg, band="comm")
+        x.jrx_bar = radio.jam_power_dbm(x.pos, x.jammers, x.cfg, band="gps")
+    tx, rx = np.array([[200.0, 200.0, 40.0]]), np.array([[300.0, 200.0, 40.0]])
+    jam = radio.jam_power_dbm(rx, w.jammers, w.cfg, band="comm")
+    per_fhss = w._per(tx, rx, jam, np.array([-300.0]))[0, 0]
+    per_sabit = w2._per(tx, rx, jam, np.array([-300.0]))[0, 0]
+    assert per_fhss < per_sabit, "frekans atlama nokta karıştırmaya karşı paket kaybını azaltmalı"
+
+
+def test_hareketli_karistirici_yol_alir():
+    w = World(make_config("resilient", 20.0, 0.0, 0, jammer_mode="hareketli"))
+    p0 = w.jammers[0].xy.copy()
+    for _ in range(100):
+        w.step()
+    assert np.linalg.norm(w.jammers[0].xy - p0) == pytest.approx(50.0, abs=1.0)   # 5 m/s x 10 s
+
+
+def test_karistirici_konum_bulma():
+    from suru import ew
+    cfg, rng = SimConfig(), np.random.default_rng(3)
+
+    def olc(X, J):
+        tot = sum(10 ** ((P - (40 + 25 * np.log10(np.sqrt(((X - q) ** 2).sum(1) + 625)))) / 10) for q, P in J)
+        return 10 * np.log10(tot) + rng.normal(0, 2, len(X))
+    X = np.c_[rng.uniform(-330, 330, 60), rng.uniform(80, 680, 60)]
+    for J in ([(np.array([260.0, 230.0]), 20.0)],
+              [(np.array([260.0, 230.0]), 20.0), (np.array([-230.0, 520.0]), 20.0)]):
+        est, _ = ew.localize(X, olc(X, J), cfg)
+        assert len(est) == len(J), "karıştırıcı sayısı doğru bulunmalı"
+        q = np.array([e[0] for e in est])
+        assert max(np.linalg.norm(q - j[0], axis=1).min() for j in J) < 40.0
+
+
+def test_gps_aldatma_tespit_edilir():
+    korumasiz = fly(make_config("decentralized", None, 0.0, 1, gps_spoof="hizli")).summary()
+    direncli = fly(make_config("resilient", None, 0.0, 1, gps_spoof="hizli")).summary()
+    assert korumasiz["false_done"] > 3, "aldatılan korumasız İHA hedefe vardığını sanmalı"
+    assert direncli["spoof_detected"] > 0 and direncli["spoof_detect_time"] < 20.0
+    assert direncli["false_done"] == 0 and direncli["completion"] >= 0.9
+
+
+def test_sinsi_saldirgan_dislanir():
+    s = fly(make_config("resilient", None, 0.2, 2, spoof_mode="sneaky")).summary()
+    assert s["liars_caught"] == 1.0, "dürüst İHA'lar sinsi saldırganları dışlamalı"
+    assert s["honest_excluded"] < 0.05, "dürüst arkadaşlar yanlışlıkla dışlanmamalı"
+    assert s["completion"] >= 0.95
+
+
 def test_yapay_zeka_agi():
     net = decision.AIValue()
     F = np.random.default_rng(1).uniform(0, 1, (7, len(decision.AI_FEATURES)))

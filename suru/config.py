@@ -106,18 +106,66 @@ class SimConfig:
     per_slope: float = 0.8          # paket hata eğrisinin dikliği
 
     # --- elektronik harp ---
+    # Karıştırıcı: pos = (x, y, antenin yerden yüksekliği), band = "genis" (haberleşme + GPS) ya da
+    # "nokta" (yalnızca haberleşme kanalı, gücü tek kanala yığılır), route + speed verilirse hareket eder.
     jammers: list = field(default_factory=lambda: [{"pos": (260.0, 230.0, 15.0), "power_dbm": 20.0}])
+    jammer_mode: str = "sabit"      # (kayıt için) karıştırıcı senaryosu: sabit | hareketli | iki | nokta | tepe | sirt
+    terrain_radio: bool = True      # arazi radyo sinyalini keser (tek bıçak sırtı kırınımı, ITU-R P.526)
     gps_jam_dbm: float = -80.0      # bu güçten fazla karıştırma alan İHA GPS'i kaybeder
     jam_detect_dbm: float = -82.0   # (dirençli) İHA'nın "karıştırılıyorum" dediği eşik
+    jam_cell_ttl: float = 90.0      # (dirençli) karıştırma hücresi bu kadar teyit edilmezse unutulur (hareketli karıştırıcı)
     imu_drift: float = 0.15         # GPS yokken IMU hız sapmasının büyüme hızı (m/s / sqrt(s))
     spoof_fraction: float = 0.0     # sahte bilgi yayan ele geçirilmiş İHA oranı
-    spoof_period: float = 10.0      # (merkezi) saldırganın sahte "tamamlandı" raporu aralığı (s)
+    spoof_mode: str = "naive"       # saldırgan davranışı: naive (her görevi ister) | sneaky (sinsi, bkz. ew.py)
+    spoof_period: float = 10.0      # saldırganın sahte "tamamlandı" raporu aralığı (s)
+    gps_spoof: str = ""             # (kayıt için) GPS aldatma senaryosu: "" | hizli | yavas
+    gps_spoofers: list = field(default_factory=list)   # {"pos": (x, y), "radius": m, "drag": m/s, "dir_deg": derece}
+
+    # --- dirençli stratejinin mekanizmaları (ablasyon: tek tek kapatıp katkısını ölçmek için) ---
+    ew_jam_map: bool = True         # karıştırmayı algılama ve ortak karıştırma haritası
+    ew_long_ttl: bool = True        # karıştırma bölgesindeki sessiz arkadaşı "meşgul" sayma (uzun TTL)
+    ew_avoid: bool = True           # karıştırma bölgesinden transit geçmeme
+    ew_coop_loc: bool = True        # GPS'siz İHA'nın komşulardan işbirlikçi konum düzeltmesi
+    ew_search: bool = True          # hedefte spiral arama, görmeden "bitti" dememe
+    ew_recover: bool = True         # GPS kurtarma (konumunu kaybeden İHA GPS'i geri almaya gider)
+    ew_trust: bool = True           # makullük kontrolü ve güven sistemi (sahte bilgiye karşı)
+    ew_localize: bool = True        # karıştırıcının yerini bulma ve karıştırma alanını önceden kestirme
+    ew_fhss: bool = True            # frekans atlamalı haberleşme (nokta karıştırmaya karşı)
+    ew_spoof_detect: bool = True    # GPS aldatma tespiti (IMU tutarlılığı + komşu menzil ölçümü)
 
     def relay_enabled(self):
         return bool(self.relay) and self.strategy != "centralized"
 
 
-def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, **kw):
+# Karıştırıcı senaryoları (güç P dBm). Hareketli karıştırıcı görev alanının çevresinde 5 m/s ile devriye gezer.
+def jammer_scenario(mode, P):
+    P = float(P)
+    if mode == "sabit":
+        return [{"pos": (260.0, 230.0, 15.0), "power_dbm": P}]
+    if mode == "hareketli":
+        route = [(280.0, 150.0), (280.0, 480.0), (-250.0, 480.0), (-250.0, 150.0), (280.0, 150.0)]
+        return [{"pos": (280.0, 150.0, 15.0), "power_dbm": P, "route": route, "speed": 5.0}]
+    if mode == "iki":
+        return [{"pos": (260.0, 230.0, 15.0), "power_dbm": P}, {"pos": (-230.0, 520.0, 15.0), "power_dbm": P}]
+    if mode == "nokta":
+        return [{"pos": (260.0, 230.0, 15.0), "power_dbm": P, "band": "nokta"}]
+    if mode == "tepe":                    # tepenin üstünde: yüksekten her yeri görür
+        return [{"pos": (-60.0, 760.0, 15.0), "power_dbm": P}]
+    if mode == "sirt":                    # sırtın arkasında: tepeler sinyalinin bir kısmını keser (arazi kalkanı)
+        return [{"pos": (-150.0, 925.0, 15.0), "power_dbm": P}]
+    raise ValueError(f"bilinmeyen karıştırıcı senaryosu: {mode}")
+
+
+# GPS aldatıcı senaryoları: yerdeki verici 250 m içindeki İHA'ların GPS'ini ele geçirip konumlarını doğuya sürükler
+GPS_SPOOF_MODES = {
+    "hizli": [{"pos": (-150.0, 420.0), "radius": 250.0, "drag": 2.0, "dir_deg": 0.0}],
+    "yavas": [{"pos": (-150.0, 420.0), "radius": 250.0, "drag": 0.5, "dir_deg": 0.0}],
+}
+
+
+def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jammer_mode="sabit", gps_spoof="", **kw):
     """Deney betikleri için kısayol. jammer_power=None -> karıştırıcı yok."""
-    jammers = [] if jammer_power is None else [{"pos": (260.0, 230.0, 15.0), "power_dbm": float(jammer_power)}]
-    return SimConfig(strategy=strategy, jammers=jammers, spoof_fraction=spoof, seed=seed, **kw)
+    jammers = [] if jammer_power is None else jammer_scenario(jammer_mode, jammer_power)
+    spoofers = GPS_SPOOF_MODES[gps_spoof] if gps_spoof else []
+    return SimConfig(strategy=strategy, jammers=jammers, spoof_fraction=spoof, seed=seed, jammer_mode=jammer_mode,
+                     gps_spoof=gps_spoof, gps_spoofers=spoofers, **kw)

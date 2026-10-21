@@ -143,6 +143,24 @@ namespace SuruIHA
             while (Time.realtimeSinceStartup < until4) yield return null;
             log.AppendLine($"komut testi (F4 planlama): {plBefore} -> {vis.Frame?.planner} t={vis.Frame?.t:0.0}s");
 
+            // Elektronik harp: M (hareketli karıştırıcı) + U (hızlı GPS aldatıcı), sürü görev alanına varınca çekim
+            vis.Receiver.SendCommand("{\"cmd\":\"jammer_mode\"}");
+            vis.Receiver.SendCommand("{\"cmd\":\"gps_spoof\"}");
+            float untilEw = Time.realtimeSinceStartup + 40f;
+            while (Time.realtimeSinceStartup < untilEw) yield return null;
+            cam.mode = SwarmCamera.Mode.Top;
+            float untilTop = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < untilTop) yield return null;
+            Capture(cam.GetComponent<Camera>(), Path.Combine(outDir, "j_eh_kusbakisi.png"));
+            var fe = vis.Frame;
+            log.AppendLine($"komut testi (M/U elektronik harp): karistirici={fe?.jammers?.Length} tur={fe?.jammers?[0].band} " +
+                           $"tahmin={fe?.jamEst?.Length} hata={fe?.m?.jamErr:0}m aldatici={fe?.spoofers?.Length} " +
+                           $"ele_gecen={fe?.m?.spoofed} fark_eden={fe?.m?.spoofSeen} t={fe?.t:0.0}s");
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            float untilCine = Time.realtimeSinceStartup + 8f;
+            while (Time.realtimeSinceStartup < untilCine) yield return null;
+            Capture(cam.GetComponent<Camera>(), Path.Combine(outDir, "k_eh_sinematik.png"));
+
             // Yer seviyesinden bir çekim (ot öbekleri ve arazi ayrıntısı için)
             var camComp = cam.GetComponent<Camera>();
             var arazi = GameObject.Find("Arazi");

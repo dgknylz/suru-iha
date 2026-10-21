@@ -73,6 +73,8 @@ namespace SuruIHA
             if (SwarmInput.Down(SwarmInput.K.F3)) rx.SendCommand("{\"cmd\":\"strategy\",\"value\":\"resilient\"}");
             if (SwarmInput.Down(SwarmInput.K.F4)) rx.SendCommand("{\"cmd\":\"planner\"}");
             if (SwarmInput.Down(SwarmInput.K.Y)) rx.SendCommand("{\"cmd\":\"popup\"}");
+            if (SwarmInput.Down(SwarmInput.K.M)) rx.SendCommand("{\"cmd\":\"jammer_mode\"}");
+            if (SwarmInput.Down(SwarmInput.K.U)) rx.SendCommand("{\"cmd\":\"gps_spoof\"}");
             if (SwarmInput.Down(SwarmInput.K.Plus)) rx.SendCommand("{\"cmd\":\"jammer\",\"step\":1}");
             if (SwarmInput.Down(SwarmInput.K.Minus)) rx.SendCommand("{\"cmd\":\"jammer\",\"step\":-1}");
             if (SwarmInput.Down(SwarmInput.K.X)) rx.SendCommand("{\"cmd\":\"spoof\"}");
@@ -147,12 +149,24 @@ namespace SuruIHA
                     Row("Uçan İHA · röle", $"{m.alive} · {m.relays}", line);
                 }
                 if (f.jammers != null && f.jammers.Length > 0)
-                    Row("Karıştırıcı", $"{f.jammers[0].pw:0} dBm · ~{f.jammers[0].r:0} m", line);
+                {
+                    var j0 = f.jammers[0];
+                    bool moving = j0.v != null && j0.v.Length > 1 && (j0.v[0] * j0.v[0] + j0.v[1] * j0.v[1]) > 0.5f;
+                    string kind = (f.jammers.Length > 1 ? $"{f.jammers.Length} adet · " : "") +
+                                  (j0.band == "nokta" ? "nokta" : "geniş bant") + (moving ? " · hareketli" : "");
+                    Row("Karıştırıcı", $"{j0.pw:0} dBm · {kind}", line);
+                    if (m != null)
+                        Row("Sürünün karıştırıcı tahmini", m.jamErr >= 0 ? $"hata {m.jamErr:0} m" : "aranıyor…", line);
+                    if (f.fhss == 1) Row("Frekans atlama (FHSS)", "açık", line);
+                }
                 else
                     Row("Karıştırıcı", "kapalı", line);
+                if (f.spoofers != null && f.spoofers.Length > 0 && m != null)
+                    Row("GPS aldatma: ele geçen · fark eden", $"{m.spoofed} · {m.spoofSeen}", line);
                 if (f.ctl != null)
                 {
-                    Row("Saldırgan İHA", f.ctl.spoof > 0 ? $"%{f.ctl.spoof * 100:0}" : "yok", line);
+                    string liar = f.ctl.spoofMode == "sneaky" ? "sinsi" : "saf";
+                    Row("Saldırgan İHA", f.ctl.spoof > 0 ? $"%{f.ctl.spoof * 100:0} {liar}" + (m != null && m.liars >= 0 ? $" · %{m.liars * 100:0} dışlandı" : "") : "yok", line);
                     Row("Harita", $"#{f.ctl.seed}", line);
                     if (f.ctl.finished == 1)
                         GUILayout.Label("<color=#33ff73><b>SÜRÜ İNDİ</b></color> · [N] yeni harita", small);
@@ -162,7 +176,10 @@ namespace SuruIHA
             }
             GUILayout.Space(10 * s);
             GUILayout.Label("<b>İHA ışığı</b>  <color=#26ff8c>●</color> normal  <color=#ff9e1a>●</color> karıştırılıyor  " +
-                            "<color=#ff2e26>●</color> GPS yok  <color=#4099ff>●</color> arıyor  <color=#cc40ff>●</color> saldırgan  <color=#1af2ff>●</color> röle  <color=#555555>●</color> arızalı", small);
+                            "<color=#ff2e26>●</color> GPS yok  <color=#4099ff>●</color> arıyor  <color=#cc40ff>●</color> saldırgan  <color=#1af2ff>●</color> röle  <color=#555555>●</color> arızalı  " +
+                            "<color=#ff59bf>●</color> GPS'i aldatılıyor  <color=#ffeb40>●</color> aldatmayı fark etti", small);
+            GUILayout.Label("<b>EH</b>  <color=#ff4d2e>◯</color> geniş bant karıştırıcı  <color=#ffb31a>◯</color> nokta karıştırıcı  " +
+                            "<color=#33d9ff>◯</color> GPS aldatıcı  <color=#ff8c1a>⊕</color> sürünün karıştırıcı tahmini (beyaz çizgi = hata)", small);
             GUILayout.Label("<b>Görev</b>  <color=#d9e0f2>●</color> açık  <color=#ffc733>●</color> yolda  " +
                             "<color=#33ff73>●</color> tamam  <color=#ff2640>●</color> yanlış tamam  <color=#bf4dff>●</color> yeni, sürü bilmiyor  " +
                             "· halka sayısı = öncelik (1-3) · renkli çizgi = İHA'nın planı", small);
@@ -182,8 +199,8 @@ namespace SuruIHA
                             $"{1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} FPS", small);
             GUILayout.Label($"Kamera: <b>{camName}</b>   [C] sinematik [O] serbest [F/Tab/1-9] takip [T] taktik\n" +
                             "[L] bağlantılar  [G] konum hayaletleri  [J] karıştırma haritası  [B] uzak işaretler  [P] planlar  [H] paneli gizle  [Esc] çıkış\n" +
-                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [F4] planlama algoritması  [+/-] karıştırıcı  [X] saldırgan  " +
-                            "[N] yeni harita  [V] düzen  [Z] arıza  [Y] yeni hedef", small);
+                            "<b>Senaryo</b>  [F1] merkezi [F2] merkeziyetsiz [F3] dirençli  [F4] planlama algoritması  [+/-] karıştırıcı gücü  " +
+                            "[M] karıştırıcı türü  [U] GPS aldatıcı  [X] saldırgan  [N] yeni harita  [V] düzen  [Z] arıza  [Y] yeni hedef", small);
             GUILayout.EndVertical();
             GUILayout.EndArea();
         }

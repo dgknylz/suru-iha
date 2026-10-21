@@ -9,7 +9,8 @@
 
 Unity'den klavyeyle senaryo değiştirilebilir (UDP 5066 komut kanalı):
     F1/F2/F3 mimari, F4 planlama algoritması (açgözlü / CBBA / yapay zekâ), +/- karıştırıcı gücü,
-    X saldırgan aç/kapa, N yeni harita, V düzen tipi (V / hat / kol / halka),
+    M karıştırıcı türü (sabit / hareketli / iki / nokta / tepe), U GPS aldatıcı (yok / hızlı / yavaş),
+    X saldırgan (yok / saf / sinsi), N yeni harita, V düzen tipi (V / hat / kol / halka),
     Z bir İHA'yı arızalandır, Y görev alanına yeni bir hedef ekle.
 Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
 İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
@@ -24,6 +25,9 @@ from suru import World, make_config, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES
 from suru.bridge import UnityBridge
 
 POWER_STEPS = [None, 10.0, 20.0, 30.0]   # karıştırıcı kademeleri (None = kapalı)
+JAMMER_MODES = ["sabit", "hareketli", "iki", "nokta", "tepe", "sirt"]
+GPS_SPOOFS = ["", "hizli", "yavas"]
+SPOOF_STEPS = [(0.0, "naive"), (0.2, "naive"), (0.2, "sneaky")]   # saldırgan: yok -> saf -> sinsi
 
 
 def parse():
@@ -44,6 +48,9 @@ def parse():
     p.add_argument("--relay", action="store_true", help="bağlantı koruma rölesini aç (merkeziyetsiz)")
     p.add_argument("--planner", default="cbba", choices=list(PLANNERS), help="görev paylaşım algoritması")
     p.add_argument("--popups", type=int, default=4, help="görev sırasında beliren yeni hedef sayısı")
+    p.add_argument("--jammer-mode", default="sabit", choices=JAMMER_MODES, help="karıştırıcı senaryosu")
+    p.add_argument("--gps-spoof", default="", choices=GPS_SPOOFS, help="GPS aldatıcı: '' | hizli | yavas")
+    p.add_argument("--spoof-mode", default="naive", choices=["naive", "sneaky"], help="saldırgan davranışı")
     return p.parse_args()
 
 
@@ -92,7 +99,14 @@ def apply(cmd, st, world):
         i = POWER_STEPS.index(st["power"]) if st["power"] in POWER_STEPS else 2
         st["power"] = POWER_STEPS[max(0, min(len(POWER_STEPS) - 1, i + int(cmd.get("step", 0))))]
     elif c == "spoof":
-        st["spoof"] = 0.0 if st["spoof"] > 0 else 0.2
+        k = SPOOF_STEPS.index((st["spoof"], st["spoof_mode"])) if (st["spoof"], st["spoof_mode"]) in SPOOF_STEPS else 0
+        st["spoof"], st["spoof_mode"] = SPOOF_STEPS[(k + 1) % len(SPOOF_STEPS)]
+    elif c == "jammer_mode":
+        st["jammer_mode"] = JAMMER_MODES[(JAMMER_MODES.index(st["jammer_mode"]) + 1) % len(JAMMER_MODES)]
+        if st["power"] is None:
+            st["power"] = 20.0
+    elif c == "gps_spoof":
+        st["gps_spoof"] = GPS_SPOOFS[(GPS_SPOOFS.index(st["gps_spoof"]) + 1) % len(GPS_SPOOFS)]
     elif c == "restart":
         st["seed"] += 1
     else:
@@ -101,29 +115,33 @@ def apply(cmd, st, world):
 
 
 def describe(st):
-    p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm"
-    return (f"{STRATEGY_NAMES[st['strategy']]} | {PLANNER_NAMES[st['planner']]} | karıştırıcı: {p} | "
-            f"saldırgan: %{st['spoof'] * 100:.0f} | harita {st['seed']}")
+    p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm {st['jammer_mode']}"
+    g = f" | GPS aldatma: {st['gps_spoof']}" if st["gps_spoof"] else ""
+    sp = f"%{st['spoof'] * 100:.0f} {'sinsi' if st['spoof_mode'] == 'sneaky' else 'saf'}" if st["spoof"] else "yok"
+    return (f"{STRATEGY_NAMES[st['strategy']]} | {PLANNER_NAMES[st['planner']]} | karıştırıcı: {p}{g} | "
+            f"saldırgan: {sp} | harita {st['seed']}")
 
 
 def main():
     a = parse()
     st = {"strategy": a.strategy, "power": None if a.jammer.lower() == "off" else float(a.jammer),
-          "spoof": a.spoof, "seed": a.seed, "planner": a.planner}
+          "spoof": a.spoof, "seed": a.seed, "planner": a.planner, "jammer_mode": a.jammer_mode,
+          "gps_spoof": a.gps_spoof, "spoof_mode": a.spoof_mode}
     bridge = UnityBridge(port=a.port)
     try:
         ctl = Controls(a.cmd_port)
     except OSError:
         ctl = None
         print(f"Uyarı: komut portu {a.cmd_port} açılamadı, Unity'den kontrol kapalı.")
-    print("Unity'de: F1/F2/F3 mimari, F4 planlama, +/- karıştırıcı, X saldırgan, N yeni harita, V düzen, Z arıza, "
-          "Y yeni hedef. Çıkış: Ctrl+C")
+    print("Unity'de: F1/F2/F3 mimari, F4 planlama, +/- karıştırıcı gücü, M karıştırıcı türü, U GPS aldatıcı, "
+          "X saldırgan, N yeni harita, V düzen, Z arıza, Y yeni hedef. Çıkış: Ctrl+C")
     st["formation"] = a.formation
 
     while True:
         cfg = make_config(st["strategy"], st["power"], st["spoof"], st["seed"], n_drones=a.drones, n_tasks=a.tasks,
                           formation=st["formation"], failures=a.failures, relay=a.relay, planner=st["planner"],
-                          n_popup=a.popups, live_reserve=8)
+                          n_popup=a.popups, live_reserve=8, jammer_mode=st["jammer_mode"],
+                          gps_spoof=st["gps_spoof"], spoof_mode=st["spoof_mode"])
         world = World(cfg)
         print(f"\n== {describe(st)} ==")
         steps_per_frame = max(1, round(a.speed / a.fps / cfg.dt))
@@ -131,7 +149,8 @@ def main():
 
         def send():
             f = world.frame()
-            f["ctl"] = {"power": -1 if st["power"] is None else st["power"], "spoof": st["spoof"], "seed": st["seed"],
+            f["ctl"] = {"power": -1 if st["power"] is None else st["power"], "spoof": st["spoof"],
+                        "spoofMode": st["spoof_mode"], "seed": st["seed"],
                         "finished": int(world.flight_over()), "missionDone": int(world.finished())}
             bridge.send(f)
             return f

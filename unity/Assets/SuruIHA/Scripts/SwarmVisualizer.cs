@@ -59,6 +59,8 @@ namespace SuruIHA
         readonly List<LineRenderer> gcsLinks = new List<LineRenderer>();
         readonly List<LineRenderer> relayLines = new List<LineRenderer>();
         readonly List<LineRenderer> planLines = new List<LineRenderer>();
+        readonly List<EstMarker> estMarkers = new List<EstMarker>();
+        readonly List<SpooferMarker> spoofers = new List<SpooferMarker>();
         Transform droneRoot, linkRoot, taskRoot, ewRoot;
         Transform gcs, gcsMastTop;
         MaterialPropertyBlock block;
@@ -108,6 +110,8 @@ namespace SuruIHA
             ApplyJammers(f);
             ApplyGcs(f);
             ApplyJamCells(f);
+            ApplyJamEstimates(f);
+            ApplySpoofers(f);
             ParseLinks(f);
             LateUpdate();
         }
@@ -145,6 +149,8 @@ namespace SuruIHA
             ApplyJammers(f);
             ApplyGcs(f);
             ApplyJamCells(f);
+            ApplyJamEstimates(f);
+            ApplySpoofers(f);
             ParseLinks(f);
         }
 
@@ -291,6 +297,121 @@ namespace SuruIHA
             var gp = new Vector3(p.x, 0f, p.z) + gcsModelOffset;
             gcs.localPosition = new Vector3(gp.x, LocalGround(gp.x, gp.z), gp.z);
             while (gcsLinks.Count < (f.drones?.Length ?? 0)) gcsLinks.Add(MakeLine(linkRoot, Mats.GcsLink, linkWidth * 0.6f, 2, true));
+        }
+
+        // Sürünün karıştırıcı konum kestirimi: yerde turuncu nişangâh + etki dairesi; gerçek karıştırıcıya hata çizgisi
+        class EstMarker
+        {
+            public Transform Root;
+            public LineRenderer Ring, CrossA, CrossB, Err;
+        }
+
+        void ApplyJamEstimates(SwarmFrame f)
+        {
+            var E = f.jamEst ?? new JamEstState[0];
+            while (estMarkers.Count < E.Length)
+            {
+                var m = new EstMarker { Root = NewChildOf(ewRoot, "KaristiriciTahmini") };
+                m.Ring = MakeCircle(m.Root, 1f, 96, Mats.TaskRing, 0.5f);
+                m.CrossA = MakeLine(m.Root, Mats.TaskRing, 0.7f, 2, false);
+                m.CrossB = MakeLine(m.Root, Mats.TaskRing, 0.7f, 2, false);
+                m.CrossA.SetPositions(new[] { new Vector3(-18, 0, 0), new Vector3(18, 0, 0) });
+                m.CrossB.SetPositions(new[] { new Vector3(0, 0, -18), new Vector3(0, 0, 18) });
+                m.Err = MakeLine(ewRoot, Mats.GhostLine, 0.35f, 2, true);
+                Color c = new Color(1f, 0.55f, 0.1f);
+                SwarmMaterials.SetBlock(block, c, c * glow);
+                foreach (var lr in new[] { m.Ring, m.CrossA, m.CrossB }) lr.SetPropertyBlock(block);
+                estMarkers.Add(m);
+            }
+            for (int i = 0; i < estMarkers.Count; i++)
+            {
+                var m = estMarkers[i];
+                bool on = i < E.Length;
+                m.Root.gameObject.SetActive(on);
+                m.Err.enabled = on && f.jammers != null && f.jammers.Length > 0;
+                if (!on) continue;
+                var p = SwarmFrame.Enu(E[i].p);
+                float g = LocalGround(p.x, p.z) + 1.5f;
+                m.Root.localPosition = new Vector3(p.x, g, p.z);
+                m.Ring.transform.localScale = Vector3.one * Mathf.Max(E[i].r, 10f);
+                // Uzaktan (kuşbakışı) da seçilsin: çizgiler kamera uzaklığıyla kalınlaşır, nişangâh büyür
+                var cam = Camera.main;
+                float far = cam != null ? Mathf.Clamp(Vector3.Distance(cam.transform.position, m.Root.position) / 150f, 1f, 5f) : 1f;
+                m.Ring.widthMultiplier = 0.5f * far;
+                m.CrossA.widthMultiplier = m.CrossB.widthMultiplier = 0.7f * far;
+                m.CrossA.transform.localScale = m.CrossB.transform.localScale = Vector3.one * Mathf.Sqrt(far);
+                m.Err.widthMultiplier = 0.35f * far;
+                if (m.Err.enabled)
+                {
+                    // En yakın gerçek karıştırıcıya hata çizgisi
+                    Vector3 best = Vector3.zero;
+                    float bd = float.MaxValue;
+                    foreach (var j in f.jammers)
+                    {
+                        var q = SwarmFrame.Enu(j.p);
+                        float d = (new Vector2(q.x, q.z) - new Vector2(p.x, p.z)).sqrMagnitude;
+                        if (d < bd) { bd = d; best = q; }
+                    }
+                    m.Err.SetPosition(0, transform.TransformPoint(new Vector3(p.x, g + 1f, p.z)));
+                    m.Err.SetPosition(1, transform.TransformPoint(new Vector3(best.x, LocalGround(best.x, best.z) + 2.5f, best.z)));
+                }
+            }
+        }
+
+        // GPS aldatıcı: yerde anten direği + camgöbeği yarı saydam kubbe + yerde yayılan halkalar
+        class SpooferMarker
+        {
+            public Transform Root, Dome;
+            public LineRenderer Edge, Wave;
+        }
+
+        void ApplySpoofers(SwarmFrame f)
+        {
+            var S = f.spoofers ?? new SpooferState[0];
+            while (spoofers.Count < S.Length)
+            {
+                var m = new SpooferMarker { Root = NewChildOf(ewRoot, "GpsAldatici") };
+                Prim(PrimitiveType.Cylinder, m.Root, new Vector3(0, 5f, 0), new Vector3(0.25f, 5f, 0.25f), Mats.Metal);
+                Prim(PrimitiveType.Cube, m.Root, new Vector3(0, 0.6f, 0), new Vector3(2.4f, 1.2f, 1.6f), Mats.Body);
+                var dish = Prim(PrimitiveType.Sphere, m.Root, new Vector3(0, 10.2f, 0), new Vector3(1.6f, 0.35f, 1.6f), Mats.Metal);
+                dish.name = "Anten";
+                var d = Prim(PrimitiveType.Sphere, m.Root, Vector3.zero, Vector3.one, Mats.Dome);
+                d.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                m.Dome = d.transform;
+                m.Edge = MakeCircle(m.Root, 1f, 128, Mats.DomeRing, 0.45f);
+                m.Wave = MakeCircle(m.Root, 1f, 128, Mats.DomeRing, 0.3f);
+                Color c = new Color(0.1f, 0.75f, 1f);
+                SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.09f), c * glow * 0.12f);
+                d.GetComponent<Renderer>().SetPropertyBlock(block);
+                SwarmMaterials.SetBlock(block, c * 0.3f, c * glow * 0.6f);
+                m.Edge.SetPropertyBlock(block);
+                m.Wave.SetPropertyBlock(block);
+                spoofers.Add(m);
+            }
+            for (int i = 0; i < spoofers.Count; i++)
+            {
+                var m = spoofers[i];
+                bool on = i < S.Length;
+                m.Root.gameObject.SetActive(on);
+                if (!on) continue;
+                var p = SwarmFrame.Enu(S[i].p);
+                m.Root.localPosition = new Vector3(p.x, LocalGround(p.x, p.z), p.z);
+                float r = Mathf.Max(S[i].r, 5f);
+                m.Dome.gameObject.SetActive(showDome);
+                m.Dome.localScale = Vector3.one * r * 2f;
+                m.Edge.transform.localPosition = Vector3.up * 0.6f;
+                m.Edge.transform.localScale = new Vector3(r, 1, r);
+                float ph = Mathf.Repeat(Time.time * 0.25f, 1f);
+                m.Wave.transform.localPosition = Vector3.up * 0.8f;
+                m.Wave.transform.localScale = new Vector3(r * ph, 1, r * ph);
+            }
+        }
+
+        Transform NewChildOf(Transform parent, string n)
+        {
+            var t = new GameObject(n).transform;
+            t.SetParent(parent, false);
+            return t;
         }
 
         void ApplyJamCells(SwarmFrame f)
@@ -481,7 +602,7 @@ namespace SuruIHA
                     // Uzaktan (kuşbakışı) da görünsün: kalınlık kamera uzaklığıyla büyür
                     var cam = Camera.main;
                     float far = cam != null ? Vector3.Distance(cam.transform.position, Root.position) / 150f : 1f;
-                    wave.widthMultiplier = Mathf.Lerp(1.2f, 0.25f, k) * Mathf.Clamp(far, 1f, 6f);
+                    wave.widthMultiplier = Mathf.Lerp(0.7f, 0.15f, k) * Mathf.Clamp(far, 0.6f, 6f);
                     // Taban rengi de parlak: gündüz ışığında ışıma (emission) tek başına sönük kalıyor
                     Color wc = ColUnknown * (1f - k) * 3f;
                     SwarmMaterials.SetBlock(block, Color.Lerp(ColUnknown, Color.white, 0.25f), wc);

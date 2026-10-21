@@ -185,6 +185,233 @@ def plot_decision(dc, outdir):
         plt.close(fig)
 
 
+MECH_NAMES = {
+    "jam_map": "karıştırma haritası", "long_ttl": "uzun bekleme (TTL)", "avoid": "bölgeden kaçınma",
+    "coop_loc": "işbirlikçi konum", "search": "spiral arama", "recover": "GPS kurtarma", "trust": "güven sistemi",
+    "localize": "karıştırıcı bulma", "fhss": "frekans atlama", "spoof_detect": "aldatma tespiti",
+    "valuation": "görev değerlendirme",
+}
+
+
+def plot_ew(ew, outdir):
+    sub = ew[ew.experiment == "eh"]
+    names = list(dict.fromkeys(sub.tag))
+    x = np.arange(len(names))
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7.5), dpi=150, sharex=True)
+    for ax, (col, label) in zip(axes, (("completion", "Görev tamamlama (%)"), ("score", "Görev puanı (0-100)"))):
+        for j, s in enumerate(STRATEGIES):
+            vals = [sub[(sub.tag == n) & (sub.strategy == s)][col] * 100 for n in names]
+            ax.bar(x + (j - 1) * 0.27, [v.mean() for v in vals], 0.25, yerr=[1.96 * v.sem() for v in vals],
+                   capsize=2, color=COLORS[s], label=STRATEGY_NAMES[s], error_kw=dict(lw=0.8))
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.3, axis="y")
+    axes[0].legend(fontsize=8, ncol=3)
+    axes[1].set_xticks(x, names, rotation=20, fontsize=8)
+    fig.suptitle("Elektronik harp senaryoları (her uçuşta 6 yeni hedef, n=30)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, "eh_senaryolar.png"))
+    plt.close(fig)
+
+    ar = ew[ew.experiment == "arazi"]
+    if len(ar):
+        fig, ax = plt.subplots(figsize=(8, 4), dpi=150)
+        k = 0
+        ticks = []
+        for name in dict.fromkeys(ar.tag):
+            for s in STRATEGIES:
+                on = sub[(sub.tag == name) & (sub.strategy == s)].completion * 100
+                off = ar[(ar.tag == name) & (ar.strategy == s)].completion * 100
+                ax.bar(k - 0.2, on.mean(), 0.38, color=COLORS[s], yerr=1.96 * on.sem(), capsize=2)
+                ax.bar(k + 0.2, off.mean(), 0.38, color=COLORS[s], alpha=0.35, yerr=1.96 * off.sem(), capsize=2)
+                ticks.append((k, f"{name}\n{STRATEGY_NAMES[s].split(' ')[0]}"))
+                k += 1
+            k += 0.6
+        ax.set_xticks([t for t, _ in ticks], [n for _, n in ticks], fontsize=6)
+        ax.set_ylabel("Görev tamamlama (%)")
+        ax.set_title("Arazi gölgesi: koyu = tepeler sinyali keser (gerçekçi), açık = arazi yok sayılır", fontsize=9)
+        ax.grid(alpha=0.3, axis="y")
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, "eh_arazi_golgesi.png"))
+        plt.close(fig)
+
+
+def plot_tune(tu, outdir):
+    rows = tu.tag.str.split("|", expand=True)
+    tu = tu.assign(cond=rows[0], setting=rows[1])
+    params = [p for p in ("claim_ttl_jam", "recover_sigma", "jam_penalty", "jam_cell_ttl")]
+    labels = {"claim_ttl_jam": "Karıştırmada bekleme süresi (s)", "recover_sigma": "GPS kurtarma eşiği σ (m)",
+              "jam_penalty": "Karıştırma cezası (m)", "jam_cell_ttl": "Harita unutma süresi (s)"}
+    from suru import SimConfig
+    d = SimConfig()
+    fig, axes = plt.subplots(1, 4, figsize=(15, 3.8), dpi=150, sharey=True)
+    for ax, p in zip(axes, params):
+        for cond, c in zip(dict.fromkeys(tu.cond), ("#1D9E75", "#D85A30", "#378ADD")):
+            vals = {}
+            for _, r in tu[tu.cond == cond].iterrows():
+                if r.setting == "varsayılan":
+                    v = getattr(d, p)
+                elif r.setting.startswith(p + "="):
+                    v = float(r.setting.split("=")[1])
+                else:
+                    continue
+                vals.setdefault(v, []).append(r.score * 100)
+            ks = sorted(vals)
+            ax.errorbar(ks, [np.mean(vals[k]) for k in ks], yerr=[1.96 * np.std(vals[k]) / np.sqrt(len(vals[k])) for k in ks],
+                        marker="o", capsize=3, color=c, label=cond)
+        ax.axvline(getattr(d, p), color="k", ls=":", lw=1)
+        ax.set_xlabel(labels[p])
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("Görev puanı (0-100)")
+    axes[0].legend(fontsize=7)
+    fig.suptitle("Parametre duyarlılığı (ayar haritaları seed 500-519; noktalı çizgi = kullanılan değer)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, "ayar_duyarlilik.png"))
+    plt.close(fig)
+
+
+def ablation_table(ab):
+    rows = ab.tag.str.split("|", expand=True)
+    ab = ab.assign(cond=rows[0], variant=rows[1])
+    conds = list(dict.fromkeys(ab.cond))
+    variants = ["hiçbiri"] + [f"-{m}" for m in MECH_NAMES]
+    D = np.full((len(variants), len(conds)), np.nan)
+    P = np.full_like(D, np.nan)
+    for j, cond in enumerate(conds):
+        full = ab[(ab.cond == cond) & (ab.variant == "tam")].set_index("seed").score
+        for i, v in enumerate(variants):
+            x = ab[(ab.cond == cond) & (ab.variant == v)].set_index("seed").score
+            k = full.index.intersection(x.index)
+            if len(k) < 2:
+                continue
+            d = (x[k] - full[k]).values
+            D[i, j] = d.mean() * 100
+            P[i, j] = stats.wilcoxon(x[k], full[k]).pvalue if (d != 0).any() else 1.0
+    return conds, variants, D, P
+
+
+def plot_ablation(ab, outdir):
+    conds, variants, D, P = ablation_table(ab)
+    fig, ax = plt.subplots(figsize=(1.6 * len(conds) + 3, 0.45 * len(variants) + 1.8), dpi=150)
+    lim = np.nanmax(np.abs(D)) if np.isfinite(D).any() else 1
+    im = ax.imshow(D, cmap="RdBu", vmin=-lim, vmax=lim, aspect="auto")
+    for i in range(len(variants)):
+        for j in range(len(conds)):
+            if np.isfinite(D[i, j]):
+                star = "***" if P[i, j] < 0.001 else "**" if P[i, j] < 0.01 else "*" if P[i, j] < 0.05 else ""
+                ax.text(j, i, f"{D[i, j]:+.1f}{star}", ha="center", va="center", fontsize=7,
+                        color="white" if abs(D[i, j]) > 0.6 * lim else "black")
+    ax.set_xticks(range(len(conds)), conds, rotation=20, fontsize=8)
+    ax.set_yticks(range(len(variants)),
+                  ["hiçbiri (korumasız)"] + [f"– {MECH_NAMES[v[1:]]}" for v in variants[1:]], fontsize=8)
+    fig.colorbar(im, ax=ax, label="Puan farkı (mekanizma kapalı − tam sistem)")
+    ax.set_title(f"Ablasyon: her mekanizma kapatılınca görev puanı ne kadar düşüyor? (* p<0,05, n={ab.seed.nunique()})", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, "ablasyon.png"))
+    plt.close(fig)
+
+
+def plot_scaling(sc, outdir):
+    sc = sc.assign(cond=np.where(sc.spoof > 0, "%20 saldırgan", np.where(sc.jammer_dbm > 0, "20 dBm", "karıştırma yok")))
+    conds = ["karıştırma yok", "20 dBm", "%20 saldırgan"]
+    fig, axes = plt.subplots(1, 4, figsize=(16, 3.8), dpi=150)
+    for ax, cond in zip(axes, conds):
+        for s in STRATEGIES:
+            sub = sc[(sc.cond == cond) & (sc.strategy == s)]
+            g = sub.groupby("n_drones").score
+            ks = sorted(sub.n_drones.unique())
+            ax.errorbar(ks, g.mean().reindex(ks) * 100, yerr=1.96 * g.sem().reindex(ks) * 100, marker="o", capsize=3,
+                        color=COLORS[s], label=STRATEGY_NAMES[s])
+        ax.set_title(cond, fontsize=9)
+        ax.set_xlabel("İHA sayısı (görev = 2 x İHA)")
+        ax.set_xticks([5, 10, 20])
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("Görev puanı (0-100)")
+    axes[0].legend(fontsize=7)
+    ax = axes[3]
+    for s in STRATEGIES:
+        sub = sc[sc.strategy == s]
+        g = (sub.wall_s / sub.sim_time * 1000).groupby(sub.n_drones)
+        ks = sorted(sub.n_drones.unique())
+        ax.plot(ks, g.mean().reindex(ks), "o-", color=COLORS[s], label=STRATEGY_NAMES[s])
+    ax.set_title("Hesap yükü", fontsize=9)
+    ax.set_xlabel("İHA sayısı")
+    ax.set_ylabel("Simülasyon saniyesi başına ms")
+    ax.set_xticks([5, 10, 20])
+    ax.grid(alpha=0.3)
+    fig.suptitle(f"Ölçeklenebilirlik (n={sc.seed.nunique()}, her uçuşta 6 yeni hedef)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, "olcekleme.png"))
+    plt.close(fig)
+
+
+def ew_statistics(ew, tu, ab, sc):
+    lines = []
+    if ew is not None:
+        lines.append("\n##### ELEKTRONİK HARP SENARYOLARI (her uçuşta 6 yeni hedef) #####")
+        sub = ew[ew.experiment == "eh"]
+        for name in dict.fromkeys(sub.tag):
+            x = sub[sub.tag == name]
+            lines.append(f"\n=== {name} ===")
+            for s in STRATEGIES:
+                y = x[x.strategy == s]
+                lines.append(f"  {STRATEGY_NAMES[s]:28s} tamamlama %{y.completion.mean() * 100:5.1f} ± "
+                             f"{y.completion.std() * 100:4.1f}  puan {y.score.mean() * 100:5.1f}  süre {y.mission_time.mean():5.0f} s"
+                             f"  yanlış {y.false_done.mean():4.1f}  (n={len(y)})")
+            piv = x.pivot_table(index="seed", columns="strategy", values="score")
+            for other in ("decentralized", "centralized"):
+                if "resilient" in piv and other in piv:
+                    lines.append(wilcoxon_line(piv["resilient"], piv[other], f"Dirençli - {STRATEGY_NAMES[other]} (puan)"))
+            r = x[x.strategy == "resilient"]
+            if r.jam_loc_err.notna().any():
+                lines.append(f"  Karıştırıcı bulma (dirençli): ortalama hata {r.jam_loc_err.mean():5.0f} m, görev sonu "
+                             f"{r.jam_loc_err_end.mean():5.0f} m, 50 m'den iyi bulunduğu uçuş %{r.t_locate.notna().mean() * 100:3.0f}"
+                             f" (ortalama {r.t_locate.mean():4.0f}. saniyede)")
+            if r.spoof_captured.sum() > 0:
+                lines.append(f"  GPS aldatma (dirençli): ele geçen {r.spoof_captured.mean():4.1f} İHA, tespit "
+                             f"{r.spoof_detected.mean():4.1f}, tespit süresi {r.spoof_detect_time.mean():4.1f} s, "
+                             f"yanlış alarm {r.spoof_false_alarm.mean():4.2f}")
+            if r.liars_caught.notna().any():
+                lines.append(f"  Güven sistemi (dirençli): saldırganları dışlama %{r.liars_caught.mean() * 100:5.1f}, "
+                             f"dürüst arkadaşı yanlış dışlama %{r.honest_excluded.mean() * 100:4.1f}")
+        ar = ew[ew.experiment == "arazi"]
+        for name in dict.fromkeys(ar.tag):
+            lines.append(f"\n=== Arazi gölgesi açık/kapalı: {name} ===")
+            for s in STRATEGIES:
+                on = sub[(sub.tag == name) & (sub.strategy == s)].set_index("seed")
+                off = ar[(ar.tag == name) & (ar.strategy == s)].set_index("seed")
+                lines.append(f"  {STRATEGY_NAMES[s]:28s} tamamlama açık %{on.completion.mean() * 100:5.1f} / kapalı "
+                             f"%{off.completion.mean() * 100:5.1f}  paket iletimi %{on.pdr.mean() * 100:4.1f} / %{off.pdr.mean() * 100:4.1f}")
+                k = on.index.intersection(off.index)
+                lines.append(wilcoxon_line(on.score[k], off.score[k], "  açık - kapalı (puan)"))
+    if tu is not None:
+        lines.append("\n##### PARAMETRE AYARI (ayar haritaları, seed 500-519; testten ayrı) #####")
+        rows = tu.tag.str.split("|", expand=True)
+        t2 = tu.assign(cond=rows[0], setting=rows[1])
+        for setting, x in t2.groupby("setting"):
+            lines.append(f"  {setting:24s} puan {x.score.mean() * 100:5.1f}  tamamlama %{x.completion.mean() * 100:5.1f}"
+                         f"  (n={len(x)})")
+    if ab is not None:
+        lines.append(f"\n##### ABLASYON (dirençli strateji; puan farkı = mekanizma kapalı - tam sistem, n={ab.seed.nunique()}) #####")
+        conds, variants, D, P = ablation_table(ab)
+        lines.append("  " + " | ".join(f"{c[:18]:>18s}" for c in conds))
+        for i, v in enumerate(variants):
+            name = "hiçbiri (korumasız)" if v == "hiçbiri" else "- " + MECH_NAMES[v[1:]]
+            cells = " | ".join(f"{D[i, j]:+7.1f} (p={P[i, j]:.3f})" if np.isfinite(D[i, j]) else f"{'':18s}"
+                               for j in range(len(conds)))
+            lines.append(f"  {name:24s} {cells}")
+    if sc is not None:
+        lines.append(f"\n##### ÖLÇEKLEME (görev sayısı = 2 x İHA, 6 yeni hedef, n={sc.seed.nunique()}) #####")
+        sc2 = sc.assign(cond=np.where(sc.spoof > 0, "%20 saldırgan", np.where(sc.jammer_dbm > 0, "20 dBm", "karıştırma yok")))
+        for (cond, n), x in sc2.groupby(["cond", "n_drones"]):
+            parts = []
+            for s in STRATEGIES:
+                y = x[x.strategy == s]
+                parts.append(f"{STRATEGY_NAMES[s].split(' ')[0]} %{y.completion.mean() * 100:5.1f}/{y.score.mean() * 100:4.1f}")
+            ms = (x.wall_s / x.sim_time * 1000).mean()
+            lines.append(f"  {cond:15s} {int(n):2d} İHA: " + "  ".join(parts) + f"  (tamamlama/puan; {ms:4.0f} ms/sim-s)")
+    return lines
+
+
 def wilcoxon_line(a, b, label):
     ok = ~(np.isnan(np.asarray(a, float)) | np.isnan(np.asarray(b, float)))
     a, b = np.asarray(a, float)[ok], np.asarray(b, float)[ok]
@@ -258,7 +485,7 @@ def decision_statistics(dc):
     return lines
 
 
-def statistics(df, sw, dc=None):
+def statistics(df, sw, dc=None, extra=None):
     lines = ["İSTATİSTİK RAPORU (ortalama ± standart sapma; n = tekrar sayısı; Wilcoxon: aynı haritada eşleştirilmiş test)\n",
              "\n##### ANA DENEY: karıştırma ve sahte bilgi #####"]
     for (power, spoof), sub in df.groupby(["jammer_dbm", "spoof"]):
@@ -302,6 +529,8 @@ def statistics(df, sw, dc=None):
                 lines.append(wilcoxon_line(piv_t[1], piv_t[0], "Görev süresi (açık - kapalı)"))
     if dc is not None:
         lines += decision_statistics(dc)
+    if extra is not None:
+        lines += ew_statistics(*extra)
     return "\n".join(lines)
 
 
@@ -312,16 +541,30 @@ def main():
     p.add_argument("--decision", default="results/decision.csv")
     a = p.parse_args()
     df = pd.read_csv(a.csv)
+    rd = os.path.dirname(a.csv)
+
+    def opt(name):
+        path = os.path.join(rd, name)
+        return pd.read_csv(path) if os.path.exists(path) else None
     sw = pd.read_csv(a.swarm) if os.path.exists(a.swarm) else None
     dc = pd.read_csv(a.decision) if os.path.exists(a.decision) else None
-    outdir = os.path.join(os.path.dirname(a.csv), "figures")
+    ew, tu, ab, sc = opt("ew.csv"), opt("tune.csv"), opt("ablation.csv"), opt("scaling.csv")
+    outdir = os.path.join(rd, "figures")
     os.makedirs(outdir, exist_ok=True)
     plot_main(df, outdir)
     if sw is not None:
         plot_swarm(sw, outdir)
     if dc is not None:
         plot_decision(dc, outdir)
-    report = statistics(df, sw, dc)
+    if ew is not None:
+        plot_ew(ew, outdir)
+    if tu is not None:
+        plot_tune(tu, outdir)
+    if ab is not None:
+        plot_ablation(ab, outdir)
+    if sc is not None:
+        plot_scaling(sc, outdir)
+    report = statistics(df, sw, dc, (ew, tu, ab, sc))
     path = os.path.join(os.path.dirname(a.csv), "istatistik.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write(report)
