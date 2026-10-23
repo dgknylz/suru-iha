@@ -1,4 +1,4 @@
-# Tanıtım videosu 2/3 + 3/3: Unity uygulamasında kareleri çeker, sonra Blender'da MP4'e çevirir.
+﻿# Tanıtım videosu 2/3 + 3/3: Unity uygulamasında kareleri çeker, sonra Blender'da MP4'e çevirir.
 #   powershell -File tools/render_film.ps1 [-Film C:\SuruIHA\film] [-SkipFrames]
 # Önce: python tools/record_film.py (uçuş kayıtları, film.json, kurgu.json, kartlar)
 param(

@@ -19,8 +19,7 @@ namespace SuruIHA
         Camera mainCam, camB;
         SwarmHud hud;
         float nextLayer;
-        GUIStyle head, val, small;
-        Texture2D bg, line, accentA, accentB;
+        Texture2D line;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -135,46 +134,34 @@ namespace SuruIHA
         void OnGUI()
         {
             if (!Active) return;
-            float s = Mathf.Clamp(Screen.height / 1080f, 0.75f, 2f);
-            bg ??= Tex(new Color(0.03f, 0.05f, 0.07f, 0.78f));
             line ??= Tex(new Color(1f, 1f, 1f, 0.85f));
-            head ??= new GUIStyle { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter, richText = true };
-            val ??= new GUIStyle { alignment = TextAnchor.UpperCenter, richText = true };
-            small ??= new GUIStyle { alignment = TextAnchor.LowerCenter, richText = true };
-            head.fontSize = (int)(22 * s);
-            head.normal.textColor = Color.white;
-            val.fontSize = (int)(16 * s);
-            val.normal.textColor = new Color(0.85f, 0.9f, 0.95f);
-            small.fontSize = (int)(13 * s);
-            small.normal.textColor = new Color(0.8f, 0.85f, 0.9f);
-            GUI.DrawTexture(new Rect(Screen.width / 2f - 1.5f * s, 0, 3f * s, Screen.height), line);
-            accentA ??= Tex(new Color(0.85f, 0.45f, 0.3f));
-            accentB ??= Tex(new Color(0.3f, 0.85f, 0.55f));
-            Panel(A.Frame, 0f, s, accentA);
-            Panel(B.Frame, Screen.width / 2f, s, accentB);
-            GUI.Label(new Rect(0, Screen.height - 34 * s, Screen.width, 30 * s),
-                      "Aynı harita, aynı saldırı · [H] ayrıntılı panel · [F1]/[F2] sol mimari · [M] [U] [X] [+/-] senaryo · [N] yeni harita", small);
+            GUI.DrawTexture(new Rect(Screen.width / 2f - 1.5f * Ui.S, 0, 3f * Ui.S, Screen.height), line);
+            Panel(A.Frame, 0, new Color(1f, 0.6f, 0.35f));
+            Panel(B.Frame, 1, Ui.Good);
+            if (SwarmMenu.Instance == null)   // menüsüz modlarda (otomatik test) kısayol hatırlatması
+                Ui.Label(Ui.R(0, Ui.H - 34, Ui.W, 26), "Aynı harita, aynı saldırı · [F1]/[F2] sol mimari · [M] [U] [X] [+/-] senaryo · [N] yeni harita",
+                         13, Ui.Ink2, false, TextAnchor.MiddleCenter);
         }
 
-        void Panel(SwarmFrame f, float x, float s, Texture2D accent)
+        // Üstteki durum paneli: hangi mimari, kaç hedef, puan, yanlış "bitti"
+        static void Panel(SwarmFrame f, int side, Color accent)
         {
-            float w = Screen.width / 2f;
-            var r = new Rect(x + w * 0.5f - 260 * s, 14 * s, 520 * s, 92 * s);
-            GUI.DrawTexture(r, bg);
-            GUI.DrawTexture(new Rect(r.x, r.y, r.width, 4 * s), accent);
+            float half = Ui.W / 2f, w = 560f, x = side * half + (half - w) / 2f, y = 14f;
+            var r = Ui.R(x, y, w, 98);
+            Ui.Panel(r, 14, 0.9f);
+            Ui.Fill(Ui.R(x + 14, y, w - 28, 4), accent, 2);
             if (f == null || f.m == null)
             {
-                GUI.Label(new Rect(r.x, r.y + 12 * s, r.width, 30 * s), "bağlantı bekleniyor…", head);
+                Ui.Label(Ui.R(x, y + 30, w, 30), "bağlantı bekleniyor…", 18, Ui.Ink2, true, TextAnchor.UpperCenter);
                 return;
             }
             var m = f.m;
-            GUI.Label(new Rect(r.x, r.y + 10 * s, r.width, 30 * s), Name(f.strategy), head);
-            string gps = m.spoofed > 0 || m.spoofSeen > 0 ? $"  ·  aldatılan {m.spoofed}" : $"  ·  GPS'siz {m.gpsLost}";
-            GUI.Label(new Rect(r.x, r.y + 44 * s, r.width, 24 * s),
-                      $"görev <b>{m.done}/{m.total}</b>  ·  puan <b>{m.score * 100:0}</b>  ·  yanlış \"bitti\" <b>{m.falseDone}</b>{gps}",
-                      val);
-            GUI.Label(new Rect(r.x, r.y + 66 * s, r.width, 24 * s),
-                      $"t = {f.t:0} s  ·  {f.phase}  ·  paket iletimi %{m.pdr * 100:0}", val);
+            Ui.Label(Ui.R(x, y + 12, w, 30), Name(f.strategy), 19, accent, true, TextAnchor.UpperCenter);
+            string gps = m.spoofed > 0 || m.spoofSeen > 0 ? $"  ·  kandırılan {m.spoofed}" : $"  ·  GPS'siz {m.gpsLost}";
+            Ui.Label(Ui.R(x, y + 42, w, 26),
+                     $"hedef <b>{m.done}/{m.total}</b>  ·  puan <b>{m.score * 100:0}</b>  ·  yanlış \"bitti\" <b>{m.falseDone}</b>{gps}",
+                     16, Ui.Ink, false, TextAnchor.UpperCenter);
+            Ui.Label(Ui.R(x, y + 68, w, 22), $"t = {f.t:0} s  ·  {SwarmScenarios.PhaseTitle(f.phase)}  ·  paket iletimi %{m.pdr * 100:0}", 13.5f, Ui.Ink3, false, TextAnchor.UpperCenter);
         }
     }
 }

@@ -76,14 +76,16 @@ namespace SuruIHA
                     return;
 
                 default:
-                    if (SwarmInput.MouseHeld(0) || SwarmInput.MouseHeld(1))
+                    bool mouseFree = !Ui.PointerBlocked;   // fare bir panelin üstündeyse sahne dönmesin
+                    if (mouseFree && (SwarmInput.MouseHeld(0) || SwarmInput.MouseHeld(1)))
                     {
                         var md = SwarmInput.MouseDelta();
                         yaw += md.x * rotateSpeed;
                         pitch = Mathf.Clamp(pitch - md.y * rotateSpeed, 3f, 88f);
                     }
-                    orbitDistance = Mathf.Clamp(orbitDistance * (1f - SwarmInput.Scroll() * 0.1f), 15f, 2500f);
+                    if (mouseFree) orbitDistance = Mathf.Clamp(orbitDistance * (1f - SwarmInput.Scroll() * 0.1f), 15f, 2500f);
                     Vector3 move = Vector3.zero;
+                    if (Ui.Modal) { rot = Quaternion.Euler(pitch, yaw, 0); pos = pivot - rot * Vector3.forward * orbitDistance; Blend(pos, rot, 10f); return; }
                     if (SwarmInput.Held(SwarmInput.K.W)) move += Vector3.forward;
                     if (SwarmInput.Held(SwarmInput.K.S)) move += Vector3.back;
                     if (SwarmInput.Held(SwarmInput.K.A)) move += Vector3.left;
@@ -124,6 +126,7 @@ namespace SuruIHA
 
         void HandleKeys()
         {
+            if (Ui.Modal) return;   // menü açık: kamera kısayolları susar
             if (SwarmInput.Down(SwarmInput.K.C)) mode = Mode.Cinematic;
             if (SwarmInput.Down(SwarmInput.K.O)) mode = Mode.Orbit;
             if (SwarmInput.Down(SwarmInput.K.T)) mode = Mode.Top;
@@ -141,7 +144,7 @@ namespace SuruIHA
                 mode = Mode.Follow;
             }
             // Sinematik moddayken fareyle oynamak serbest yörüngeye geçirir
-            if (mode == Mode.Cinematic && (SwarmInput.MouseHeld(1) || Mathf.Abs(SwarmInput.Scroll()) > 0.01f))
+            if (mode == Mode.Cinematic && !Ui.PointerBlocked && (SwarmInput.MouseHeld(1) || Mathf.Abs(SwarmInput.Scroll()) > 0.01f))
             {
                 var e = transform.rotation.eulerAngles;
                 yaw = e.y;

@@ -28,4 +28,8 @@ $frame = "C:\SuruIHA\kare_60.json"
 & (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\dump_frame.py") $frame 45 | Out-Null
 RunUnity "SuruIHA.EditorTools.SuruIHAPreview.FromCommandLine" "C:\SuruIHA\preview.log" @("-frame", $frame, "-out", "C:\SuruIHA\preview")
 if (-not $SkipPlayer) { RunUnity "SuruIHA.EditorTools.SuruIHABuild.BuildFromCommandLine" "C:\SuruIHA\player.log" }
+# Uygulama simülasyonu (Python) kendisi başlatır: deponun yerini uygulamanın ve Unity projesinin yanına yaz
+foreach ($d in @("C:\SuruIHA\Build", $proj)) {
+    if (Test-Path $d) { [IO.File]::WriteAllText((Join-Path $d "simulasyon_yolu.txt"), $repo, (New-Object Text.UTF8Encoding $false)) }
+}
 if (-not $SkipTest) { & (Join-Path $PSScriptRoot "autotest.ps1") }

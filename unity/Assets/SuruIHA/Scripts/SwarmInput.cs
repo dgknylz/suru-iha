@@ -8,7 +8,7 @@ namespace SuruIHA
     // Hem yeni Input System hem eski Input Manager ile çalışan küçük giriş katmanı.
     public static class SwarmInput
     {
-        public enum K { F, T, C, O, L, G, H, R, J, B, X, N, K, V, Z, F1, F2, F3, F4, P, Y, M, U, Plus, Minus, Esc, Tab, W, A, S, D, Q, E, Shift, Alpha1 }
+        public enum K { F, T, C, O, L, G, H, R, J, B, X, N, K, V, Z, F1, F2, F3, F4, P, Y, M, U, Plus, Minus, Esc, Tab, W, A, S, D, Q, E, Shift, Alpha1, I }
 
         public static Vector2 MouseDelta()
         {
@@ -79,7 +79,7 @@ namespace SuruIHA
                 K.G => kb.gKey, K.H => kb.hKey, K.R => kb.rKey, K.J => kb.jKey, K.B => kb.bKey, K.Esc => kb.escapeKey, K.X => kb.xKey, K.N => kb.nKey, K.K => kb.kKey, K.V => kb.vKey, K.Z => kb.zKey,
                 K.F1 => kb.f1Key, K.F2 => kb.f2Key, K.F3 => kb.f3Key, K.F4 => kb.f4Key, K.P => kb.pKey, K.Y => kb.yKey, K.M => kb.mKey, K.U => kb.uKey, K.Plus => kb.equalsKey, K.Minus => kb.minusKey, K.Tab => kb.tabKey,
                 K.W => kb.wKey, K.A => kb.aKey, K.S => kb.sKey, K.D => kb.dKey,
-                K.Q => kb.qKey, K.E => kb.eKey, K.Shift => kb.leftShiftKey, _ => kb.digit1Key,
+                K.Q => kb.qKey, K.E => kb.eKey, K.Shift => kb.leftShiftKey, K.I => kb.iKey, _ => kb.digit1Key,
             };
             return down ? key.wasPressedThisFrame : key.isPressed;
 #else
@@ -89,7 +89,7 @@ namespace SuruIHA
                 K.G => KeyCode.G, K.H => KeyCode.H, K.R => KeyCode.R, K.J => KeyCode.J, K.B => KeyCode.B, K.Esc => KeyCode.Escape, K.X => KeyCode.X, K.N => KeyCode.N, K.K => KeyCode.K, K.V => KeyCode.V, K.Z => KeyCode.Z,
                 K.F1 => KeyCode.F1, K.F2 => KeyCode.F2, K.F3 => KeyCode.F3, K.F4 => KeyCode.F4, K.P => KeyCode.P, K.Y => KeyCode.Y, K.M => KeyCode.M, K.U => KeyCode.U, K.Plus => KeyCode.Equals, K.Minus => KeyCode.Minus, K.Tab => KeyCode.Tab,
                 K.W => KeyCode.W, K.A => KeyCode.A, K.S => KeyCode.S, K.D => KeyCode.D,
-                K.Q => KeyCode.Q, K.E => KeyCode.E, K.Shift => KeyCode.LeftShift, _ => KeyCode.Alpha1,
+                K.Q => KeyCode.Q, K.E => KeyCode.E, K.Shift => KeyCode.LeftShift, K.I => KeyCode.I, _ => KeyCode.Alpha1,
             };
             return down ? Input.GetKeyDown(code) : Input.GetKey(code);
 #endif

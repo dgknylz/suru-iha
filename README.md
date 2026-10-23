@@ -40,20 +40,45 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
 
 1. Unity Hub → **Add project from disk** → `C:\SuruIHA\SuruIHA_Unity`
 2. `Assets/SuruIHA/Scenes/SuruSahnesi.unity` sahnesini aç.
-3. **Play**'e bas. Ekranda "Python bağlantısı bekleniyor" yazacak.
-4. Terminalde simülasyonu başlat:
+3. **Play**'e bas. Açılış ekranı gelir; "Simülasyonu başlat" Python'u kendisi açar.
+
+İstersen simülasyonu terminalden de başlatabilirsin; uygulama dışarıdan gelen yayına bağlanır:
 
 ```bash
 .venv\Scripts\python.exe run_live.py
 ```
 
-### Unity açmadan: hazır Windows uygulaması
+### Unity açmadan: hazır Windows uygulaması (fuar için)
 
-`C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Jüriye Unity açmadan gösterebilirsin:
-1. `SuruIHA.exe`'yi çift tıkla (tam ekran açılır; Alt+Enter pencereye alır, Esc kapatır).
-2. Terminalde `python run_live.py` çalıştır. Sürü birkaç saniye içinde görünür.
+`C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur:
+1. `SuruIHA.exe`'yi çift tıkla (tam ekran açılır; Alt+Enter pencereye alır).
+2. Açılış ekranında projenin özeti ve öne çıkan sonuçlar var. **Simülasyonu başlat** önerilen senaryoyu
+   (20 dBm karıştırıcı, EH dirençli sürü) açar; **Senaryo seç** 8 senaryodan birini, mimariyi,
+   görev paylaşım algoritmasını, tek sürü ya da yan yana karşılaştırmayı seçtirir.
+3. Uygulama Python simülasyonunu arka planda kendisi başlatır ve çıkarken kapatır.
 
-Uygulama arka planda da çalışmaya devam eder, yani terminale geçince donmaz.
+![Açılış ekranı](gorseller/45_arayuz_ana_ekran.jpg)
+
+Simülasyon sırasında ekranda:
+- **Üstte senaryo kutusu:** bu senaryoda neye bakılması gerektiğini anlatır, sonra küçülür
+  ("Ne izlemeliyim?" ile yeniden açılır).
+- **Sağda olay akışı:** sürüde olanları canlı anlatır ("İHA-4: GPS karıştırıldı", "Sürü karıştırıcının yerini
+  buldu (hata 40 m)", "İHA-3 aldatmayı fark etti"...).
+- **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
+- **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
+  düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
+- **Görev sonu ekranı:** tamamlanan hedef, puan, süre, yanlış "bitti" sayısı ve aynı senaryonun
+  30 uçuşluk deney ortalamasıyla karşılaştırma.
+
+![Simülasyon ekranı](gorseller/47_arayuz_simulasyon.jpg)
+
+**Esc** artık uygulamayı kapatmaz, menüyü açar (yanlışlıkla kapanmasın diye). Çıkış menüden ve onayla yapılır.
+
+Uygulama simülasyonun yerini, derlemede yanına yazılan `simulasyon_yolu.txt` dosyasından okur
+(`tools/full_build.ps1` yazar). Uygulamayı başka bir bilgisayara taşırsan bu dosyadaki yolu düzelt.
+Arayüzü otomatik denemek için: `powershell -File tools/ui_test.ps1` (bütün ekranları gezip görüntü alır).
+
+Uygulama arka planda da çalışmaya devam eder, yani başka pencereye geçince donmaz.
 
 **Bir uçuşta ne görürsün:** Sürü üsten kalkar ve havada halka olur. V düzeninde kuzeydeki görev
 alanına uçar. Daha yoldayken her İHA'nın planı (renkli çizgi: İHA → 1. hedef → 2. hedef → 3. hedef)
@@ -61,7 +86,7 @@ belirir. Alana varınca dağılıp planlarını uygular. Görev sırasında yeni
 Sürü bunları birkaç saniyede kendi arasında yeniden paylaşır. Görevler bitince toplanma noktasında
 yeniden halka olur, V düzeninde üsse döner ve iner. Toplam yaklaşık 3,5 dakika sürer.
 
-**Sunum ipucu:** `python run_live.py` bir kez başlatıldıktan sonra her şeyi Unity'den yönetebilirsin.
+**Sunum ipucu:** Simülasyon bir kez başladıktan sonra her şeyi Unity'den yönetebilirsin.
 F1/F2/F3 ile mimariyi, F4 ile planlama algoritmasını, +/- ile karıştırıcıyı, X ile saldırganı değiştir.
 V ile düzeni değiştir. Z ile bir İHA'yı düşür ve planların nasıl yeniden dağıldığını göster. Y ile görev
 alanına yeni bir hedef ekle ve sürünün kendi kendine kimin gideceğine karar vermesini izlet.
@@ -149,8 +174,9 @@ Her video karesi 0,1 s simülasyondur; video 3 kat hızlıdır ve bu ekranda yaz
 | **N** | Yeni harita (farklı görev noktaları) |
 | **V** | Düzen tipi: V → hat → kol → halka (uçuşu yeniden başlatmadan) |
 | **Z** | Rastgele bir İHA'yı arızalandır (düşer, sürü görevlerini ve düzeni yeniden dağıtır) |
-| **K** | Grafik kalitesi: Yüksek → Dengeli → Performans (panelde FPS görünür) |
-| **Esc** | Uygulamadan çık (yalnızca SuruIHA.exe) |
+| **K** | Grafik kalitesi: Yüksek → Dengeli → Performans (paneldeki "Ayrıntılar"da FPS görünür) |
+| **I** | Renklerin anlamı (İHA ışıkları, hedef halkaları, EH işaretleri) |
+| **Esc** | Menü: devam et, senaryo değiştir, proje bilgisi, ana ekran, çıkış |
 | **H** | Bilgi panelini gizle |
 
 **Renkler:** İHA ışığı yeşil = normal, turuncu = karıştırılıyor, kırmızı = GPS yok, mavi = spiral
