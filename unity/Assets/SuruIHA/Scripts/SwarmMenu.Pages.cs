@@ -34,7 +34,8 @@ namespace SuruIHA
 
         static readonly (string key, string what)[] Keys =
         {
-            ("C", "Sinematik kamera"), ("O", "Serbest kamera (fare + WASD)"), ("F · Tab · 1-9", "İHA takip kamerası"),
+            ("C", "Sinematik kamera"), ("O", "Serbest kamera (fare + WASD)"), ("F · Tab · 1-9 · 0", "İHA kamerası (TPP)"),
+            ("R", "İHA kamerasının açısını sıfırla"),
             ("T", "Taktik kuşbakışı"), ("L", "Haberleşme bağlantıları"), ("P", "İHA'ların planları"),
             ("G", "İHA'nın sandığı konum"), ("J", "Sürünün karıştırma haritası"), ("I", "Renklerin anlamı"),
             ("H", "Bilgi paneli"), ("Z", "Bir İHA'yı arızalandır"), ("Y", "Yeni hedef ekle"),
@@ -174,7 +175,7 @@ namespace SuruIHA
             py = y + 4f;
             foreach (var (threat, c, defense) in map)
             {
-                Ui.Chip(x + 22, py, threat.ToUpperInvariant(), c, 11.5f);
+                Ui.Chip(x + 22, py, Ui.Upper(threat), c, 11.5f);
                 float h = Ui.TextHeight(defense, 17f, colW - 44f);
                 Ui.Label(Ui.R(x + 22, py + 32, colW - 44, h + 4), defense, 17f, Ui.Ink2);
                 py += 32f + h + 24f;

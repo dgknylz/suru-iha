@@ -77,6 +77,13 @@ Simülasyon sırasında ekranda:
 - **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
 - **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
   düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
+- **İHA kamerası (TPP):** "İHA kamerası" düğmesiyle bir İHA'yı arkasından izlersin. Altta İHA-1 … İHA-10
+  seçici çıkar (her düğmenin altındaki çizgi o İHA'nın durum rengi); üstte izlenen İHA'nın kartı durur:
+  durumu, evresi, GPS'i, konum belirsizliği, karıştırma seviyesi, hedefi ve planı. Taktik görünümde her
+  İHA'nın numarası yazar, numaraya tıklayınca kamera o İHA'ya geçer. Yan yana modunda iki ekran da aynı
+  numaralı İHA'yı kendi sürüsünde izler (aşağıda GPS aldatmada İHA-5: solda kandırılmış, sağda fark etmiş).
+
+  ![Yan yana İHA kamerası](gorseller/55_yan_yana_iha_kamerasi.jpg)
 - **Görev sonu ekranı:** tamamlanan hedef, puan, süre, yanlış "bitti" sayısı ve aynı senaryonun
   30 uçuşluk deney ortalamasıyla karşılaştırma.
 
@@ -167,7 +174,8 @@ Her video karesi 0,1 s simülasyondur; video 3 kat hızlıdır ve bu ekranda yaz
 |---|---|
 | **C** | Sinematik kamera (açılışta bu) |
 | **O** | Serbest kamera: fare ile döndür, tekerlekle yakınlaş, WASD/QE ile kaydır, Shift hızlı |
-| **F**, **Tab**, **1-9** | İHA takip kamerası |
+| **F**, **Tab**, **1-9**, **0** | İHA kamerası (üçüncü şahıs, TPP): seçili İHA'yı arkasından ve üstünden izler. 1-9 ve 0 (İHA-10) doğrudan seçer, Tab sıradakine geçer. Fareyle sürükleyince İHA'nın etrafında döner, tekerlekle yakınlaşır |
+| **R** | İHA kamerasının açısını ve uzaklığını sıfırla |
 | **T** | Taktik kuşbakışı |
 | **L** | Haberleşme bağlantılarını göster/gizle |
 | **G** | "İHA'nın sandığı konum" hayaletlerini göster/gizle |

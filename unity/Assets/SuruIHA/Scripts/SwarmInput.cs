@@ -54,7 +54,7 @@ namespace SuruIHA
         }
         public static bool Held(K k) => Check(k, false);
 
-        // Rakam tuşları 1-9: basılan rakamı döndürür, yoksa -1
+        // Rakam tuşları 1-9 ve 0 (= 10): basılan sayıyı döndürür, yoksa -1
         public static int DigitDown()
         {
             for (int i = 1; i <= 9; i++)
@@ -65,6 +65,11 @@ namespace SuruIHA
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i - 1)) return i;
 #endif
             }
+#if ENABLE_INPUT_SYSTEM
+            if (Keyboard.current != null && Keyboard.current.digit0Key.wasPressedThisFrame) return 10;
+#else
+            if (Input.GetKeyDown(KeyCode.Alpha0)) return 10;
+#endif
             return -1;
         }
 

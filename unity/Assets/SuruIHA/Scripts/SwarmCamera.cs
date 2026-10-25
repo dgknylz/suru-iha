@@ -5,7 +5,8 @@ namespace SuruIHA
     // Kamera modları:
     //   C  sinematik: sürünün etrafında yavaş, belgesel tarzı dönüş (açılışta bu)
     //   O  serbest yörünge: fareyle döndür, tekerlekle yakınlaş, WASD ile kaydır
-    //   F  takip: seçili İHA'nın arkasından (Tab ile sıradaki, 1-9 ile doğrudan seç)
+    //   F  İHA kamerası (üçüncü şahıs, TPP): seçili İHA'nın arkasından ve üstünden izler. Fareyle etrafında
+    //      döndür, tekerlekle yakınlaş, R ile sıfırla. Tab sıradaki İHA, 1-9 ve 0 (İHA-10) doğrudan seçer.
     //   T  taktik: kuşbakışı harita görünümü
     public class SwarmCamera : MonoBehaviour
     {
@@ -21,6 +22,21 @@ namespace SuruIHA
         public int FollowIndex { get; private set; }
 
         public void SetFollow(int index) => FollowIndex = Mathf.Max(0, index);
+
+        // Üçüncü şahıs (TPP) İHA kamerası: açı ve uzaklık fareyle değişir, R ile sıfırlanır.
+        // Yan yana ekranda sağdaki sürü RigB ile aynı açıdan izlenir.
+        public const float DefaultTppPitch = 12f, DefaultTppDistance = 11f;
+        public float TppYaw, TppPitch = DefaultTppPitch, TppDistance = DefaultTppDistance;
+        public readonly TppRig RigB = new TppRig();
+        readonly TppRig rig = new TppRig();
+        bool rigActive;
+
+        public void ResetTpp()
+        {
+            TppYaw = 0f;
+            TppPitch = DefaultTppPitch;
+            TppDistance = DefaultTppDistance;
+        }
 
         Vector3 pivot;
         float yaw = 35f, pitch = 28f;
@@ -45,19 +61,32 @@ namespace SuruIHA
 
             Vector3 pos;
             Quaternion rot;
+            if (mode != Mode.Follow) rigActive = false;
             switch (mode)
             {
                 case Mode.Follow when visualizer.Drones.Count > 0:
+                {
                     FollowIndex = Mathf.Clamp(FollowIndex, 0, visualizer.Drones.Count - 1);
-                    var d = visualizer.Drones[FollowIndex];
-                    Vector3 v = d.Velocity;
-                    v.y = 0;
-                    Vector3 back = v.sqrMagnitude > 1f ? -v.normalized : -d.transform.forward;
-                    float s = visualizer.droneScale;
-                    pos = d.transform.position + back * (5f * s) + Vector3.up * (1.6f * s);
-                    rot = Quaternion.LookRotation(d.transform.position + Vector3.up * 0.3f * s - back * 2f * s - pos);   // biraz önüne bak
-                    Blend(pos, rot, 4f);
+                    if (!Ui.PointerBlocked)
+                    {
+                        // Fareyle İHA'nın etrafında dön, tekerlekle yakınlaş
+                        if (SwarmInput.MouseHeld(0) || SwarmInput.MouseHeld(1))
+                        {
+                            var md = SwarmInput.MouseDelta();
+                            TppYaw += md.x * rotateSpeed;
+                            TppPitch = Mathf.Clamp(TppPitch - md.y * rotateSpeed, -5f, 75f);
+                        }
+                        TppDistance = Mathf.Clamp(TppDistance * (1f - SwarmInput.Scroll() * 0.1f), 6f, 90f);
+                    }
+                    if (cut) { rig.Snap(); cut = false; }
+                    if (!rigActive) rig.Begin(transform.position, transform.rotation);
+                    rigActive = true;
+                    var (p, r) = rig.Step(visualizer, visualizer.Drones[FollowIndex], Time.deltaTime, TppYaw, TppPitch, TppDistance);
+                    smoothPos = p;
+                    smoothRot = r;
+                    transform.SetPositionAndRotation(p, r);
                     return;
+                }
 
                 case Mode.Top:
                     pos = pivot + Vector3.up * topHeight + Vector3.back * 1f;
@@ -131,7 +160,11 @@ namespace SuruIHA
             if (SwarmInput.Down(SwarmInput.K.O)) mode = Mode.Orbit;
             if (SwarmInput.Down(SwarmInput.K.T)) mode = Mode.Top;
             if (SwarmInput.Down(SwarmInput.K.F)) mode = Mode.Follow;
-            if (SwarmInput.Down(SwarmInput.K.R)) freePivot = false;
+            if (SwarmInput.Down(SwarmInput.K.R))
+            {
+                freePivot = false;
+                if (mode == Mode.Follow) ResetTpp();
+            }
             if (SwarmInput.Down(SwarmInput.K.Tab) && visualizer.Drones.Count > 0)
             {
                 FollowIndex = (FollowIndex + 1) % visualizer.Drones.Count;
@@ -152,6 +185,58 @@ namespace SuruIHA
                 orbitDistance = Vector3.Distance(transform.position, pivot);
                 mode = Mode.Orbit;
             }
+        }
+    }
+
+    // Üçüncü şahıs (TPP) kamera düzeneği: İHA'nın arkasında ve biraz üstünde durur, uçuş yönünü yumuşakça
+    // izler, araziye girmez. Kendi yumuşatma durumunu tutar; yan yana ekranda her sürüye bir tane.
+    public class TppRig
+    {
+        Vector3 pos;
+        Quaternion rot;
+        float heading;
+        bool init, headingInit;
+
+        // Kameranın şu anki yerinden başla: İHA'ya doğru süzülerek gelir
+        public void Begin(Vector3 p, Quaternion r)
+        {
+            pos = p;
+            rot = r;
+            init = true;
+            headingInit = false;
+        }
+
+        // Film kesmesi: bir sonraki adımda doğrudan yerine geç
+        public void Snap() => init = headingInit = false;
+
+        public (Vector3, Quaternion) Step(SwarmVisualizer vis, DroneView d, float dt, float yawOff, float pitch, float dist)
+        {
+            Vector3 v = d.Velocity;
+            v.y = 0f;
+            float target = v.sqrMagnitude > 1f ? Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg : headingInit ? heading : d.transform.eulerAngles.y;
+            heading = headingInit ? Mathf.LerpAngle(heading, target, 1f - Mathf.Exp(-2.5f * dt)) : target;
+            headingInit = true;
+
+            float s = vis.droneScale;
+            Vector3 focus = d.transform.position + Vector3.up * 0.25f * s;
+            Quaternion orbit = Quaternion.Euler(pitch, heading + yawOff, 0f);
+            Vector3 want = focus - orbit * Vector3.forward * dist;
+            float ground = vis.GroundAt(want) + 2.5f;      // kamera araziye girmesin
+            if (want.y < ground) want.y = ground;
+            // İHA ekranın alt üçte birinde dursun: odağın biraz üstüne bak
+            Quaternion look = Quaternion.LookRotation(focus + Vector3.up * dist * 0.12f - want);
+            if (!init)
+            {
+                pos = want;
+                rot = look;
+                init = true;
+            }
+            else
+            {
+                pos = Vector3.Lerp(pos, want, 1f - Mathf.Exp(-10f * dt));
+                rot = Quaternion.Slerp(rot, look, 1f - Mathf.Exp(-12f * dt));
+            }
+            return (pos, rot);
         }
     }
 }

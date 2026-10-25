@@ -64,6 +64,9 @@ SHOTS = [
     (r"C:\SuruIHA\arayuz_testi\03_sekme_kullanilanlar.png", "51_arayuz_kullanilanlar.jpg"),
     (r"C:\SuruIHA\arayuz_testi\04_bulgu_eh.png", "52_arayuz_bulgular_eh.jpg"),
     (r"C:\SuruIHA\arayuz_testi\07_bulgu_ablasyon.png", "53_arayuz_bulgular_ablasyon.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\13b_iha_kamerasi.png", "54_iha_kamerasi_tpp.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\19_yan_yana_iha_kamerasi.png", "55_yan_yana_iha_kamerasi.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\13c_taktik_numaralar.png", "56_taktik_iha_numaralari.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

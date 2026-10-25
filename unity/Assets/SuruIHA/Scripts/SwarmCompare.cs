@@ -17,6 +17,8 @@ namespace SuruIHA
         public bool Active { get; private set; }
 
         Camera mainCam, camB;
+        public Camera CamB => Active ? camB : null;
+        bool bFollowing;
         SwarmHud hud;
         float nextLayer;
         Texture2D line;
@@ -75,7 +77,23 @@ namespace SuruIHA
             bool want = B.Receiver != null && B.Receiver.Connected;
             if (want != Active) Switch(want);
             if (Active && camB != null)
-                camB.transform.SetPositionAndRotation(mainCam.transform.position, mainCam.transform.rotation);
+            {
+                // İHA kamerasında sağ ekran kendi sürüsündeki aynı numaralı İHA'yı izler (aynı açıyla);
+                // diğer kameralarda iki ekran birebir aynı yerden bakar
+                var sc = mainCam.GetComponent<SwarmCamera>();
+                if (sc != null && sc.mode == SwarmCamera.Mode.Follow && sc.FollowIndex < B.Drones.Count)
+                {
+                    if (!bFollowing) sc.RigB.Begin(camB.transform.position, camB.transform.rotation);   // süzülerek gelsin
+                    bFollowing = true;
+                    var (p, r) = sc.RigB.Step(B, B.Drones[sc.FollowIndex], Time.deltaTime, sc.TppYaw, sc.TppPitch, sc.TppDistance);
+                    camB.transform.SetPositionAndRotation(p, r);
+                }
+                else
+                {
+                    bFollowing = false;
+                    camB.transform.SetPositionAndRotation(mainCam.transform.position, mainCam.transform.rotation);
+                }
+            }
         }
 
         void Switch(bool on)
@@ -99,6 +117,7 @@ namespace SuruIHA
                 camB.rect = new Rect(0.5f, 0f, 0.5f, 1f);
                 camB.cullingMask = ~(1 << LayerA);
                 camB.gameObject.SetActive(true);
+                B.ViewCamera = camB;
                 if (hud != null) hud.visible = false;    // ayrıntılı panel H ile açılır
             }
             else
@@ -106,6 +125,7 @@ namespace SuruIHA
                 mainCam.rect = new Rect(0f, 0f, 1f, 1f);
                 mainCam.cullingMask = ~(1 << LayerB);
                 if (camB != null) camB.gameObject.SetActive(false);
+                B.ViewCamera = null;
                 if (hud != null) hud.visible = true;
             }
         }

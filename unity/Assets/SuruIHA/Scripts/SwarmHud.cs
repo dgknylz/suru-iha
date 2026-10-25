@@ -98,7 +98,7 @@ namespace SuruIHA
             {
                 SwarmCamera.Mode.Cinematic => "sinematik",
                 SwarmCamera.Mode.Orbit => "serbest",
-                SwarmCamera.Mode.Follow => $"takip İHA-{cam.FollowIndex + 1}",
+                SwarmCamera.Mode.Follow => $"İHA-{cam.FollowIndex + 1} (TPP)",
                 _ => "taktik",
             };
             rows.Add(("Kamera", camName, Ui.Ink));

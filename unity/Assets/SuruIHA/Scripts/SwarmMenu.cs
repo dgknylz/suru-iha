@@ -28,7 +28,7 @@ namespace SuruIHA
         Scenario running;
         int runStrategy = 2;
         bool runCompare;
-        bool bannerOpen, legendOpen, feedOpen = true, wasRunning;
+        bool bannerOpen, legendOpen, feedOpen = true, wasRunning, wasTpp;
         float bannerUntil;
         int resultsClosedFor = int.MinValue;
         string tip;
@@ -97,6 +97,11 @@ namespace SuruIHA
                 if (SwarmInput.Down(SwarmInput.K.Left) || SwarmInput.Down(SwarmInput.K.PageUp)) CurrentTab = (Tab)(((int)CurrentTab + n - 1) % n);
             }
             if (Current == Page.Sim && SwarmInput.Down(SwarmInput.K.I)) legendOpen = !legendOpen;
+
+            // İHA kamerasına geçince senaryo kutusu küçülür (İHA bilgi kartına yer açılır)
+            bool tppNow = cam != null && cam.mode == SwarmCamera.Mode.Follow;
+            if (tppNow && !wasTpp) bannerOpen = false;
+            wasTpp = tppNow;
 
             // Yan yana karşılaştırmada olay akışı sağdaki dirençli sürüyü anlatır (B baştan kurulu, kare gelince başlar)
             var cmp = SwarmCompare.Instance;

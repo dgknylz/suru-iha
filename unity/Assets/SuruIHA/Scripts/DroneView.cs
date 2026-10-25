@@ -129,6 +129,23 @@ namespace SuruIHA
         // Film kesmesi: bir sonraki karede yumuşatmadan yeni konuma geç
         public void Snap() => hasState = false;
 
+        // Durum ışığının rengi (arayüzdeki İHA seçici ve bilgi kartı da aynısını kullanır)
+        public static Color StatusColor(DroneState s) =>
+            s.mode == 4 ? ColFailed : s.mode == 2 ? ColSpoof : s.mode == 3 ? ColRelay
+            : s.mode == 7 ? ColSpoofSeen : s.mode == 6 ? ColGpsSpoofed
+            : s.gps == 0 ? ColNoGps : s.mode == 1 ? ColSearch : s.jam > 0.35f ? ColJammed : ColNormal;
+
+        public static string StatusName(DroneState s) =>
+            s.mode == 4 ? "arızalı" : s.mode == 2 ? "saldırgan" : s.mode == 3 ? "röle"
+            : s.mode == 7 ? "aldatmayı fark etti" : s.mode == 6 ? "GPS'i aldatılıyor"
+            : s.mode == 5 ? "GPS'i geri almaya gidiyor" : s.gps == 0 ? "GPS yok, tahminle uçuyor"
+            : s.mode == 1 ? "spiral arama yapıyor" : s.jam > 0.35f ? "karıştırılıyor" : "normal";
+
+        public static string PhaseName(int phase) => phase switch
+        {
+            0 => "kalkış", 1 => "düzende intikal", 2 => "görev", 3 => "toplanma", 4 => "düzende dönüş", 5 => "iniş", _ => "indi",
+        };
+
         public void SetState(DroneState s)
         {
             State = s;
@@ -140,9 +157,7 @@ namespace SuruIHA
                 trail.Clear();
                 hasState = true;
             }
-            Color c = s.mode == 4 ? ColFailed : s.mode == 2 ? ColSpoof : s.mode == 3 ? ColRelay
-                    : s.mode == 7 ? ColSpoofSeen : s.mode == 6 ? ColGpsSpoofed
-                    : s.gps == 0 ? ColNoGps : s.mode == 1 ? ColSearch : s.jam > 0.35f ? ColJammed : ColNormal;
+            Color c = StatusColor(s);
             SwarmMaterials.SetBlock(block, c * 0.3f, c * vis.glow * 2f);
             foreach (var r in leds) r.SetPropertyBlock(block);
             beaconRenderer.SetPropertyBlock(block);
@@ -203,7 +218,7 @@ namespace SuruIHA
             UpdateGhost();
         }
 
-        void LateUpdate() => UpdateBeacon(Camera.main);
+        void LateUpdate() => UpdateBeacon(vis.RenderCamera);
 
         public void UpdateBeacon(Camera cam)
         {

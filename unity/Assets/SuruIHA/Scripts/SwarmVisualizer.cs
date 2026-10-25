@@ -47,6 +47,11 @@ namespace SuruIHA
         // Sahnedeki ana sürü (5065). Karşılaştırma modu ikinci bir görselleştirici ekler; FindAnyObjectByType
         // ikisinden rastgele birini döndürebildiği için ana sürüye her zaman bununla ulaşılır.
         public static SwarmVisualizer Main { get; private set; }
+
+        // Bu sürüyü çizen kamera (yan yana ekranda sağdaki sürü için ikinci kamera). İşaret ve çizgi boyutları
+        // bu kameraya olan uzaklığa göre ayarlanır; boşsa ana kamera.
+        public Camera ViewCamera;
+        public Camera RenderCamera => ViewCamera != null && ViewCamera.isActiveAndEnabled ? ViewCamera : Camera.main;
         void OnEnable() { if (Main == null) Main = this; }
         void OnDestroy() { if (Main == this) Main = null; }
 
@@ -182,7 +187,7 @@ namespace SuruIHA
                 links[k].SetPosition(0, a);
                 links[k].SetPosition(1, b);
                 // Kameraya yakın çizgiler incelsin (takip kamerasında ekranı kaplamasın)
-                var cam = Camera.main;
+                var cam = RenderCamera;
                 float near = cam != null ? DistanceToSegment(cam.transform.position, a, b) : 200f;
                 links[k].widthMultiplier = linkWidth * Mathf.Lerp(0.4f, 1f, k < linkQ.Count ? linkQ[k] : 1f)
                                            * Mathf.Clamp(near / 120f, 0.08f, 1f);
@@ -347,7 +352,7 @@ namespace SuruIHA
                 m.Root.localPosition = new Vector3(p.x, g, p.z);
                 m.Ring.transform.localScale = Vector3.one * Mathf.Max(E[i].r, 10f);
                 // Uzaktan (kuşbakışı) da seçilsin: çizgiler kamera uzaklığıyla kalınlaşır, nişangâh büyür
-                var cam = Camera.main;
+                var cam = RenderCamera;
                 float far = cam != null ? Mathf.Clamp(Vector3.Distance(cam.transform.position, m.Root.position) / 150f, 1f, 5f) : 1f;
                 m.Ring.widthMultiplier = 0.5f * far;
                 m.CrossA.widthMultiplier = m.CrossB.widthMultiplier = 0.7f * far;
@@ -612,7 +617,7 @@ namespace SuruIHA
                     wave.transform.localPosition = new Vector3(0, h, 0);
                     wave.transform.localScale = Vector3.one * Mathf.Lerp(6f, 90f, Mathf.Sqrt(k));
                     // Uzaktan (kuşbakışı) da görünsün: kalınlık kamera uzaklığıyla büyür
-                    var cam = Camera.main;
+                    var cam = v.RenderCamera;
                     float far = cam != null ? Vector3.Distance(cam.transform.position, Root.position) / 150f : 1f;
                     wave.widthMultiplier = Mathf.Lerp(0.7f, 0.15f, k) * Mathf.Clamp(far, 0.6f, 6f);
                     // Taban rengi de parlak: gündüz ışığında ışıma (emission) tek başına sönük kalıyor
@@ -636,7 +641,7 @@ namespace SuruIHA
             var D = Frame?.drones;
             int n = D?.Length ?? 0;
             while (planLines.Count < n) planLines.Add(MakeLine(linkRoot, Mats.TaskRing, 0.35f, 2, true));
-            var cam = Camera.main;
+            var cam = RenderCamera;
             for (int i = 0; i < planLines.Count; i++)
             {
                 var lr = planLines[i];

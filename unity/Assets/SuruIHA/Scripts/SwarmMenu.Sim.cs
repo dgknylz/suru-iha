@@ -21,15 +21,162 @@ namespace SuruIHA
             }
         }
 
+        bool Tpp => cam != null && cam.mode == SwarmCamera.Mode.Follow;
+
         void DrawSim()
         {
             float top = CompareOn ? 128f : 20f;
+            bool tpp = Tpp;
+            // Dünyadaki İHA etiketleri en altta çizilir (paneller üstlerini örtsün)
+            if (cam != null && cam.mode == SwarmCamera.Mode.Top) DrawDroneNumbers();
+            else if (tpp) DrawFollowLabels();
             DrawBanner(top);
-            if (feedOpen) DrawFeed(top, legendOpen ? 4 : 6);
+            // Yan yana İHA kamerasında sağdaki kart olay akışının yerini alır; akış kartın altına iner
+            bool cardRight = tpp && CompareOn;
+            if (feedOpen) DrawFeed(cardRight ? top + 50f + 132f + 14f : top, cardRight ? 3 : legendOpen ? 4 : 6);
+            if (tpp) DrawDroneCards(top + 50f);
             float tbTop = DrawToolbar();
-            if (legendOpen) DrawLegendPanel(tbTop);
+            float above = tbTop;
+            if (tpp) above = DrawDroneSelector(tbTop);
+            if (legendOpen) DrawLegendPanel(above);
             DrawResults();
-            if (tip != null) DrawTip(tbTop);
+            if (tip != null) DrawTip(above);
+        }
+
+        // ------------------------------------------------------------ İHA kamerası (TPP)
+        // İzlenen İHA'nın bilgi kartı (yan yana ekranda her yarıya bir kart, aynı numaralı İHA)
+        void DrawDroneCards(float y)
+        {
+            var vis = SwarmVisualizer.Main;
+            if (vis == null || vis.Drones.Count == 0) return;
+            int i = Mathf.Clamp(cam.FollowIndex, 0, vis.Drones.Count - 1);
+            if (CompareOn)
+            {
+                float half = Ui.W / 2f, w = 600f;
+                DroneCard(vis.Drones[i].State, $"İHA-{i + 1}", "korumasız sürü", (half - w) / 2f, y, w);
+                var b = SwarmCompare.Instance.B;
+                if (i < b.Drones.Count) DroneCard(b.Drones[i].State, $"İHA-{i + 1}", "dirençli sürü", half + (half - w) / 2f, y, w);
+            }
+            else DroneCard(vis.Drones[i].State, $"İHA-{i + 1}", null, (Ui.W - 780f) / 2f, y, 780f);
+        }
+
+        static void DroneCard(DroneState s, string name, string side, float x, float y, float w)
+        {
+            if (s == null) return;
+            const float h = 132f;
+            Ui.Panel(Ui.R(x, y, w, h), 14, 0.9f);
+            Color c = DroneView.StatusColor(s);
+            if (s.mode == 4) c = new Color(0.45f, 0.45f, 0.45f);
+            Ui.Dot(new Vector2((x + 30f) * Ui.S, (y + 30f) * Ui.S), 9f, c);
+            Ui.Label(Ui.R(x + 48, y + 13, 160, 34), name, 24, Ui.Ink, true);
+            float nx = x + 48 + Ui.TextWidth(name, 24, true) + 14f;
+            Ui.Chip(nx, y + 19, Ui.Upper(DroneView.StatusName(s)), c, 12f);
+            string ph = DroneView.PhaseName(s.phase) + " evresi";
+            Ui.Label(Ui.R(x + w - 300, y + 20, 280, 22), side != null ? $"{side} · {ph}" : ph, 14.5f, Ui.Ink2, false, TextAnchor.UpperRight);
+
+            (string k, string v, Color col)[] fields =
+            {
+                ("GPS", s.gps == 1 ? "var" : "yok", s.gps == 1 ? Ui.Good : Ui.Bad),
+                ("Konum belirsizliği", $"{s.sigma:0} m", s.sigma > 15f ? Ui.Warn : Ui.Ink),
+                ("Karıştırma", $"%{s.jam * 100f:0}", s.jam > 0.35f ? Ui.Warn : Ui.Ink),
+                ("Şimdiki hedef", s.task >= 0 ? $"#{s.task + 1}" : "yok", Ui.Ink),
+            };
+            float fw = (w - 44f) / fields.Length;
+            for (int k = 0; k < fields.Length; k++)
+            {
+                float fx = x + 22 + k * fw;
+                Ui.Label(Ui.R(fx, y + 54, fw - 8, 18), fields[k].k, 12.5f, Ui.Ink3);
+                Ui.Label(Ui.R(fx, y + 72, fw - 8, 26), fields[k].v, 18, fields[k].col, true);
+            }
+            string plan = s.plan != null && s.plan.Length > 0 ? "Plan: " + string.Join(" → ", System.Array.ConvertAll(s.plan, t => "#" + (t + 1))) : "Plan: boş";
+            if (s.relay >= 0) plan += $"  ·  röle: İHA-{s.relay + 1} ile bağlantıyı koruyor";
+            Ui.Label(Ui.R(x + 22, y + 104, w - 44, 22), plan, 14.5f, Ui.Ink2);
+        }
+
+        // Alttaki İHA seçici: her düğmenin altındaki çizgi İHA'nın durum rengidir
+        float DrawDroneSelector(float tbTop)
+        {
+            var vis = SwarmVisualizer.Main;
+            int n = vis != null ? vis.Drones.Count : 0;
+            if (n == 0) return tbTop;
+            const float bw = 92f, gap = 6f, labelW = 96f;
+            const string hint = "fare: döndür · tekerlek: yakınlaş · R: sıfırla";
+            float hintW = Ui.TextWidth(hint, 13.5f) + 24f;
+            float total = labelW + n * (bw + gap) - gap + hintW;
+            float x = (Ui.W - total) / 2f, y = tbTop - 12f - 60f;
+            Ui.Panel(Ui.R(x - 14, y, total + 28, 60), 14, 0.9f);
+            Ui.Label(Ui.R(x, y, labelW, 60), "İHA SEÇ", 12, Ui.Ink3, true, TextAnchor.MiddleLeft);
+            for (int i = 0; i < n; i++)
+            {
+                var st = vis.Drones[i].State;
+                Color c = st != null ? DroneView.StatusColor(st) : Ui.Ink3;
+                if (st != null && st.mode == 4) c = new Color(0.45f, 0.45f, 0.45f);
+                float bx = x + labelW + i * (bw + gap);
+                var r = Ui.R(bx, y + 9, bw, 42);
+                if (r.Contains(Event.current.mousePosition) && st != null) tip = $"İHA-{i + 1}: {DroneView.StatusName(st)} · {DroneView.PhaseName(st.phase)} evresi";
+                if (Ui.Button(r, $"İHA-{i + 1}", Ui.Kind.Normal, i == cam.FollowIndex, 15)) cam.SetFollow(i);
+                Ui.Fill(Ui.R(bx + 16, y + 9 + 42 - 7, bw - 32, 3), c, 1.5f);
+            }
+            Ui.Label(Ui.R(x + total - hintW + 12, y, hintW, 60), hint, 13.5f, Ui.Ink3, false, TextAnchor.MiddleLeft);
+            return y;
+        }
+
+        // Dünyadaki bir noktanın üstüne küçük etiket; tıklanabilir ise tıklanınca true
+        static bool WorldChip(Camera c, Vector3 world, string text, Color col, bool clickable)
+        {
+            if (c == null) return false;
+            Vector3 sp = c.WorldToScreenPoint(world);
+            if (sp.z <= 0f || !c.pixelRect.Contains(new Vector2(sp.x, sp.y))) return false;
+            float w = (Ui.TextWidth(text, 13.5f, true) + 22f) * Ui.S, h = 26f * Ui.S;
+            var r = new Rect(sp.x - w / 2f, Screen.height - sp.y - h - 8f * Ui.S, w, h);
+            bool hover = clickable && r.Contains(Event.current.mousePosition);
+            Ui.Fill(r, new Color(0.03f, 0.05f, 0.07f, hover ? 0.95f : 0.82f), 13f);
+            Ui.Outline(r, col, hover ? 2f : 1.5f, 13f);
+            GUI.Label(r, text, Ui.Style(13.5f, Ui.Ink, true, TextAnchor.MiddleCenter, false));
+            if (!clickable) return false;
+            Ui.Block(r);
+            return GUI.Button(r, GUIContent.none, GUIStyle.none);
+        }
+
+        static Color ChipColor(DroneView d)
+        {
+            if (d.State == null) return Ui.Ink3;
+            return d.State.mode == 4 ? new Color(0.45f, 0.45f, 0.45f) : DroneView.StatusColor(d.State);
+        }
+
+        // İHA kamerasında izlenen İHA'nın üstünde adı (yan yana ekranda iki tarafta da)
+        void DrawFollowLabels()
+        {
+            var vis = SwarmVisualizer.Main;
+            if (vis.Drones.Count == 0) return;
+            int i = Mathf.Clamp(cam.FollowIndex, 0, vis.Drones.Count - 1);
+            float up = 0.5f * vis.droneScale;   // İHA'nın hemen üstü
+            var main = cam.GetComponent<Camera>();
+            WorldChip(main, vis.Drones[i].transform.position + Vector3.up * up, $"İHA-{i + 1}", ChipColor(vis.Drones[i]), false);
+            var cmp = SwarmCompare.Instance;
+            if (CompareOn && i < cmp.B.Drones.Count)
+                WorldChip(cmp.CamB, cmp.B.Drones[i].transform.position + Vector3.up * up, $"İHA-{i + 1}", ChipColor(cmp.B.Drones[i]), false);
+        }
+
+        // Taktik görünümde her İHA'nın numarası; tıklanınca kamera o İHA'ya geçer
+        void DrawDroneNumbers()
+        {
+            var vis = SwarmVisualizer.Main;
+            var main = cam.GetComponent<Camera>();
+            for (int i = 0; i < vis.Drones.Count; i++)
+                if (WorldChip(main, vis.Drones[i].transform.position, (i + 1).ToString(), ChipColor(vis.Drones[i]), true))
+                {
+                    cam.SetFollow(i);
+                    cam.mode = SwarmCamera.Mode.Follow;
+                }
+            var cmp = SwarmCompare.Instance;
+            if (!CompareOn) return;
+            for (int i = 0; i < cmp.B.Drones.Count; i++)
+                if (WorldChip(cmp.CamB, cmp.B.Drones[i].transform.position, (i + 1).ToString(), ChipColor(cmp.B.Drones[i]), true))
+                {
+                    cam.SetFollow(i);
+                    cam.mode = SwarmCamera.Mode.Follow;
+                }
         }
 
         // ------------------------------------------------------------ senaryo kutusu
@@ -127,7 +274,7 @@ namespace SuruIHA
         }
 
         // Düğme genişliği: kalın yazının genişliği + iki yandaki boşluk (seçilince yazı kalınlaşır, kesilmesin)
-        static float ToolW(string label) => Mathf.Max(52f, Ui.TextWidth(label, 15f, true) + 44f);
+        static float ToolW(string label) => Mathf.Max(50f, Ui.TextWidth(label, 15f, true) + 40f);
 
         float DrawToolbar()
         {
@@ -142,7 +289,8 @@ namespace SuruIHA
                              () => cam.mode = SwarmCamera.Mode.Cinematic),
                     new Tool("Serbest", "Serbest kamera [O]: sürükleyerek döndür, tekerlekle yakınlaş, WASD ile kaydır.", cam.mode == SwarmCamera.Mode.Orbit,
                              () => cam.mode = SwarmCamera.Mode.Orbit),
-                    new Tool("Takip", "Takip kamerası [F]: bir İHA'nın arkasından izle. Tekrar basınca sıradaki İHA'ya geçer.",
+                    new Tool("İHA kamerası", "İHA kamerası [F]: seçili İHA'yı arkasından izle (üçüncü şahıs). Alttan İHA seç ya da 1-9 / 0; " +
+                                             "taktik görünümde İHA numarasına tıkla.",
                              cam.mode == SwarmCamera.Mode.Follow, () =>
                              {
                                  if (cam.mode == SwarmCamera.Mode.Follow && vis.Drones.Count > 0)
@@ -192,7 +340,7 @@ namespace SuruIHA
                 }),
             };
 
-            const float bh = 42f, gapB = 6f, gapG = 22f, fs = 15f;
+            const float bh = 42f, gapB = 6f, gapG = 18f, fs = 15f;
             float total = -gapG;
             foreach (var g in groups)
             {
@@ -394,6 +542,14 @@ namespace SuruIHA
             yield return Shot("12_senaryo_kutusu");
             yield return Wait(18f);
             yield return Shot("13_gorevde");
+            cam.SetFollow(2);                      // İHA kamerası (TPP): İHA-3
+            cam.mode = SwarmCamera.Mode.Follow;
+            yield return Wait(3f);
+            yield return Shot("13b_iha_kamerasi");
+            cam.mode = SwarmCamera.Mode.Top;       // taktik görünümde tıklanabilir İHA numaraları
+            yield return Wait(2.5f);
+            yield return Shot("13c_taktik_numaralar");
+            cam.mode = SwarmCamera.Mode.Cinematic;
             legendOpen = true;
             yield return Wait(1f);
             yield return Shot("14_renkler");
@@ -422,6 +578,10 @@ namespace SuruIHA
             log.AppendLine($"yan yana: {(CompareOn ? "açık" : "AÇILMADI")} durum={launcher.Status} {launcher.LastError}");
             yield return Wait(25f);
             yield return Shot("18_yan_yana");
+            cam.SetFollow(4);                      // yan yana İHA kamerası: iki sürüde de İHA-5
+            cam.mode = SwarmCamera.Mode.Follow;
+            yield return Wait(3f);
+            yield return Shot("19_yan_yana_iha_kamerasi");
 
             log.AppendLine("olay akışı (yan yana, sağdaki sürü):");
             foreach (var e in SwarmEvents.Instance.Items) log.AppendLine($"  t={e.sim:0} {e.text}");

@@ -63,6 +63,10 @@ namespace SuruIHA
             return st;
         }
 
+        // Türkçe büyük harf (i → İ, ı → I); ToUpperInvariant "değerlendirme"yi "DEĞERLENDIRME" yapar
+        static readonly System.Globalization.CultureInfo Tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+        public static string Upper(string s) => s.ToUpper(Tr);
+
         // Referans birimindeki dikdörtgeni ekran pikseline çevir
         public static Rect R(float x, float y, float w, float h) => new Rect(x * S, y * S, w * S, h * S);
 
