@@ -25,6 +25,9 @@ namespace SuruIHA
         public float trailSeconds = 6f;
         public bool showTrails = true;
         public bool showLinks = true;
+        [Tooltip("Yalnızca zayıflamış (karıştırılan) bağlantıları çiz: ekran temiz kalır, EH etkisi yine görünür")]
+        public bool onlyWeakLinks;
+        public const float WeakLink = 0.6f;   // bu kalitenin altındaki bağlantı "sorunlu" sayılır
         public bool showEstimates = true;
         [Tooltip("Dirençli sürünün ortak karıştırma haritası (J tuşu)")]
         public bool showJamMap = false;
@@ -178,7 +181,7 @@ namespace SuruIHA
             {
                 // Merkezi mimaride İHA'lar birbirleriyle konuşmaz: yalnızca istasyon bağlantıları (yıldız) çizilir
                 bool central = Frame != null && Frame.strategy == "centralized";
-                bool on = showLinks && !central && k < linkData.Count;
+                bool on = showLinks && !central && k < linkData.Count && (!onlyWeakLinks || (k < linkQ.Count && linkQ[k] < WeakLink));
                 if (links[k].enabled != on) links[k].enabled = on;
                 if (!on) continue;
                 var d = linkData[k];
@@ -189,15 +192,16 @@ namespace SuruIHA
                 // Kameraya yakın çizgiler incelsin (takip kamerasında ekranı kaplamasın)
                 var cam = RenderCamera;
                 float near = cam != null ? DistanceToSegment(cam.transform.position, a, b) : 200f;
-                links[k].widthMultiplier = linkWidth * Mathf.Lerp(0.4f, 1f, k < linkQ.Count ? linkQ[k] : 1f)
-                                           * Mathf.Clamp(near / 120f, 0.08f, 1f);
+                // "Sorunlu" kipinde ekranda yalnızca bunlar kalır: ince ve sönük değil, belirgin çizilsin
+                float wq = onlyWeakLinks ? 1.4f : Mathf.Lerp(0.4f, 1f, k < linkQ.Count ? linkQ[k] : 1f);
+                links[k].widthMultiplier = linkWidth * wq * Mathf.Clamp(near / 120f, 0.08f, 1f);
             }
             if (gcs != null && Frame?.gcs?.up != null)
             {
                 Vector3 mast = gcsMastTop != null ? gcsMastTop.position : gcs.position + Vector3.up * 12f;
                 for (int i = 0; i < gcsLinks.Count; i++)
                 {
-                    bool on = showLinks && Frame.gcs.on == 1 && i < Frame.gcs.up.Length && Frame.gcs.up[i] == 1 && i < drones.Count;
+                    bool on = showLinks && !onlyWeakLinks && Frame.gcs.on == 1 && i < Frame.gcs.up.Length && Frame.gcs.up[i] == 1 && i < drones.Count;
                     gcsLinks[i].enabled = on;
                     if (!on) continue;
                     gcsLinks[i].SetPosition(0, mast);
@@ -260,7 +264,7 @@ namespace SuruIHA
                 // Kalite 1 = yeşil (sağlam), 0 = kırmızı (karıştırılmış)
                 float q = linkQ[k];
                 Color c = Color.Lerp(new Color(1f, 0.12f, 0.08f), new Color(0.15f, 1f, 0.55f), q);
-                SwarmMaterials.SetBlock(block, c * 0.2f, c * glow * Mathf.Lerp(0.35f, 1f, q));
+                SwarmMaterials.SetBlock(block, c * 0.2f, c * glow * (onlyWeakLinks ? 1.3f : Mathf.Lerp(0.35f, 1f, q)));
                 links[k].SetPropertyBlock(block);
                 links[k].widthMultiplier = linkWidth * Mathf.Lerp(0.4f, 1f, q);
             }

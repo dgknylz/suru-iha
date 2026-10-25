@@ -77,6 +77,12 @@ Simülasyon sırasında ekranda:
 - **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
 - **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
   düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
+- **Katmanlar paneli:** sahnedeki çizgi ve işaretler ayrı ayrı açılıp kapanır: İHA bağlantıları
+  (kapalı / yalnızca sorunlu / hepsi), İHA planları, konum hayaletleri, karıştırma haritası, uçuş izleri,
+  uzak işaretler. Bağlantılar varsayılan olarak kapalıdır (sahne temiz görünsün); "Sorunlu" seçilince
+  yalnızca karıştırılan bağlantılar kırmızı çizilir. Seçimler bilgisayarda hatırlanır.
+
+  ![Görünüm katmanları](gorseller/57_gorunum_katmanlari.jpg)
 - **İHA kamerası (TPP):** "İHA kamerası" düğmesiyle bir İHA'yı arkasından izlersin. Altta İHA-1 … İHA-10
   seçici çıkar (her düğmenin altındaki çizgi o İHA'nın durum rengi); üstte izlenen İHA'nın kartı durur:
   durumu, evresi, GPS'i, konum belirsizliği, karıştırma seviyesi, hedefi ve planı. Taktik görünümde her
@@ -177,7 +183,7 @@ Her video karesi 0,1 s simülasyondur; video 3 kat hızlıdır ve bu ekranda yaz
 | **F**, **Tab**, **1-9**, **0** | İHA kamerası (üçüncü şahıs, TPP): seçili İHA'yı arkasından ve üstünden izler. 1-9 ve 0 (İHA-10) doğrudan seçer, Tab sıradakine geçer. Fareyle sürükleyince İHA'nın etrafında döner, tekerlekle yakınlaşır |
 | **R** | İHA kamerasının açısını ve uzaklığını sıfırla |
 | **T** | Taktik kuşbakışı |
-| **L** | Haberleşme bağlantılarını göster/gizle |
+| **L** | İHA bağlantıları: kapalı → yalnızca sorunlu (karıştırılan) → hepsi |
 | **G** | "İHA'nın sandığı konum" hayaletlerini göster/gizle |
 | **J** | Dirençli sürünün ortak karıştırma haritası |
 | **B** | Uzaktan görünen İHA işaretleri (durum renginde parlayan noktalar) |

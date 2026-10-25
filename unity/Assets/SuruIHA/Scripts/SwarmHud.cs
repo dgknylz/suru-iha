@@ -28,7 +28,13 @@ namespace SuruIHA
             if (Ui.Modal) return;   // menü açık: kısayollar susar
             if (SwarmInput.Down(SwarmInput.K.H)) visible = !visible;
             if (visualizer == null) return;
-            if (SwarmInput.Down(SwarmInput.K.L)) visualizer.showLinks = !visualizer.showLinks;
+            if (SwarmInput.Down(SwarmInput.K.L))
+            {
+                // Bağlantılar: kapalı → yalnızca sorunlu → hepsi → kapalı
+                if (!visualizer.showLinks) { visualizer.showLinks = true; visualizer.onlyWeakLinks = true; }
+                else if (visualizer.onlyWeakLinks) visualizer.onlyWeakLinks = false;
+                else visualizer.showLinks = false;
+            }
             if (SwarmInput.Down(SwarmInput.K.G)) visualizer.showEstimates = !visualizer.showEstimates;
             if (SwarmInput.Down(SwarmInput.K.J)) visualizer.showJamMap = !visualizer.showJamMap;
             if (SwarmInput.Down(SwarmInput.K.B)) visualizer.showBeacons = !visualizer.showBeacons;

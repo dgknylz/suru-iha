@@ -39,6 +39,7 @@ namespace SuruIHA
             float above = tbTop;
             if (tpp) above = DrawDroneSelector(tbTop);
             if (legendOpen) DrawLegendPanel(above);
+            if (layersOpen) DrawLayersPanel(above);
             DrawResults();
             if (tip != null) DrawTip(above);
         }
@@ -302,18 +303,14 @@ namespace SuruIHA
                 }),
                 ("GÖSTER", cmpOn ? new[]
                 {
-                    new Tool("Bağlantılar", "Haberleşme bağlantıları [L]: yeşil sağlam, kırmızı karıştırılmış.", vis.showLinks, () => vis.showLinks = !vis.showLinks),
-                    new Tool("Planlar", "İHA'ların planları [P]: her İHA'nın sıradaki hedeflerine giden rota.", vis.showPlans, () => vis.showPlans = !vis.showPlans),
-                    new Tool("Hayaletler", "İHA'nın sandığı konum [G]: GPS'siz İHA kendini nerede sanıyor (halka).", vis.showEstimates, () => vis.showEstimates = !vis.showEstimates),
-                    new Tool("EH haritası", "Sürünün ortak karıştırma haritası [J]: İHA'ların karıştırma ölçtüğü bölgeler.", vis.showJamMap, () => vis.showJamMap = !vis.showJamMap),
+                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, planlar, hayaletler, karıştırma haritası, izler. Her biri ayrı açılıp kapanır.",
+                             layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
                 } : new[]
                 {
-                    new Tool("Bağlantılar", "Haberleşme bağlantıları [L]: yeşil sağlam, kırmızı karıştırılmış.", vis.showLinks, () => vis.showLinks = !vis.showLinks),
-                    new Tool("Planlar", "İHA'ların planları [P]: her İHA'nın sıradaki hedeflerine giden rota.", vis.showPlans, () => vis.showPlans = !vis.showPlans),
-                    new Tool("Hayaletler", "İHA'nın sandığı konum [G]: GPS'siz İHA kendini nerede sanıyor (halka).", vis.showEstimates, () => vis.showEstimates = !vis.showEstimates),
-                    new Tool("EH haritası", "Sürünün ortak karıştırma haritası [J]: İHA'ların karıştırma ölçtüğü bölgeler.", vis.showJamMap, () => vis.showJamMap = !vis.showJamMap),
+                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, planlar, hayaletler, karıştırma haritası, izler. Her biri ayrı açılıp kapanır.",
+                             layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
                     new Tool("Panel", "Soldaki bilgi paneli [H]", hud != null && hud.visible, () => { if (hud != null) hud.visible = !hud.visible; }),
@@ -540,8 +537,13 @@ namespace SuruIHA
             log.AppendLine($"bağlantı: {(SimConnected ? "var" : "YOK")} {Time.realtimeSinceStartup - t0:0.0} s, durum={launcher.Status} {launcher.LastError}");
             yield return Wait(6f);
             yield return Shot("12_senaryo_kutusu");
-            yield return Wait(18f);
+            yield return Wait(14f);
             yield return Shot("13_gorevde");
+            SetLinkMode(SwarmVisualizer.Main, 1);  // sürü karıştırma bölgesindeyken yalnızca karıştırılan bağlantılar
+            cam.mode = SwarmCamera.Mode.Top;
+            yield return Wait(2f);
+            yield return Shot("13a_sorunlu_baglantilar");
+            DefaultLayers(SwarmVisualizer.Main);
             cam.SetFollow(2);                      // İHA kamerası (TPP): İHA-3
             cam.mode = SwarmCamera.Mode.Follow;
             yield return Wait(3f);
@@ -549,6 +551,10 @@ namespace SuruIHA
             cam.mode = SwarmCamera.Mode.Top;       // taktik görünümde tıklanabilir İHA numaraları
             yield return Wait(2.5f);
             yield return Shot("13c_taktik_numaralar");
+            layersOpen = true;
+            yield return Wait(1f);
+            yield return Shot("13d_katmanlar");
+            layersOpen = false;
             cam.mode = SwarmCamera.Mode.Cinematic;
             legendOpen = true;
             yield return Wait(1f);

@@ -36,7 +36,7 @@ namespace SuruIHA
         {
             ("C", "Sinematik kamera"), ("O", "Serbest kamera (fare + WASD)"), ("F · Tab · 1-9 · 0", "İHA kamerası (TPP)"),
             ("R", "İHA kamerasının açısını sıfırla"),
-            ("T", "Taktik kuşbakışı"), ("L", "Haberleşme bağlantıları"), ("P", "İHA'ların planları"),
+            ("T", "Taktik kuşbakışı"), ("L", "Bağlantılar: kapalı → sorunlu → hepsi"), ("P", "İHA'ların planları"),
             ("G", "İHA'nın sandığı konum"), ("J", "Sürünün karıştırma haritası"), ("I", "Renklerin anlamı"),
             ("H", "Bilgi paneli"), ("Z", "Bir İHA'yı arızalandır"), ("Y", "Yeni hedef ekle"),
             ("+ / −", "Karıştırıcı gücü"), ("M", "Karıştırıcı türü"), ("U", "GPS aldatıcı"), ("X", "Saldırgan İHA'lar"),

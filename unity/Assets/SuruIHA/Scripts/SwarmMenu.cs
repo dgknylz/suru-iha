@@ -54,6 +54,7 @@ namespace SuruIHA
             cam = FindAnyObjectByType<SwarmCamera>();
             launcher = GetComponent<SimLauncher>();
             if (cam != null) cam.mode = SwarmCamera.Mode.Cinematic;
+            LoadLayers();
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, "-suruUiTest");
             if (i >= 0) StartCoroutine(UiTest(i + 1 < args.Length ? args[i + 1] : "UiTest"));
@@ -97,6 +98,7 @@ namespace SuruIHA
                 if (SwarmInput.Down(SwarmInput.K.Left) || SwarmInput.Down(SwarmInput.K.PageUp)) CurrentTab = (Tab)(((int)CurrentTab + n - 1) % n);
             }
             if (Current == Page.Sim && SwarmInput.Down(SwarmInput.K.I)) legendOpen = !legendOpen;
+            SaveLayersIfChanged();
 
             // İHA kamerasına geçince senaryo kutusu küçülür (İHA bilgi kartına yer açılır)
             bool tppNow = cam != null && cam.mode == SwarmCamera.Mode.Follow;

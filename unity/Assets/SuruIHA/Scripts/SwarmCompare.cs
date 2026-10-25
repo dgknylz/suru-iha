@@ -65,7 +65,7 @@ namespace SuruIHA
             if (A == null || B == null || mainCam == null) return;
             // İkinci düzenek ana düzenekle aynı yerde durur (ana düzenek zemine oturtulmuş olabilir)
             B.transform.SetPositionAndRotation(A.transform.position, A.transform.rotation);
-            B.showLinks = A.showLinks; B.showEstimates = A.showEstimates; B.showJamMap = A.showJamMap;
+            B.showLinks = A.showLinks; B.onlyWeakLinks = A.onlyWeakLinks; B.showEstimates = A.showEstimates; B.showJamMap = A.showJamMap;
             B.showBeacons = A.showBeacons; B.showPlans = A.showPlans; B.showTrails = A.showTrails;
 
             if (Time.unscaledTime > nextLayer)
