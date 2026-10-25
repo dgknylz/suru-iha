@@ -52,7 +52,10 @@ namespace SuruIHA
                 st = new GUIStyle
                 {
                     font = font, fontSize = px, fontStyle = isBold ? FontStyle.Bold : FontStyle.Normal,
-                    alignment = anchor, wordWrap = wrap, richText = true, clipping = TextClipping.Clip,
+                    alignment = anchor, wordWrap = wrap, richText = true,
+                    // Satır kaydırılan yazı alttan kırpılmasın (yükseklik ölçümü bir satır eksik çıkabiliyor);
+                    // tek satırlık yazı (düğmeler) kutusundan taşmasın
+                    clipping = wrap ? TextClipping.Overflow : TextClipping.Clip,
                 };
                 styles[key] = st;
             }
@@ -71,6 +74,14 @@ namespace SuruIHA
 
         public static void Dot(Vector2 center, float radius, Color c) =>
             Fill(new Rect(center.x - radius * S, center.y - radius * S, 2 * radius * S, 2 * radius * S), c, radius);
+
+        // İçi boş halka (grafiklerde ikinci işaret türü: renk körlüğünde de ayırt edilsin)
+        public static void Ring(Vector2 center, float radius, Color c, float width = 2.5f)
+        {
+            var r = new Rect(center.x - radius * S, center.y - radius * S, 2 * radius * S, 2 * radius * S);
+            Fill(r, new Color(0.035f, 0.05f, 0.066f, 1f), radius);
+            Outline(r, c, width, radius);
+        }
 
         public static void Panel(Rect r, float radius = 14f, float alpha = 1f)
         {

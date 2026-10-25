@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace SuruIHA
 {
-    // "Bu proje nedir?", "Nasıl kullanılır?", Esc menüsü ve çıkış onayı
+    // Sekmeler: "Nasıl çalışır?", "Kullanılanlar", "Kullanım"; ayrıca Esc menüsü ve çıkış onayı
     public partial class SwarmMenu
     {
         // Renk açıklamaları (İHA ışıkları, hedef halkaları, EH işaretleri, çizgiler) — DroneView/SwarmVisualizer ile aynı renkler
@@ -41,6 +41,7 @@ namespace SuruIHA
             ("+ / −", "Karıştırıcı gücü"), ("M", "Karıştırıcı türü"), ("U", "GPS aldatıcı"), ("X", "Saldırgan İHA'lar"),
             ("F1 · F2 · F3", "Mimari: merkezi · merkeziyetsiz · dirençli"), ("F4", "Görev paylaşım algoritması"),
             ("N", "Yeni harita"), ("V", "Düzen tipi"), ("K", "Grafik kalitesi"), ("Esc", "Menü"),
+            ("← → · PageUp/Down", "Menüde sekme değiştir"),
         };
 
         // Renk açıklamalarını (Legend[from..to)) verilen sütuna çizer, kullanılan yüksekliği döndürür
@@ -76,112 +77,204 @@ namespace SuruIHA
             return 26f + h;
         }
 
-        void PageHeader(float x0, ref float y, string title, string sub)
+        // Madde işaretli kısa satır; kullanılan yüksekliği döndürür
+        static float Bullet(float x, float y, float w, string text, float size = 15.5f, Color? dot = null)
         {
-            Ui.Label(Ui.R(x0, y, 1400, 46), title, 34, Ui.Ink, true);
-            if (sub != null) Ui.Label(Ui.R(x0, y + 48, Ui.W - 2 * x0, 28), sub, 17, Ui.Ink2);
-            y += sub != null ? 96f : 64f;
+            Ui.Dot(new Vector2((x + 4f) * Ui.S, (y + size * 0.66f) * Ui.S), 3f, dot ?? Ui.Accent);
+            float h = Ui.TextHeight(text, size, w - 18f);
+            Ui.Label(Ui.R(x + 16, y, w - 16, h + 4), text, size, Ui.Ink2);
+            return h + 8f;
         }
 
-        void CloseButtons(float y)
+        // Başlıklı kart (sütun) çerçevesi; içerik y'sini döndürür
+        static float Card(float x, float y, float w, float h, string kicker, string title, Color kc)
         {
-            float x = Ui.W - 80f - 410f;
-            if (Ui.Button(Ui.R(x, y, 150, 56), "Geri", Ui.Kind.Ghost, size: 17)) Current = back;
-            if (back == Page.Home)
+            var r = Ui.R(x, y, w, h);
+            Ui.Fill(r, new Color(0.06f, 0.08f, 0.11f, 0.94f), 16);
+            Ui.Outline(r, Ui.Line, 1f, 16);
+            Ui.Chip(x + 22, y + 20, kicker, kc, 11.5f);
+            float th = Ui.TextHeight(title, 22, w - 44, true);
+            Ui.Label(Ui.R(x + 22, y + 52, w - 44, th + 4), title, 22, Ui.Ink, true);
+            return y + 60 + th;
+        }
+
+        // Kutu: başlık + açıklama (şemalarda)
+        static void Box(float x, float y, float w, float h, string head, string body, Color edge)
+        {
+            var r = Ui.R(x, y, w, h);
+            Ui.Fill(r, new Color(edge.r, edge.g, edge.b, 0.08f), 10);
+            Ui.Outline(r, new Color(edge.r, edge.g, edge.b, 0.55f), 1.5f, 10);
+            Ui.Label(Ui.R(x + 16, y + 12, w - 32, 26), head, 18, Ui.Ink, true);
+            Ui.Label(Ui.R(x + 16, y + 40, w - 32, h - 44), body, 15.5f, Ui.Ink2);
+        }
+
+        static void Arrow(float x, float y, string label = null)
+        {
+            Ui.Label(Ui.R(x - 20, y, 40, 26), "↓", 20, Ui.Ink3, true, TextAnchor.MiddleCenter);
+            if (label != null) Ui.Label(Ui.R(x + 18, y + 3, 300, 22), label, 14.5f, Ui.Ink3);
+        }
+
+        // ---------------------------------------------------------------- Nasıl çalışır?
+        void DrawNasilTab()
+        {
+            float x0 = 64f, gap = 26f, cw = Ui.W - 2 * x0, colW = (cw - 2 * gap) / 3f;
+            float y0 = BarH + 26f, ch = Mathf.Min(Ui.H - y0 - 190f, 740f);
+
+            // 1. sütun: sürü zekâsı — uçuş evreleri zaman çizelgesi
+            float x = x0;
+            float y = Card(x, y0, colW, ch, "1 · SÜRÜ ZEKÂSI", "Lider yok: her İHA kendi kararını verir", Ui.Accent);
+            (string head, string body)[] phases =
             {
-                if (Ui.Button(Ui.R(x + 166, y, 244, 56), "Simülasyonu başlat", Ui.Kind.Primary, size: 18, icon: true)) QuickStart();
+                ("Kalkış", "her İHA sırayla havalanır, üssün üstünde halka olur"),
+                ("Düzende intikal", "V düzeni; İHA'lar sanal liderin yerinde uzlaşır (konsensüs)"),
+                ("Görev", "dağılır, planladığı hedeflere gider; yeni hedefler belirir"),
+                ("Toplanma", "haberini aldığı her arkadaşı gelene kadar bekler"),
+                ("Düzende dönüş", "yuvalar Macar algoritmasıyla dağıtılır, yollar kesişmez"),
+                ("İniş", "her İHA kendi sırasıyla iner"),
+            };
+            float px = x + 34f, py = y + 6f;
+            Ui.Fill(Ui.R(px - 1.5f, py + 12, 3, (phases.Length - 1) * 64f), new Color(0.33f, 0.78f, 1f, 0.35f));
+            foreach (var (head, body) in phases)
+            {
+                Ui.Dot(new Vector2(px * Ui.S, (py + 12f) * Ui.S), 7f, Ui.Accent);
+                Ui.Label(Ui.R(px + 20, py, colW - 80, 26), head, 18.5f, Ui.Ink, true);
+                Ui.Label(Ui.R(px + 20, py + 26, colW - 80, 26), body, 15.5f, Ui.Ink2);
+                py += 64f;
             }
-            else if (Ui.Button(Ui.R(x + 166, y, 244, 56), "Simülasyona dön", Ui.Kind.Primary, size: 18, icon: true))
-                Current = Page.Sim;
+            py += 8f;
+            py += Bullet(x + 22, py, colW - 44, "Reynolds kuralları: ayrışma, hizalanma, uyum", 17f);
+            py += Bullet(x + 22, py, colW - 44, "Öngörülü çarpışma önleme: en yakın geçiş noktası hesaplanır, biri yukarı biri aşağı kaçar", 17f);
+            py += Bullet(x + 22, py, colW - 44, "Düşen İHA'nın hedefleri diğerlerine geçer, düzen kalanlarla yeniden kurulur", 17f);
+
+            // 2. sütun: otonom karar alma — CBBA döngüsü
+            x = x0 + colW + gap;
+            y = Card(x, y0, colW, ch, "2 · OTONOM KARAR ALMA", "CBBA: lidersiz paket planlama", Ui.Good);
+            float bxw = colW - 44f, bx = x + 22f;
+            Box(bx, y + 4, bxw, 98, "1 · Paket kurma", "Her İHA rotasına en çok değer katan hedefi en uygun sıraya ekler (en fazla 3 hedef).", Ui.Good);
+            Arrow(bx + bxw / 2f, y + 108, "komşulara yayınla");
+            Box(bx, y + 140, bxw, 98, "2 · Uzlaşma", "Komşular kazanan listelerini değiş tokuş eder; teklifi geçilen İHA o hedefi bırakır.", Ui.Good);
+            Arrow(bx + bxw / 2f, y + 244, "değişiklik kalmayınca");
+            Box(bx, y + 276, bxw, 76, "Çakışmasız plan", "Her hedefe tek İHA; lider ya da yer istasyonu yok.", Ui.Accent);
+            py = y + 372f;
+            py += Bullet(x + 22, py, colW - 44, "Hedeflerin değeri beklendikçe azalır; görev sırasında yeni hedefler belirir ve plan kendiliğinden güncellenir", 16.5f, Ui.Good);
+            py += Bullet(x + 22, py, colW - 44, "Merkezi karşılık: yer istasyonu herkesi toplar, açgözlü sırayla dağıtır (SGA)", 16.5f, Ui.Good);
+            py += Bullet(x + 22, py, colW - 44, "Yapay zekâ: sinir ağı her İHA'nın hedefi başarma olasılığını tahmin eder; CBBA beklenen ödülü en büyütür", 16.5f, Ui.Good);
+
+            // 3. sütun: EH direnci — tehdit → savunma
+            x = x0 + 2 * (colW + gap);
+            y = Card(x, y0, colW, ch, "3 · ELEKTRONİK HARP DİRENCİ", "Üç tehdit, birbirini tamamlayan 11 savunma", Ui.Bad);
+            (string threat, Color c, string defense)[] map =
+            {
+                ("Karıştırma", Ui.Bad, "Ortak karıştırma haritası · hedefi görmeden \"bitti\" dememe (spiral arama) · ölçümlerden karıştırıcıyı bulma · " +
+                                       "komşulardan konum düzeltme · GPS'i geri alma · frekans atlama"),
+                ("GPS aldatma", Ui.Cyan, "IMU ile tutarlılık testi · komşu menzil testi · \"hedef yok\" çıkarımı → İHA GPS'e güvenmeyi bırakır"),
+                ("Saldırgan İHA", Ui.Violet, "Beta itibar sistemi (menzil, hız, ilerleme kanıtı) · iki bağımsız tanık kuralı · \"tamamlandı\" bilgisi kaynağıyla yayılır"),
+                ("Görev değerlendirme", Ui.Warn, "Karıştırma riski ve konum belirsizliği teklife katılır (uzman kuralı ya da yapay zekâ)"),
+            };
+            py = y + 4f;
+            foreach (var (threat, c, defense) in map)
+            {
+                Ui.Chip(x + 22, py, threat.ToUpperInvariant(), c, 11.5f);
+                float h = Ui.TextHeight(defense, 17f, colW - 44f);
+                Ui.Label(Ui.R(x + 22, py + 32, colW - 44, h + 4), defense, 17f, Ui.Ink2);
+                py += 32f + h + 24f;
+            }
+            Ui.Label(Ui.R(x + 22, py, colW - 44, 60), "Her savunma deneyde tek tek kapatılıp etkisi ölçüldü (Bulgular → Savunmaların katkısı).", 15f, Ui.Ink3);
+
+            // Alt şerit: mimari
+            float sy = y0 + ch + 20f, sh = Ui.H - sy - 28f;
+            if (sh < 100f) return;
+            sh = Mathf.Min(sh, 150f);
+            var strip = Ui.R(x0, sy, cw, sh);
+            Ui.Fill(strip, new Color(0.06f, 0.08f, 0.11f, 0.94f), 16);
+            Ui.Outline(strip, Ui.Line, 1f, 16);
+            Ui.Label(Ui.R(x0 + 22, sy + 16, 400, 20), "SİMÜLASYON MİMARİSİ", 11.5f, Ui.Ink3, true);
+            float bw = (cw - 44f - 2 * 120f) / 3f, by = sy + 44f, bh = sh - 62f;
+            Box(x0 + 22, by, bw, bh, "Python simülatörü", "Her İHA'nın kararı, radyo ve EH modeli, arazi (Unity ile aynı yükseklik haritası)", Ui.Accent);
+            Ui.Label(Ui.R(x0 + 22 + bw, by, 120, bh), "UDP\n→", 15, Ui.Ink3, true, TextAnchor.MiddleCenter);
+            Box(x0 + 22 + bw + 120, by, bw, bh, "Unity HDRP", "Yalnızca 3D görüntü: arazi, köy, İHA'lar, EH işaretleri ve bu arayüz", Ui.Accent);
+            Ui.Label(Ui.R(x0 + 22 + 2 * bw + 120, by, 120, bh), "aynı kod\n→", 15, Ui.Ink3, true, TextAnchor.MiddleCenter);
+            Box(x0 + 22 + 2 * bw + 240, by, bw, bh, "Deneyler (görüntüsüz)", "8 çekirdekte paralel 5976 uçuş → grafikler ve istatistik testleri", Ui.Good);
         }
 
-        void DrawAbout()
+        // ---------------------------------------------------------------- Kullanılanlar
+        void DrawKullanilanlarTab()
         {
-            Dim(0.93f);
-            float x0 = 80f, cw = Ui.W - 160f, gap = 28f, colW = (cw - 2 * gap) / 3f;
-            float y = Mathf.Max(36f, (Ui.H - 1000f) / 2f);
-            PageHeader(x0, ref y, "Bu proje nedir?",
-                       "Sürü İHA'ların elektronik harp altında lidersiz karar alıp görevini sürdürebilmesi üzerine bir simülasyon çalışması.");
-            float top = y;
+            float x0 = 64f, gap = 26f, cw = Ui.W - 2 * x0, colW = (cw - 2 * gap) / 3f;
+            float y0 = BarH + 26f, ch = Mathf.Min(Ui.H - y0 - 30f, 900f);
 
-            // 1. sütun: problem ve soru
-            float h = Section(x0, y, colW, "PROBLEM",
-                "İHA sürüleri arama-kurtarma, keşif ve afet bölgelerinde kullanılıyor. Ama bir sürü iki şeye bağımlıdır: " +
-                "birbiriyle haberleşmeye ve GPS'e. Elektronik harp tam olarak bunları hedef alır: karıştırıcı haberleşmeyi ve " +
-                "GPS'i keser, aldatıcı sahte konum verir, ele geçirilmiş bir İHA da sürüye yalan söyler.");
-            y += h + 22;
-            h = Section(x0, y, colW, "SORU",
-                "Lideri olmayan bir sürü bu saldırılar altında görevini nasıl sürdürür? Karar alma mimarisi (merkezi, " +
-                "merkeziyetsiz, EH dirençli) ve görev paylaşım algoritması sonucu ne kadar değiştirir?");
-            y += h + 22;
-            Section(x0, y, colW, "NASIL DOĞRULADIK?",
-                "Yaklaşık 6000 deney uçuşu. Her mimari aynı 30 haritada uçtu (eşleştirilmiş deney) ve farklar Wilcoxon testiyle " +
-                "sınandı. Her savunma mekanizması tek tek kapatılıp etkisi ölçüldü (ablasyon). 29 otomatik test simülatörü denetliyor.");
+            float x = x0;
+            float y = Card(x, y0, colW, ch, "YAZILIM VE ARAÇLAR", "Neyle yapıldı?", Ui.Accent);
+            (string name, string what)[] tools =
+            {
+                ("Python 3.14", "Simülasyon, deneyler ve yapay zekâ. NumPy, SciPy, pandas, Matplotlib, pytest."),
+                ("Unity 6 · HDRP", "3D görselleştirme: gerçekçi ışık, gölge, sis ve bulutlar. Bütün sahne C# ile kodla kuruluyor."),
+                ("Blender 5.2", "İHA, karıştırıcı aracı, yer istasyonu, köy ve bitki modelleri Python betikleriyle üretildi."),
+                ("UDP + JSON", "Python ile Unity arasında saniyede 30 kare; Unity'den komutlar geri gider."),
+                ("Git", "Sürüm takibi: her aşama etiketli (v1 görsel → v6 arayüz)."),
+                ("PowerShell", "Derleme, uçtan uca test, arayüz testi ve video hattının otomasyonu."),
+            };
+            foreach (var (name, what) in tools)
+            {
+                Ui.Label(Ui.R(x + 22, y, colW - 44, 28), name, 20, Ui.Ink, true);
+                float h = Ui.TextHeight(what, 16.5f, colW - 44f);
+                Ui.Label(Ui.R(x + 22, y + 30, colW - 44, h + 4), what, 16.5f, Ui.Ink2);
+                y += 30f + h + 22f;
+            }
 
-            // 2. sütun: yöntem
-            float x1 = x0 + colW + gap;
-            y = top;
-            h = Section(x1, y, colW, "1 · SÜRÜ ZEKÂSI",
-                "Lider yok. Her İHA görev evresine kendisi karar verir, düzen uçuşunda komşularıyla uzlaşır (konsensüs), " +
-                "çarpışmaları önceden kestirip önler. Düşen bir İHA'nın görevleri diğerlerine geçer.");
-            y += h + 22;
-            h = Section(x1, y, colW, "2 · OTONOM KARAR ALMA",
-                "CBBA ile her İHA 3 hedeflik bir rota planlar ve komşularıyla çakışmasız bir plana uzlaşır. Görev sırasında " +
-                "yeni hedefler belirir; sürü yeniden plan yapar. Bir yapay sinir ağı, her İHA'nın hedefi başarma olasılığını tahmin eder.");
-            y += h + 22;
-            h = Section(x1, y, colW, "3 · ELEKTRONİK HARP DİRENCİ",
-                "Dirençli sürüye 11 savunma eklendi: ortak karıştırma haritası, hedefi görmeden \"bitti\" dememe (spiral arama), " +
-                "ölçümlerden karıştırıcıyı bulma, komşulardan konum düzeltme, GPS aldatma tespiti, güven sistemi, frekans atlama…");
-            y += h + 22;
-            Section(x1, y, colW, "SİMÜLATÖR",
-                "Python'da sıfırdan yazıldı. Radyo modeli arazinin sinyali gölgelemesini (ITU-R P.526 kırınım) hesaba katar. " +
-                "Unity yalnızca gösterir; kararları Python'daki her İHA kendisi verir.");
+            x = x0 + colW + gap;
+            y = Card(x, y0, colW, ch, "ALGORİTMA VE MODELLER", "Hangi bilimsel yöntemler?", Ui.Good);
+            (string area, string list)[] algos =
+            {
+                ("Sürü zekâsı", "Ortalama konsensüs · Macar algoritması (Kuhn 1955) · Reynolds kuralları · en yakın geçiş (CPA) ile çarpışma önleme"),
+                ("Karar alma", "CBBA (Choi vd. 2009) · merkezi SGA · zamanla azalan görev değeri · dinamik yeniden planlama"),
+                ("Radyo", "Log-mesafe yol kaybı · SINR'den paket kaybı · ITU-R P.526 bıçak sırtı kırınımı (arazi gölgesi)"),
+                ("Elektronik harp", "Kısıtlı en küçük kareler + k-ortalamalar (karıştırıcı bulma) · IMU tutarlılık testi · Beta itibar sistemi"),
+                ("Yapay zekâ", "8-8-1 yapay sinir ağı · geri yayılım · Adam · erken durdurma (denetimli öğrenme)"),
+                ("İstatistik", "Eşleştirilmiş deney (aynı 30 harita) · Wilcoxon işaretli sıralar · Kruskal-Wallis · ablasyon"),
+            };
+            foreach (var (area, list) in algos)
+            {
+                Ui.Label(Ui.R(x + 22, y, colW - 44, 28), area, 20, Ui.Ink, true);
+                float h = Ui.TextHeight(list, 16.5f, colW - 44f);
+                Ui.Label(Ui.R(x + 22, y + 30, colW - 44, h + 4), list, 16.5f, Ui.Ink2);
+                y += 30f + h + 22f;
+            }
 
-            // 3. sütun: bulgular
-            float x2 = x1 + colW + gap;
-            y = top;
-            Ui.Label(Ui.R(x2, y, colW, 24), "NE BULDUK?", 13, Ui.Accent, true);
-            y += 28;
-            float sw = (colW - 12f) / 2f;
-            Ui.Stat(Ui.R(x2, y, sw, 108), "%100", "20 dBm karıştırmada görev tamamlama (diğerleri %87)", Ui.Good);
-            Ui.Stat(Ui.R(x2 + sw + 12, y, sw, 108), "%66,5", "30 dBm: alan GPS'siz (diğerleri %12-17)", Ui.Good);
-            y += 120;
-            Ui.Stat(Ui.R(x2, y, sw, 108), "%99", "GPS aldatmada (diğerleri %51-61)", Ui.Good);
-            Ui.Stat(Ui.R(x2 + sw + 12, y, sw, 108), "%100", "%20 saldırgan İHA'ya karşı (korumasız %0)", Ui.Good);
-            y += 126;
-            h = Section(x2, y, colW, "KARAR ALMA",
-                "CBBA görev puanını her mimaride 4-10 puan artırdı ve katedilen yolu %17-37 kısalttı. Yapay zekâ görev " +
-                "başarısını uzman kuralından daha iyi tahmin etti (ROC AUC 0,978'e karşı 0,948).");
-            y += h + 22;
-            h = Section(x2, y, colW, "EN ÖNEMLİ DERS",
-                "Merkeziyetsizlik tek başına yetmiyor: korumasız lidersiz sürü saldırgana karşı %0'a düştü. Dayanıklılık tek bir " +
-                "\"sihirli\" mekanizmadan değil, birbirini tamamlayan savunmalardan geliyor.");
-            y += h + 22;
-            Section(x2, y, colW, "SINIRLILIKLAR",
-                "Gerçek uçuş yok, yalnızca simülasyon. Karıştırma yazılımda modellendi; gerçek bir radyo yayını yapılmadı. " +
-                "Tepenin arkasındaki karıştırıcıyı sürü bulamıyor, çünkü yer bulma yöntemi araziyi hesaba katmıyor.", 15.5f);
-
-            CloseButtons(Ui.H - 92f);
+            x = x0 + 2 * (colW + gap);
+            y = Card(x, y0, colW, ch, "RAKAMLARLA PROJE", "Ne kadar büyük?", Ui.Warn);
+            (string big, string cap)[] stats =
+            {
+                ("13 000+", "satır kod (Python ~7 100, C# ~6 000)"), ("5976", "deney uçuşu"),
+                ("29", "otomatik test"), ("11", "EH savunma mekanizması"),
+                ("9", "EH senaryosu (+ ana deney)"), ("10", "İHA, 20 hedef + beliren yeni hedefler"),
+                ("~11 000", "ağaç ve çalı (3D sahne)"), ("6", "sürüm (v1 → v6)"),
+            };
+            float sw = (colW - 44f - 12f) / 2f, sh = 124f;
+            for (int i = 0; i < stats.Length; i++)
+            {
+                float sx = x + 22 + (i % 2) * (sw + 12), sy = y + (i / 2) * (sh + 12);
+                Ui.Stat(Ui.R(sx, sy, sw, sh), stats[i].big, stats[i].cap, Ui.Warn, 36);
+            }
         }
 
-        void DrawHelp()
+        // ---------------------------------------------------------------- Kullanım
+        void DrawKullanimTab()
         {
-            Dim(0.93f);
             float x0 = 80f, cw = Ui.W - 160f, gap = 32f, colW = (cw - 2 * gap) / 3f;
-            float y = Mathf.Max(36f, (Ui.H - 1000f) / 2f);
-            PageHeader(x0, ref y, "Nasıl kullanılır?", null);
+            float y = BarH + 30f;
             float top = y;
 
             Ui.Label(Ui.R(x0, y, colW, 24), "ADIM ADIM", 13, Ui.Accent, true);
             y += 30;
             string[] steps =
             {
-                "Ana ekranda \"Simülasyonu başlat\"a bas ya da \"Senaryo seç\" ile bir tehdit seç.",
+                "Üstteki \"Simülasyonu başlat\"a bas ya da \"Simülasyon\" sekmesinden bir senaryo seç.",
                 "Üstteki kutu, bu senaryoda neye bakman gerektiğini söyler.",
                 "Sağdaki olay akışı, sürüde olanları canlı anlatır: GPS kesilmesi, karıştırıcının bulunması, yeni hedefler…",
                 "Alttaki düğmelerle kamerayı değiştir, katmanları aç-kapa ve sürüye müdahale et: bir İHA'yı arızalandır, yeni hedef ekle.",
                 "Görevler bitince sonuç ekranı çıkar ve aynı senaryonun 30 uçuşluk deney ortalamasıyla karşılaştırır.",
-                "Esc menüyü açar. Oradan senaryo değiştirebilir ya da ana ekrana dönebilirsin.",
+                "Esc menüyü açar. Oradan senaryo değiştirebilir ya da bu sekmelere dönebilirsin.",
             };
             for (int i = 0; i < steps.Length; i++)
             {
@@ -207,17 +300,16 @@ namespace SuruIHA
                 Ui.Fill(kr, new Color(1f, 1f, 1f, 0.08f), 6);
                 Ui.Outline(kr, new Color(1f, 1f, 1f, 0.16f), 1f, 6);
                 Ui.Label(kr, key, 13.5f, Ui.Ink, true, TextAnchor.MiddleCenter);
-                Ui.Label(Ui.R(x1 + 150, y + 2, colW - 150, 24), what, 15.5f, Ui.Ink2);
-                y += 33f;
+                Ui.Label(Ui.R(x1 + 172, y + 2, colW - 172, 24), what, 15.5f, Ui.Ink2);
+                y += 32f;
             }
 
             float x2 = x1 + colW + gap;
             Ui.Label(Ui.R(x2, top, colW, 24), "RENKLERİN ANLAMI", 13, Ui.Accent, true);
             DrawLegend(x2, top + 30, colW, 15.5f);
-
-            CloseButtons(Ui.H - 92f);
         }
 
+        // ---------------------------------------------------------------- Esc menüsü
         void DrawPause()
         {
             Dim(0.6f);
@@ -228,13 +320,13 @@ namespace SuruIHA
             float by = y + 100, bw = w - 56;
             if (Ui.Button(Ui.R(x + 28, by, bw, 56), "Devam et", Ui.Kind.Primary, size: 19, icon: true)) Current = Page.Sim;
             by += 66;
-            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Senaryo değiştir")) Go(Page.Scenarios);
+            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Senaryo değiştir")) OpenMenu(Tab.Simulasyon);
             by += 60;
-            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Bu proje nedir?")) Go(Page.About);
+            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Proje ve bulgular")) OpenMenu(Tab.Proje);
             by += 60;
-            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Nasıl kullanılır?")) Go(Page.Help);
+            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Nasıl kullanılır?")) OpenMenu(Tab.Kullanim);
             by += 60;
-            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Ana ekrana dön")) BackToHome();
+            if (Ui.Button(Ui.R(x + 28, by, bw, 52), "Simülasyonu durdur, ana ekrana dön")) BackToHome();
             by += 68;
             if (Ui.Button(Ui.R(x + 28, by, bw, 46), "Uygulamadan çık", Ui.Kind.Ghost, size: 16)) Go(Page.Quit);
         }

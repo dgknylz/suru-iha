@@ -31,11 +31,29 @@ namespace SuruIHA
         const string PathFile = "simulasyon_yolu.txt";
         static string PidFile => Path.Combine(Application.temporaryCachePath, "simulasyon_pid.txt");
 
+        Process warm;
+
         void Awake()
         {
             Instance = this;
             FindPython();
             KillOrphan();
+            Warm();
+        }
+
+        // Bilgisayar açıldıktan sonraki ilk Python başlatması kütüphaneleri diskten okuduğu için 10-30 s sürebilir.
+        // Kullanıcı açılış ekranını okurken kütüphaneleri bir kez yükleyip ısıtırız; "Başlat" sonra hızlı açılır.
+        void Warm()
+        {
+            if (!CanLaunch) return;
+            try
+            {
+                warm = Process.Start(new ProcessStartInfo(PythonPath, "-c \"import numpy, scipy.optimize, suru\"")
+                {
+                    WorkingDirectory = RepoPath, UseShellExecute = false, CreateNoWindow = true,
+                });
+            }
+            catch (Exception ex) { Debug.LogWarning("[SuruIHA] Isınma başlatılamadı: " + ex.Message); }
         }
 
         // Deponun yeri: uygulamanın yanındaki dosya, ortam değişkeni ya da bilinen konumlar
@@ -189,7 +207,14 @@ namespace SuruIHA
             else if (Status == State.External || Status == State.Running) Status = CanLaunch ? State.Idle : State.NotFound;
         }
 
-        void OnApplicationQuit() => Stop();
-        void OnDestroy() => Stop();
+        void OnApplicationQuit() => Shutdown();
+        void OnDestroy() => Shutdown();
+
+        void Shutdown()
+        {
+            Stop();
+            try { if (warm != null && !warm.HasExited) KillTree(warm.Id); } catch (Exception) { }
+            warm = null;
+        }
     }
 }

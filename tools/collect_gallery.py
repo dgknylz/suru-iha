@@ -55,12 +55,15 @@ SHOTS = [
     (r"C:\SuruIHA\film\poster\kare_00008.jpg", "43_yan_yana_iki_karistirici.jpg"),
     (r"C:\SuruIHA\film\kareler\kare_02100.jpg", "44_yan_yana_sinematik.jpg"),
     # Yarışma arayüzü (tools/ui_test.ps1)
-    (r"C:\SuruIHA\arayuz_testi\01_ana_ekran.png", "45_arayuz_ana_ekran.jpg"),
-    (r"C:\SuruIHA\arayuz_testi\02_senaryo_sec.png", "46_arayuz_senaryo_sec.jpg"),
-    (r"C:\SuruIHA\arayuz_testi\06_senaryo_kutusu.png", "47_arayuz_simulasyon.jpg"),
-    (r"C:\SuruIHA\arayuz_testi\10_sonuc.png", "48_arayuz_gorev_sonu.jpg"),
-    (r"C:\SuruIHA\arayuz_testi\11_yan_yana.png", "49_arayuz_yan_yana.jpg"),
-    (r"C:\SuruIHA\arayuz_testi\03_proje_nedir.png", "50_arayuz_proje_nedir.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\01_sekme_proje.png", "45_arayuz_ana_ekran.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\09_sekme_simulasyon.png", "46_arayuz_senaryo_sec.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\12_senaryo_kutusu.png", "47_arayuz_simulasyon.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\17_sonuc.png", "48_arayuz_gorev_sonu.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\18_yan_yana.png", "49_arayuz_yan_yana.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\02_sekme_nasil_calisir.png", "50_arayuz_nasil_calisir.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\03_sekme_kullanilanlar.png", "51_arayuz_kullanilanlar.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\04_bulgu_eh.png", "52_arayuz_bulgular_eh.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\07_bulgu_ablasyon.png", "53_arayuz_bulgular_ablasyon.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

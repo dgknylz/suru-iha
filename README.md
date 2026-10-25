@@ -52,10 +52,20 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
 
 `C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur:
 1. `SuruIHA.exe`'yi çift tıkla (tam ekran açılır; Alt+Enter pencereye alır).
-2. Açılış ekranında projenin özeti ve öne çıkan sonuçlar var. **Simülasyonu başlat** önerilen senaryoyu
-   (20 dBm karıştırıcı, EH dirençli sürü) açar; **Senaryo seç** 8 senaryodan birini, mimariyi,
-   görev paylaşım algoritmasını, tek sürü ya da yan yana karşılaştırmayı seçtirir.
-3. Uygulama Python simülasyonunu arka planda kendisi başlatır ve çıkarken kapatır.
+2. Uygulama bir sunum gibi üstte sekmelere ayrılmıştır (← → ya da sunum kumandasıyla da geçilir):
+
+   | Sekme | İçinde |
+   |---|---|
+   | **Proje** | Bu proje nedir, problem ve soru, öne çıkan üç sonuç |
+   | **Nasıl çalışır?** | Sürü zekâsı (uçuş evreleri), CBBA döngüsü, tehdit → savunma eşleşmesi, simülasyon mimarisi |
+   | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
+   | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
+   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, hız; **Başlat** |
+   | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
+
+   Sağ üstteki **Simülasyonu başlat** önerilen senaryoyu (20 dBm karıştırıcı, EH dirençli sürü) hemen açar.
+3. Uygulama Python simülasyonunu arka planda kendisi başlatır ve çıkarken kapatır. Açılışta Python
+   kütüphanelerini bir kez yükleyip ısıtır; bilgisayar yeni açıldıysa bile "Başlat" birkaç saniyede bağlanır.
 
 ![Açılış ekranı](gorseller/45_arayuz_ana_ekran.jpg)
 
@@ -177,6 +187,7 @@ Her video karesi 0,1 s simülasyondur; video 3 kat hızlıdır ve bu ekranda yaz
 | **K** | Grafik kalitesi: Yüksek → Dengeli → Performans (paneldeki "Ayrıntılar"da FPS görünür) |
 | **I** | Renklerin anlamı (İHA ışıkları, hedef halkaları, EH işaretleri) |
 | **Esc** | Menü: devam et, senaryo değiştir, proje bilgisi, ana ekran, çıkış |
+| **← → / PageUp PageDown** | Menüde sekme değiştir (sunum kumandası da çalışır) |
 | **H** | Bilgi panelini gizle |
 
 **Renkler:** İHA ışığı yeşil = normal, turuncu = karıştırılıyor, kırmızı = GPS yok, mavi = spiral

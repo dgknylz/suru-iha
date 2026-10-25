@@ -52,7 +52,7 @@ namespace SuruIHA
                 string msg = st == SimLauncher.State.Crashed ? launcher.LastError : "Bir senaryo seçip başlat.";
                 Ui.Label(Ui.R(x + 24, top + 46, w - 48, 40), msg, 14.5f, Ui.Ink2);
                 if (Ui.Button(Ui.R(x + 24, top + 82, 200, 38), "Tekrar dene", size: 15, enabled: launcher != null && launcher.CanLaunch)) Launch();
-                if (Ui.Button(Ui.R(x + 234, top + 82, 200, 38), "Senaryo seç", size: 15)) Go(Page.Scenarios);
+                if (Ui.Button(Ui.R(x + 234, top + 82, 200, 38), "Senaryo seç", size: 15)) OpenMenu(Tab.Simulasyon);
                 if (Ui.Button(Ui.R(x + 444, top + 82, 200, 38), "Ana ekran", Ui.Kind.Ghost, size: 15)) BackToHome();
                 return;
             }
@@ -300,7 +300,7 @@ namespace SuruIHA
                 resultsClosedFor = key;
                 Send("{\"cmd\":\"restart\"}");
             }
-            if (Ui.Button(Ui.R(px + 254, by, 190, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; Go(Page.Scenarios); }
+            if (Ui.Button(Ui.R(px + 254, by, 190, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
             if (!cmpOn && running != null && Ui.Button(Ui.R(px + 458, by, 180, 54), "Yan yana izle", size: 17))
             {
                 scenario = Array.IndexOf(SwarmScenarios.All, running);
@@ -358,43 +358,57 @@ namespace SuruIHA
             }
 
             log.AppendLine($"simülasyon klasörü: {launcher.RepoPath ?? "-"} python: {launcher.PythonPath ?? "-"} durum: {launcher.Status}");
-            yield return Wait(5f);
-            yield return Shot("01_ana_ekran");
-            Go(Page.Scenarios);
+            yield return Wait(6f);
+            yield return Shot("01_sekme_proje");
+            string[] tabShots = { "02_sekme_nasil_calisir", "03_sekme_kullanilanlar" };
+            for (int k = 0; k < tabShots.Length; k++)
+            {
+                OpenMenu((Tab)(k + 1));
+                yield return Wait(1f);
+                yield return Shot(tabShots[k]);
+            }
+            OpenMenu(Tab.Bulgular);
+            string[] findShots = { "04_bulgu_eh", "05_bulgu_karar", "06_bulgu_yapay_zeka", "07_bulgu_ablasyon", "08_bulgu_olcekleme" };
+            for (int k = 0; k < findShots.Length; k++)
+            {
+                finding = k;
+                yield return Wait(1f);
+                yield return Shot(findShots[k]);
+            }
+            finding = 0;
+            OpenMenu(Tab.Simulasyon);
             yield return Wait(1f);
-            yield return Shot("02_senaryo_sec");
-            Current = Page.Home;
-            Go(Page.About);
+            yield return Shot("09_sekme_simulasyon");
+            OpenMenu(Tab.Kullanim);
             yield return Wait(1f);
-            yield return Shot("03_proje_nedir");
-            Current = Page.Home;
-            Go(Page.Help);
-            yield return Wait(1f);
-            yield return Shot("04_nasil_kullanilir");
-            Current = Page.Home;
+            yield return Shot("10_sekme_kullanim");
+            OpenMenu(Tab.Proje);
 
             fast = true;
             QuickStart();
             float t0 = Time.realtimeSinceStartup;
-            yield return Shot("05_baslatiliyor");
+            yield return Shot("11_baslatiliyor");
             yield return Until(() => SimConnected, 45f);
             log.AppendLine($"bağlantı: {(SimConnected ? "var" : "YOK")} {Time.realtimeSinceStartup - t0:0.0} s, durum={launcher.Status} {launcher.LastError}");
             yield return Wait(6f);
-            yield return Shot("06_senaryo_kutusu");
+            yield return Shot("12_senaryo_kutusu");
             yield return Wait(18f);
-            yield return Shot("07_gorevde");
+            yield return Shot("13_gorevde");
             legendOpen = true;
             yield return Wait(1f);
-            yield return Shot("08_renkler");
+            yield return Shot("14_renkler");
             legendOpen = false;
             Go(Page.Pause);
             yield return Wait(1f);
-            yield return Shot("09_menu");
+            yield return Shot("15_esc_menu");
+            OpenMenu(Tab.Bulgular);          // simülasyon arkada sürerken sekmelere dönüş
+            yield return Wait(1f);
+            yield return Shot("16_sim_acikken_sekmeler");
             Current = Page.Sim;
             cam.mode = SwarmCamera.Mode.Top;
             yield return Until(() => SwarmVisualizer.Main.Frame?.ctl?.finished == 1, 150f);
             yield return Wait(2f);
-            yield return Shot("10_sonuc");
+            yield return Shot("17_sonuc");
             var f = SwarmVisualizer.Main.Frame;
             log.AppendLine($"uçuş sonu: bitti={f?.ctl?.finished} görev={f?.m?.done}/{f?.m?.total} puan={f?.m?.score:0.00} t={f?.t:0}");
             log.AppendLine("olay akışı (tek sürü):");
@@ -407,7 +421,7 @@ namespace SuruIHA
             yield return Until(() => SimConnected && CompareOn, 45f);
             log.AppendLine($"yan yana: {(CompareOn ? "açık" : "AÇILMADI")} durum={launcher.Status} {launcher.LastError}");
             yield return Wait(25f);
-            yield return Shot("11_yan_yana");
+            yield return Shot("18_yan_yana");
 
             log.AppendLine("olay akışı (yan yana, sağdaki sürü):");
             foreach (var e in SwarmEvents.Instance.Items) log.AppendLine($"  t={e.sim:0} {e.text}");
