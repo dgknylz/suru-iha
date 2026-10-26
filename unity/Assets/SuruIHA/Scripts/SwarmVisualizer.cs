@@ -134,6 +134,7 @@ namespace SuruIHA
             ApplyGcs(f);
             ApplyJamCells(f);
             ApplyHeatMap(f);
+            ApplyReport(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
             ParseLinks(f);
@@ -174,6 +175,7 @@ namespace SuruIHA
             ApplyGcs(f);
             ApplyJamCells(f);
             ApplyHeatMap(f);
+            ApplyReport(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
             ParseLinks(f);

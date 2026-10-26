@@ -17,6 +17,29 @@ namespace SuruIHA
         // Son gelen harita (renk skalası kartı eşik değerlerini buradan okur); karıştırıcı yoksa boş
         public JamFieldState Field { get; private set; }
 
+        // Son biten uçuşun raporu ("Uçuş raporu" sekmesi): yeni uçuşun raporu gelene kadar kalır. O uçuşun son
+        // karesi (hedefler, karıştırıcılar, metrikler) ve ısı haritası da birlikte saklanır.
+        public FlightReport Report { get; private set; }
+        public SwarmFrame ReportFrame { get; private set; }
+        public JamFieldState ReportField { get; private set; }
+        public int ReportVersion { get; private set; }
+
+        void ApplyReport(SwarmFrame f)
+        {
+            var r = f.report;
+            if (r == null || r.drones == null || r.drones.Length == 0) return;
+            // Aynı rapor ara ara yeniden gelir: aynı uçuşsa yenisi sayılmaz
+            if (Report != null && ReportFrame?.ctl != null && f.ctl != null && f.ctl.seed == ReportFrame.ctl.seed &&
+                Mathf.Approximately(r.t, Report.t) && f.strategy == ReportFrame.strategy) return;
+            Report = r;
+            ReportFrame = f;
+            ReportField = Field;
+            ReportVersion++;
+        }
+
+        // Yerel (x doğu, z kuzey) noktadaki arazi yüksekliği (rapor haritasının gölgelemesi için)
+        public float GroundHeight(float x, float z) => HeatGround(Terrain.activeTerrains, x, z);
+
         GameObject fieldGo;
         Mesh fieldMesh;
         Material fieldMat;

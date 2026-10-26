@@ -66,6 +66,35 @@ namespace SuruIHA
     }
 
     [Serializable]
+    public class DroneReport   // uçuş raporunda bir İHA
+    {
+        public int id;
+        public int done;           // tamamladığı hedef
+        public int wrong;          // yanlış "bitti" (hedefi görmeden bitti dedi)
+        public int search;         // spiral arama sayısı
+        public int recover;        // GPS'i geri almaya gitme sayısı
+        public float dist;         // uçtuğu yol (m)
+        public float nogps;        // GPS'siz uçtuğu süre (s)
+        public float jam;          // karıştırmayı fark edecek kadar karıştırıldığı süre (s)
+        public float relay;        // röle olduğu süre (s)
+        public float spoofed;      // GPS'inin aldatıldığı süre (s)
+        public int seen;           // 1 = aldatmayı fark etti
+        public int liar;           // 1 = saldırgan (ele geçirilmiş) İHA
+        public float fail;         // arızalandığı an (s), -1: arızalanmadı
+        public int[] xy;           // iz: [x, y, x, y, ...] (3 s'de bir)
+        public string st;          // her iz noktasının durumu: n j g s r a p y f (bkz. suru/world.py _status)
+    }
+
+    [Serializable]
+    public class FlightReport  // uçuş raporu (yalnızca iniş bitince gelir)
+    {
+        public float t;            // uçuş süresi (s)
+        public float mission;      // görevin bittiği an (s)
+        public DroneReport[] drones;
+        public int[] taskBy;       // her hedefi tamamlayan İHA (-1: yapılmadı)
+    }
+
+    [Serializable]
     public class SpooferState  // GPS aldatıcı
     {
         public float[] p;
@@ -134,6 +163,7 @@ namespace SuruIHA
         public float cell;
         public float[] jamCells;   // [x, y, x, y, ...] sürünün ortak karıştırma haritası
         public JamFieldState jamField;   // gerçek karıştırma gücü haritası (çoğu karede boş)
+        public FlightReport report;      // uçuş raporu (iniş bitince ara ara gelir)
         public FrameMetrics m;
         public ControlState ctl;
 

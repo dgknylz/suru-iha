@@ -4,16 +4,16 @@ using UnityEngine;
 
 namespace SuruIHA
 {
-    // Yarışma uygulaması: üstte sekmeler (Proje, Nasıl çalışır?, Kullanılanlar, Bulgular, Simülasyon, Kullanım),
+    // Yarışma uygulaması: üstte sekmeler (Proje, Nasıl çalışır?, Kullanılanlar, Bulgular, Simülasyon, Uçuş raporu, Kullanım),
     // simülasyon sırasında araç çubuğu, olay akışı, renk açıklamaları, görev sonu ekranı ve Esc menüsü.
     // Simülasyonu (Python) SimLauncher başlatır; terminal açmaya gerek yoktur.
     // Sekmeler ←/→ ya da PageUp/PageDown ile de değişir (sunum kumandası).
     public partial class SwarmMenu : MonoBehaviour
     {
         public enum Page { Menu, Sim, Pause, Quit }
-        public enum Tab { Proje, Nasil, Kullanilanlar, Bulgular, Simulasyon, Kullanim }
+        public enum Tab { Proje, Nasil, Kullanilanlar, Bulgular, Simulasyon, Rapor, Kullanim }
 
-        static readonly string[] TabNames = { "Proje", "Nasıl çalışır?", "Kullanılanlar", "Bulgular", "Simülasyon", "Kullanım" };
+        static readonly string[] TabNames = { "Proje", "Nasıl çalışır?", "Kullanılanlar", "Bulgular", "Simülasyon", "Uçuş raporu", "Kullanım" };
 
         public static SwarmMenu Instance { get; private set; }
         public Page Current { get; private set; } = Page.Menu;
@@ -99,6 +99,7 @@ namespace SuruIHA
             }
             if (Current == Page.Sim && SwarmInput.Down(SwarmInput.K.I)) legendOpen = !legendOpen;
             SaveLayersIfChanged();
+            NoteReport();
 
             // İHA kamerasına geçince senaryo kutusu küçülür (İHA bilgi kartına yer açılır)
             bool tppNow = cam != null && cam.mode == SwarmCamera.Mode.Follow;
@@ -228,6 +229,7 @@ namespace SuruIHA
                 case Tab.Kullanilanlar: DrawKullanilanlarTab(); break;
                 case Tab.Bulgular: DrawBulgularTab(); break;
                 case Tab.Simulasyon: DrawSimulasyonTab(); break;
+                case Tab.Rapor: DrawRaporTab(); break;
                 case Tab.Kullanim: DrawKullanimTab(); break;
             }
             DrawTopBar();

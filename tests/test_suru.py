@@ -255,6 +255,24 @@ def test_karistirma_isi_haritasi():
     assert "jamField" not in World(make_config("resilient", None, 0.0, 0)).frame(), "karıştırıcı yoksa harita yok"
 
 
+def test_ucus_raporu():
+    """Uçuş raporu iniş bitince gelir; İHA'ların yaptığı hedefler toplamı tamamlanan hedef sayısına eşittir."""
+    w = World(make_config("resilient", 20.0, 0.0, 3, n_popup=4, failures=1))
+    assert "report" not in w.frame(), "uçuş sürerken rapor gönderilmez"
+    while not w.flight_over():
+        w.step()
+    f = w.frame()
+    r = f["report"]
+    assert "jamField" not in f, "rapor ve ısı haritası aynı kareye konmaz (UDP sınırı)"
+    assert sum(d["done"] for d in r["drones"]) == int(w.done.sum())
+    assert sum(1 for x in r["taskBy"] if x >= 0) == int(w.done.sum())
+    assert sum(d["fail"] >= 0 for d in r["drones"]) == 1, "arızalanan İHA raporda görünmeli"
+    for d in r["drones"]:
+        assert len(d["xy"]) == 2 * len(d["st"]) and 2 <= len(d["st"]) <= 120
+        assert d["dist"] > 300.0 and d["nogps"] >= 0.0
+    assert any(d["jam"] > 0 for d in r["drones"]), "karıştırma alanına giren İHA olmalı"
+
+
 def test_karistirici_konum_bulma():
     from suru import ew
     cfg, rng = SimConfig(), np.random.default_rng(3)

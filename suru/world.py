@@ -51,6 +51,7 @@ FIELD_MAX = 128               # bir kenardaki en fazla nokta (geniş alanda aral
 FIELD_DB0, FIELD_DB_STEP = -100.0, 0.25   # bayt = (dBm - (-100)) / 0,25  ->  -100 ... -36 dBm
 FIELD_RESEND = 2.0            # değişmese de kaç saniyede bir yeniden gönderilir (s)
 _FIELD_REV = itertools.count(1)   # her yeni harita farklı numara alır (dünya yeniden kurulsa da)
+TRACK_MAX = 120               # uçuş raporunda İHA başına en fazla iz noktası
 
 # Uçuş evreleri
 TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND, LANDED = range(7)
@@ -186,6 +187,13 @@ class World:
         self.jrx_bar = np.full(N, -300.0)   # yalnızca geniş bant karıştırma (GPS'i ve FHSS'i de etkiler)
         self._field, self._field_key = None, None           # karıştırma ısı haritası (bkz. jam_field)
         self._field_sent, self._field_sent_t = 0, -np.inf
+        # Uçuş raporu (yalnızca gösterim, bkz. report): İHA başına sayaçlar, süreler ve 3 s'de bir iz
+        self.r = SimpleNamespace(
+            done=np.zeros(N, int), wrong=np.zeros(N, int), search=np.zeros(N, int), recover=np.zeros(N, int),
+            dist=np.zeros(N), nogps=np.zeros(N), jam=np.zeros(N), relay=np.zeros(N), spoofed=np.zeros(N),
+            seen=np.zeros(N, bool), fail_t=np.full(N, np.nan), track=[[] for _ in range(N)],
+            task_by=np.full(self.T, -1))
+        self._report_frames = 0
         self.gps_rx = np.ones(N, bool)      # alıcı GPS çözümü üretiyor mu (gerçek ya da sahte)
         self.gps_trust = np.ones(N, bool)   # İHA GPS'ine güveniyor mu (aldatma tespit edilince hayır)
         self.gps_ok = np.ones(N, bool)      # İHA konumu için GPS kullanıyor mu (= alıyor ve güveniyor)
@@ -521,6 +529,8 @@ class World:
                 return
             i = int(self.rng.choice(cand))
         self.alive[i] = False
+        self.r.fail_t[i] = self.t
+        self._track_point(i)
         self._clear_plan(i)
         self.relay_for[i], self.recover[i] = -1, False
         self.m["failures"] += 1
@@ -969,6 +979,7 @@ class World:
         elif (sig > c.recover_sigma and self.search[j] == 0 and now >= self.recover_block[j]
               and back < 300.0 and self.phase[j] == TASK):
             self.recover[j] = True
+            self.r.recover[j] += 1
             self._close_attempt(j, False)        # konumunu kaybedip görevi bıraktı: başarısız deneme
             self._release_claim(j)
         return bool(self.recover[j])
@@ -1525,6 +1536,8 @@ class World:
                     self.m["redundant"] += 1
                 else:
                     self.done[t], self.done_time[t] = True, self.t
+                    self.r.done[i] += 1
+                    self.r.task_by[t] = i
                 self.known_done[i, t], self.done_by[i, t] = True, i
                 if self.att_task[i] == t:
                     self._close_attempt(i, True)
@@ -1554,6 +1567,7 @@ class World:
                     # Dirençli: görmediği hedefe "bitti" demez; belirsizlik çemberini (2.5 sigma)
                     # kapsayan spiral arama yapar
                     self.search[i] = 1.0
+                    self.r.search[i] += 1
                     self.search_r[i] = min(2.5 * sig + 10.0, 100.0)
                     self.search_sig[i] = sig
                 else:
@@ -1563,6 +1577,7 @@ class World:
         """İHA görevi bitti sanar ama aslında bitmedi -> yanlış tamamlanma."""
         if not self.done[t]:
             self.m["false_done"] += 1
+            self.r.wrong[i] += 1
         if self.att_task[i] == t:
             self._close_attempt(i, False)
         self.known_done[i, t], self.done_by[i, t] = True, i
@@ -1572,6 +1587,7 @@ class World:
     def _metrics(self):
         c = self.cfg
         honest = ~self.spoofer & self.alive
+        self._report_step()
         self.m["locerr_sum"] += float(np.linalg.norm(self.est[honest] - self.pos[honest], axis=1).mean())
         self.m["locerr_n"] += 1
         # Görev alanında katedilen yol (enerji göstergesi)
@@ -1628,6 +1644,62 @@ class World:
         i = max(cand, key=lambda k: self.meas_n[k])
         return [{"p": [round(float(q[0]), 1), round(float(q[1]), 1), round(float(self.terrain.height(*q)), 1)],
                  "pw": round(P, 1), "r": round(radio.jam_radius(P, self.cfg), 1)} for q, P in self.loc_est[i]]
+
+    # ----------------------------------------------------------- uçuş raporu
+    def _mode(self, i):
+        """İHA'nın Unity'deki durumu: 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma,
+        6 GPS'i aldatılıyor (fark etmedi), 7 aldatmayı fark etti."""
+        return (4 if not self.alive[i] else 2 if self.spoofer[i] else 3 if self.relay_for[i] >= 0
+                else 1 if self.search[i] > 0 else 5 if self.recover[i]
+                else 7 if not self.gps_trust[i] else 6 if self.spoofed[i] else 0)
+
+    def _status(self, i):
+        """İzin rengi için tek harflik durum: Unity'deki ışık rengiyle aynı öncelik (DroneView.StatusColor).
+        n normal, j karıştırılıyor, g GPS yok, s spiral arama, r röle, a saldırgan, p aldatılıyor, y fark etti, f arızalı"""
+        m = self._mode(i)
+        if m in (4, 2, 3, 7, 6):
+            return {4: "f", 2: "a", 3: "r", 7: "y", 6: "p"}[m]
+        if not self.gps_ok[i]:
+            return "g"
+        return "s" if m == 1 else "j" if self.jrx[i] > -89.5 else "n"
+
+    def _track_point(self, i):
+        self.r.track[i].append((int(round(self.pos[i, 0])), int(round(self.pos[i, 1])), self._status(i)))
+
+    def _report_step(self):
+        """Rapor sayaçları: her adımda süreler ve yol, 3 s'de bir iz noktası (uçan İHA'lar)."""
+        c, r = self.cfg, self.r
+        air = self.alive & ~M_GROUND[self.phase]
+        r.dist[self.alive] += np.linalg.norm(self.vel[self.alive], axis=1) * c.dt
+        r.nogps[air & ~self.gps_ok] += c.dt
+        r.jam[air & (self.jrx > c.jam_detect_dbm)] += c.dt
+        r.relay[self.relay_for >= 0] += c.dt
+        r.spoofed[air & self.spoofed] += c.dt
+        r.seen |= self.alive & ~self.gps_trust
+        if self.k % 30 == 1:
+            for i in np.nonzero(self.alive & (self.phase != LANDED))[0]:
+                self._track_point(i)
+
+    def report(self):
+        """Uçuş raporu (Unity'deki "Uçuş raporu" sekmesi): her İHA'nın ne yaptığı ve uçtuğu iz."""
+        r = self.r
+        drones = []
+        for i in range(self.N):
+            tr = list(r.track[i])
+            if self.alive[i]:
+                tr.append((int(round(self.pos[i, 0])), int(round(self.pos[i, 1])), self._status(i)))
+            if len(tr) > TRACK_MAX:                  # uzun uçuşta iz seyreltilir (kare UDP sınırını aşmasın)
+                tr = [tr[k] for k in np.linspace(0, len(tr) - 1, TRACK_MAX).round().astype(int)]
+            drones.append({
+                "id": i, "done": int(r.done[i]), "wrong": int(r.wrong[i]), "search": int(r.search[i]),
+                "recover": int(r.recover[i]), "dist": round(float(r.dist[i]), 1), "nogps": round(float(r.nogps[i]), 1),
+                "jam": round(float(r.jam[i]), 1), "relay": round(float(r.relay[i]), 1),
+                "spoofed": round(float(r.spoofed[i]), 1), "seen": int(r.seen[i]), "liar": int(self.spoofer[i]),
+                "fail": round(float(r.fail_t[i]), 1) if np.isfinite(r.fail_t[i]) else -1.0,
+                "xy": [v for p in tr for v in p[:2]], "st": "".join(p[2] for p in tr),
+            })
+        return {"t": round(self.t, 1), "mission": round(float(self.mission_time()), 1), "drones": drones,
+                "taskBy": [int(x) for x in r.task_by]}
 
     def _field_axes(self):
         """Isı haritasının kapsadığı alan: üs, görev alanı ve karıştırıcıların (rotalarıyla) çevresi."""
@@ -1761,9 +1833,7 @@ class World:
                           "k": int(known[t])})
         drones = []
         for i in range(self.N):
-            mode = (4 if not self.alive[i] else 2 if self.spoofer[i] else 3 if self.relay_for[i] >= 0
-                    else 1 if self.search[i] > 0 else 5 if self.recover[i]
-                    else 7 if not self.gps_trust[i] else 6 if self.spoofed[i] else 0)
+            mode = self._mode(i)
             plan = [int(t) for t in self.path[i]] if self.alive[i] and not self.spoofer[i] else []
             drones.append({
                 "id": i, "p": r(self.pos[i]), "e": r(self.est[i]), "v": r(self.vel[i]),
@@ -1821,9 +1891,16 @@ class World:
                 "liars": round(float(np.nan_to_num(self._trust_stats()[0], nan=-1.0)), 2),
             },
         }
-        # Isı haritası büyük (~16 KB): yalnızca değişince ve ara ara (Unity sonradan bağlanırsa diye) eklenir
+        # Uçuş raporu: iniş bitince ilk karede ve sonra 60 karede bir (Unity sonradan bağlanırsa diye)
+        if self.flight_over():
+            self._report_frames += 1
+            if self._report_frames % 60 == 1:
+                out["report"] = self.report()
+        # Isı haritası büyük (~16 KB): yalnızca değişince ve ara ara (Unity sonradan bağlanırsa diye) eklenir.
+        # Raporla aynı kareye konmaz (ikisi birden kareyi UDP sınırına yaklaştırır); bir sonraki kareye kalır.
         field = self.jam_field()
-        if field is not None and (field["rev"] != self._field_sent or self.t - self._field_sent_t >= FIELD_RESEND):
+        if (field is not None and "report" not in out
+                and (field["rev"] != self._field_sent or self.t - self._field_sent_t >= FIELD_RESEND)):
             out["jamField"] = field
             self._field_sent, self._field_sent_t = field["rev"], self.t
         return out

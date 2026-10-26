@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 
@@ -400,7 +401,7 @@ namespace SuruIHA
             int key = f.ctl.seed * 100000 + Mathf.RoundToInt(f.t * 10f);
             if (resultsClosedFor == key) return;
 
-            float w = cmpOn ? 960f : 860f, h = cmpOn ? 470f : 500f;
+            float w = 1060f, h = cmpOn ? 470f : 500f;
             float x = (Ui.W - w) / 2f, y = (Ui.H - h) / 2f - 40f;
             Ui.Panel(Ui.R(x, y, w, h), 18, 0.97f);
             float px = x + 30f, pw = w - 60f;
@@ -446,13 +447,19 @@ namespace SuruIHA
             }
 
             float by = y + h - 82f;
-            if (Ui.Button(Ui.R(px, by, 240, 54), "Yeni haritada tekrar", Ui.Kind.Primary, size: 17))
+            if (Ui.Button(Ui.R(px, by, 210, 54), "Uçuş raporu", Ui.Kind.Primary, size: 17, enabled: SwarmVisualizer.Main.Report != null))
+            {
+                resultsClosedFor = key;
+                reportSide = 0;
+                OpenMenu(Tab.Rapor);
+            }
+            if (Ui.Button(Ui.R(px + 224, by, 230, 54), "Yeni haritada tekrar", size: 17))
             {
                 resultsClosedFor = key;
                 Send("{\"cmd\":\"restart\"}");
             }
-            if (Ui.Button(Ui.R(px + 254, by, 190, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
-            if (!cmpOn && running != null && Ui.Button(Ui.R(px + 458, by, 180, 54), "Yan yana izle", size: 17))
+            if (Ui.Button(Ui.R(px + 468, by, 180, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
+            if (!cmpOn && running != null && Ui.Button(Ui.R(px + 662, by, 170, 54), "Yan yana izle", size: 17))
             {
                 scenario = Array.IndexOf(SwarmScenarios.All, running);
                 compare = true;
@@ -533,6 +540,9 @@ namespace SuruIHA
             OpenMenu(Tab.Kullanim);
             yield return Wait(1f);
             yield return Shot("10_sekme_kullanim");
+            OpenMenu(Tab.Rapor);                   // henüz biten uçuş yok: boş rapor sekmesi
+            yield return Wait(1f);
+            yield return Shot("10b_sekme_rapor_bos");
             OpenMenu(Tab.Proje);
 
             fast = true;
@@ -580,6 +590,20 @@ namespace SuruIHA
             yield return Until(() => SwarmVisualizer.Main.Frame?.ctl?.finished == 1, 150f);
             yield return Wait(2f);
             yield return Shot("17_sonuc");
+            OpenMenu(Tab.Rapor);                   // uçuş raporu: harita, İHA tablosu, öne çıkanlar
+            yield return Wait(1.5f);
+            yield return Shot("17b_ucus_raporu");
+            var rp = SwarmVisualizer.Main.Report;
+            log.AppendLine(rp != null ? $"uçuş raporu: {rp.drones.Length} İHA, iz {rp.drones.Sum(d => d.st.Length)} nokta, hedef {rp.drones.Sum(d => d.done)}"
+                                      : "uçuş raporu: GELMEDİ");
+            if (rp != null)
+            {
+                reportSel = Array.IndexOf(rp.drones, rp.drones.OrderByDescending(d => d.nogps + d.jam + 30f * d.search).First());
+                yield return Wait(0.8f);
+                yield return Shot("17c_ucus_raporu_secili_iha");
+                reportSel = -1;
+            }
+            Current = Page.Sim;
             var f = SwarmVisualizer.Main.Frame;
             log.AppendLine($"uçuş sonu: bitti={f?.ctl?.finished} görev={f?.m?.done}/{f?.m?.total} puan={f?.m?.score:0.00} t={f?.t:0}");
             log.AppendLine("olay akışı (tek sürü):");

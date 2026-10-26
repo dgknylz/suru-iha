@@ -61,6 +61,7 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
    | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
    | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, hız; **Başlat** |
+   | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
 
    Sağ üstteki **Simülasyonu başlat** önerilen senaryoyu (20 dBm karıştırıcı, EH dirençli sürü) hemen açar.
@@ -99,7 +100,17 @@ Simülasyon sırasında ekranda:
 
   ![Yan yana İHA kamerası](gorseller/55_yan_yana_iha_kamerasi.jpg)
 - **Görev sonu ekranı:** tamamlanan hedef, puan, süre, yanlış "bitti" sayısı ve aynı senaryonun
-  30 uçuşluk deney ortalamasıyla karşılaştırma.
+  30 uçuşluk deney ortalamasıyla karşılaştırma. Buradaki **Uçuş raporu** düğmesi rapor sekmesini açar.
+- **Uçuş raporu:** sürü inince Python her İHA'nın ne yaptığını gönderir. Solda harita: arazi gölgelemesi,
+  karıştırma ısı haritası ve her İHA'nın izi; iz, İHA'nın o anki durum renginde çizilir (yeşil normal, turuncu
+  karıştırılıyor, kırmızı GPS yok, mavi spiral arama…), yani GPS'in nerede kesildiği haritada görünür. Hedefler
+  (yapılan / yapılamayan), karıştırıcı ve sürünün tahmini de işaretlidir. Sağda özet sayılar, İHA tablosu
+  (yaptığı hedef, uçtuğu yol, GPS'siz ve karıştırma altında geçen süre, ne yaptığı: spiral arama, GPS kurtarma,
+  röle, arıza, aldatma) ve uçuşun öne çıkanları ("En çok hedefi İHA-5 yaptı", "Sürü karıştırıcının yerini
+  31 m hatayla buldu"...). Tablodaki bir İHA'nın üstüne gelince izi ve yaptığı hedefler haritada öne çıkar.
+  Yan yana uçuşta iki sürünün raporu ayrı ayrı açılır.
+
+  ![Uçuş raporu](gorseller/61_ucus_raporu.jpg)
 
 ![Simülasyon ekranı](gorseller/47_arayuz_simulasyon.jpg)
 
@@ -376,14 +387,14 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-30 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+31 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
 elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ ağı.
 Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB kayıp, açıkta 0), nokta
 karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
-yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
+yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
 sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 
 ---
