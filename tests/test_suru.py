@@ -238,6 +238,23 @@ def test_hareketli_karistirici_yol_alir():
     assert np.linalg.norm(w.jammers[0].xy - p0) == pytest.approx(50.0, abs=1.0)   # 5 m/s x 10 s
 
 
+def test_karistirma_isi_haritasi():
+    """Isı haritası İHA'ların ölçtüğüyle aynı: haritadaki değer, o noktada uçan İHA'nın aldığı karıştırma."""
+    import base64
+    w = World(make_config("resilient", 20.0, 0.0, 0, jammer_mode="sirt"))
+    f = w.frame()["jamField"]
+    q = np.frombuffer(base64.b64decode(f["q"]), np.uint8).reshape(f["ny"], f["nx"])
+    J = f["db0"] + f["dbStep"] * q.astype(float)
+    xs, ys = f["x0"] + f["step"] * np.arange(f["nx"]), f["y0"] + f["step"] * np.arange(f["ny"])
+    for iy, ix in [(f["ny"] // 3, f["nx"] // 2), (f["ny"] * 3 // 4, f["nx"] // 4), (f["ny"] - 5, f["nx"] // 2)]:
+        x, y = xs[ix], ys[iy]
+        p = np.array([[x, y, w.terrain.height(x, y) + w.cfg.agl]])
+        beklenen = np.clip(radio.jam_power_dbm(p, w.jammers, w.cfg, w.terrain)[0], -100.0, -36.25)
+        assert J[iy, ix] == pytest.approx(beklenen, abs=0.2)
+    assert "jamField" not in w.frame(), "değişmeyen harita her karede gönderilmemeli"
+    assert "jamField" not in World(make_config("resilient", None, 0.0, 0)).frame(), "karıştırıcı yoksa harita yok"
+
+
 def test_karistirici_konum_bulma():
     from suru import ew
     cfg, rng = SimConfig(), np.random.default_rng(3)

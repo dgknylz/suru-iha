@@ -77,9 +77,17 @@ Simülasyon sırasında ekranda:
 - **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
 - **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
   düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
+- **Karıştırma ısı haritası:** karıştırıcının uçuş yüksekliğindeki (40 m) gücü araziye renkli bir örtü
+  olarak serilir. Açık kırmızı zayıf, koyu kırmızı güçlü karıştırmadır; ince soluk çizgide İHA karıştırmayı
+  fark eder, kalın parlak çizgide 60 m'deki komşusuyla bağlantısının yarısı kopar. Harita, İHA'ların uçuşta ölçtüğüyle
+  aynı fizikle (yol kaybı + arazi gölgesi) Python'da hesaplanır; tepelerin ardındaki açık renkli boşluklar
+  arazinin gölgesidir. Sol altta renk skalası durur; "Isı haritası" düğmesiyle açılıp kapanır. Kırmızı kubbe
+  düz arazide ne olacağını, ısı haritası gerçekte ne olduğunu gösterir.
+
+  ![Karıştırma ısı haritası: sırt arkasında karıştırıcı](gorseller/59_isi_haritasi_arazi_golgesi.jpg)
 - **Katmanlar paneli:** sahnedeki çizgi ve işaretler ayrı ayrı açılıp kapanır: İHA bağlantıları
-  (kapalı / yalnızca sorunlu / hepsi), İHA planları, konum hayaletleri, karıştırma haritası, uçuş izleri,
-  uzak işaretler. Bağlantılar varsayılan olarak kapalıdır (sahne temiz görünsün); "Sorunlu" seçilince
+  (kapalı / yalnızca sorunlu / hepsi), karıştırma ısı haritası, sürünün karıştırma haritası, İHA planları,
+  konum hayaletleri, uçuş izleri, uzak işaretler. Bağlantılar varsayılan olarak kapalıdır (sahne temiz görünsün); "Sorunlu" seçilince
   yalnızca karıştırılan bağlantılar kırmızı çizilir. Seçimler bilgisayarda hatırlanır.
 
   ![Görünüm katmanları](gorseller/57_gorunum_katmanlari.jpg)
@@ -258,6 +266,11 @@ yeri için tahminidir; beyaz çizgi tahmin ile gerçek karıştırıcı arasınd
   fazla** olabilir, **tepeye** (her yeri yukarıdan görür) ya da **sırtın arkasına** (tepeler sinyalinin
   bir kısmını keser) konabilir. Dirençli sürünün karıştırma haritası zaman damgalıdır;
   hareketli karıştırıcının eski konumu 90 s içinde unutulur.
+- **Isı haritası (görselleştirme):** `radio.jam_field_dbm` görev alanını 10 m aralıklı bir ızgaraya böler ve
+  her noktada, yerden 40 m yükseklikte haberleşme kanalına düşen karıştırma gücünü İHA'larla aynı modelle
+  (yol kaybı + bıçak sırtı kırınımı) hesaplar. Harita bayta sıkıştırılıp (0,25 dB adım) Unity'ye yalnızca
+  değişince gider; hareketli karıştırıcıda karıştırıcı bir ızgara aralığı yol aldıkça yenilenir. Çizgiler:
+  fark etme eşiği (−82 dBm) ve 60 m'lik bağlantının paketlerinin yarısını kaybettiği güç (`radio.jam_tolerance_dbm`).
 - **Frekans atlama (FHSS):** Dirençli sürü haberleşme frekansını sürekli değiştirir. Nokta karıştırıcı
   paketlerin yalnızca %24'üne (20/83,5 MHz) denk gelir. Geniş bant karıştırıcıya karşı ise işe yaramaz;
   bu klasik sonuç simülasyonda da görülür.
@@ -363,14 +376,14 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-29 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+30 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
 elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ ağı.
 Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB kayıp, açıkta 0), nokta
 karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
-yol alması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
+yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
 sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 
 ---

@@ -53,6 +53,19 @@ namespace SuruIHA
     }
 
     [Serializable]
+    public class JamFieldState // karıştırma ısı haritası (yalnızca değişince ve 2 s'de bir gelir)
+    {
+        public int rev;
+        public float x0, y0, step;  // ilk noktanın konumu (doğu, kuzey) ve nokta aralığı (m)
+        public int nx, ny;
+        public float agl;           // haritanın yüksekliği: yerden uçuş yüksekliği (m)
+        public float db0, dbStep;   // bayt -> dBm: db0 + bayt * dbStep
+        public float detect;        // İHA'nın karıştırmayı fark ettiği güç (dBm)
+        public float cut;           // 60 m'deki komşuyla bağlantının yarısının koptuğu güç (dBm)
+        public string q;            // base64, nx*ny bayt; satır = kuzey, sütun = doğu
+    }
+
+    [Serializable]
     public class SpooferState  // GPS aldatıcı
     {
         public float[] p;
@@ -120,6 +133,7 @@ namespace SuruIHA
         public GcsState gcs;
         public float cell;
         public float[] jamCells;   // [x, y, x, y, ...] sürünün ortak karıştırma haritası
+        public JamFieldState jamField;   // gerçek karıştırma gücü haritası (çoğu karede boş)
         public FrameMetrics m;
         public ControlState ctl;
 

@@ -38,6 +38,7 @@ namespace SuruIHA
             float tbTop = DrawToolbar();
             float above = tbTop;
             if (tpp) above = DrawDroneSelector(tbTop);
+            DrawHeatScale(above);
             if (legendOpen) DrawLegendPanel(above);
             if (layersOpen) DrawLayersPanel(above);
             DrawResults();
@@ -282,6 +283,9 @@ namespace SuruIHA
             var vis = SwarmVisualizer.Main;
             if (hud == null && cam != null) hud = cam.GetComponent<SwarmHud>();
             bool cmpOn = CompareOn;
+            var heatTool = new Tool("Isı haritası", "Karıştırma ısı haritası: karıştırıcının uçuş yüksekliğindeki gücü, tepelerin gölgesiyle. " +
+                                                    "Açık kırmızı zayıf, koyu kırmızı güçlü; kalın çizgide bağlantı kopar.",
+                                    vis.showHeatMap, () => vis.showHeatMap = !vis.showHeatMap);
             var groups = new (string name, Tool[] tools)[]
             {
                 ("KAMERA", new[]
@@ -303,13 +307,15 @@ namespace SuruIHA
                 }),
                 ("GÖSTER", cmpOn ? new[]
                 {
-                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, planlar, hayaletler, karıştırma haritası, izler. Her biri ayrı açılıp kapanır.",
+                    heatTool,
+                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, ısı haritası, planlar, hayaletler, izler. Her biri ayrı açılıp kapanır.",
                              layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
                 } : new[]
                 {
-                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, planlar, hayaletler, karıştırma haritası, izler. Her biri ayrı açılıp kapanır.",
+                    heatTool,
+                    new Tool("Katmanlar", "Görünüm katmanları: İHA bağlantıları, ısı haritası, planlar, hayaletler, izler. Her biri ayrı açılıp kapanır.",
                              layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
@@ -537,6 +543,9 @@ namespace SuruIHA
             log.AppendLine($"bağlantı: {(SimConnected ? "var" : "YOK")} {Time.realtimeSinceStartup - t0:0.0} s, durum={launcher.Status} {launcher.LastError}");
             yield return Wait(6f);
             yield return Shot("12_senaryo_kutusu");
+            var hf = SwarmVisualizer.Main.Field;
+            log.AppendLine(hf != null ? $"ısı haritası: {hf.nx}x{hf.ny} nokta, aralık {hf.step:0.#} m, eşikler {hf.detect:0} / {hf.cut:0.0} dBm"
+                                      : "ısı haritası: GELMEDİ");
             yield return Wait(14f);
             yield return Shot("13_gorevde");
             SetLinkMode(SwarmVisualizer.Main, 1);  // sürü karıştırma bölgesindeyken yalnızca karıştırılan bağlantılar
@@ -591,6 +600,24 @@ namespace SuruIHA
 
             log.AppendLine("olay akışı (yan yana, sağdaki sürü):");
             foreach (var e in SwarmEvents.Instance.Items) log.AppendLine($"  t={e.sim:0} {e.text}");
+
+            scenario = 5;                          // sırt arkasında karıştırıcı: ısı haritasında arazi gölgesi
+            strategy = 2;
+            compare = false;
+            Launch();
+            yield return Until(() => !CompareOn && SwarmVisualizer.Main.Field != null && SwarmVisualizer.Main.Frame?.strategy == "resilient", 60f);
+            log.AppendLine($"sırt senaryosu ısı haritası: {(SwarmVisualizer.Main.Field != null ? "var" : "YOK")}");
+            bannerOpen = false;
+            yield return Until(() => SwarmVisualizer.Main.Frame?.t > 80f, 40f);   // sürü görev alanında
+            cam.mode = SwarmCamera.Mode.Top;
+            float th = cam.topHeight;
+            cam.topHeight = 1150f;                 // bütün görev alanı ve sırt görünsün
+            yield return Wait(4f);
+            yield return Shot("20_isi_haritasi_tepeden");
+            cam.topHeight = th;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(4f);
+            yield return Shot("21_isi_haritasi_sinematik");
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());
             yield return Wait(1f);

@@ -87,6 +87,16 @@ def jam_power_dbm(points, jammers, cfg, terrain=None, band="comm"):
     return dbm(total)
 
 
+def jam_field_dbm(xs, ys, jammers, cfg, terrain, agl):
+    """Karıştırma ısı haritası: (xs, ys) ızgarasında, yerden `agl` metre yükseklikte haberleşme
+    kanalına düşen karıştırma gücü (dBm), boyut (len(ys), len(xs)). İHA'ların uçuşta ölçtüğüyle
+    aynı model (yol kaybı + arazi gölgesi), yani haritadaki her renk o noktadaki İHA'nın gerçekte yaşadığıdır."""
+    gx, gy = np.meshgrid(xs, ys)
+    ground = terrain.height(gx, gy) if terrain is not None else np.zeros_like(gx)
+    pts = np.c_[gx.ravel(), gy.ravel(), np.ravel(ground) + agl]
+    return jam_power_dbm(pts, jammers, cfg, terrain, band="comm").reshape(gx.shape)
+
+
 def per_from_sinr(sinr_db, cfg):
     return 1.0 / (1.0 + np.exp(cfg.per_slope * (sinr_db - cfg.sinr_threshold_db)))
 
@@ -104,6 +114,12 @@ def link_per(tx_pos, rx_pos, rx_jam_dbm, cfg, gain_db=0.0, max_range=None, extra
     max_range = cfg.comm_range if max_range is None else max_range
     per[d > max_range] = 1.0
     return per, sinr
+
+
+def jam_tolerance_dbm(cfg, link_len=60.0):
+    """`link_len` uzunluğundaki bir bağlantının paketlerinin yarısını kaybettiği karıştırma gücü (dBm)."""
+    signal = cfg.tx_power_dbm - path_loss_db(link_len, cfg)
+    return float(dbm(max(mw(signal - cfg.sinr_threshold_db) - mw(cfg.noise_dbm), 1e-30)))
 
 
 def jam_radius(jammer_power_dbm, cfg, link_len=60.0):

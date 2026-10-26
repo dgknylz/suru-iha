@@ -7,7 +7,7 @@ namespace SuruIHA
     // İHA'lar, haberleşme bağlantıları, görev noktaları, karıştırıcılar,
     // yer istasyonu ve sürünün ortak karıştırma haritası burada çizilir.
     [RequireComponent(typeof(SwarmReceiver))]
-    public class SwarmVisualizer : MonoBehaviour
+    public partial class SwarmVisualizer : MonoBehaviour
     {
         [Header("Modeller (boş bırakılırsa kodla basit model kurulur)")]
         public GameObject droneModel;
@@ -31,6 +31,8 @@ namespace SuruIHA
         public bool showEstimates = true;
         [Tooltip("Dirençli sürünün ortak karıştırma haritası (J tuşu)")]
         public bool showJamMap = false;
+        [Tooltip("Gerçek karıştırma gücü haritası (arazi gölgesiyle), araziye serilir")]
+        public bool showHeatMap = true;
         public bool showDome = true;
         [Tooltip("Uzaktan görünen, durum renginde parlayan İHA işaretleri (B tuşu)")]
         public bool showBeacons = true;
@@ -86,7 +88,7 @@ namespace SuruIHA
         public class Materials
         {
             public Material Body, Shell, Dark, PropBlur, Led, Trail, Ghost, GhostLine,
-                Link, GcsLink, TaskBeam, TaskRing, Dome, DomeRing, JamCell, Concrete, Metal;
+                Link, GcsLink, TaskBeam, TaskRing, Dome, DomeRing, JamCell, HeatMap, Concrete, Metal;
 
             // Boş olan her malzemeyi kodla üretir (editörde asset olarak kaydedilebilir)
             public void FillMissing(float glow)
@@ -106,6 +108,7 @@ namespace SuruIHA
                 if (Dome == null) Dome = SwarmMaterials.Transparent(new Color(1f, 0.18f, 0.1f, 0.045f), glow * 0.05f);
                 if (DomeRing == null) DomeRing = SwarmMaterials.Glow(new Color(1f, 0.3f, 0.18f), glow * 0.5f);
                 if (JamCell == null) JamCell = SwarmMaterials.Transparent(new Color(1f, 0.3f, 0.1f, 0.07f), glow * 0.05f);
+                if (HeatMap == null) HeatMap = SwarmMaterials.Overlay(glow * 0.25f);
                 if (Concrete == null) Concrete = SwarmMaterials.Lit(new Color(0.55f, 0.55f, 0.52f), 0f, 0.2f);
                 if (Metal == null) Metal = SwarmMaterials.Lit(new Color(0.6f, 0.62f, 0.65f), 0.8f, 0.5f);
             }
@@ -130,6 +133,7 @@ namespace SuruIHA
             ApplyJammers(f);
             ApplyGcs(f);
             ApplyJamCells(f);
+            ApplyHeatMap(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
             ParseLinks(f);
@@ -169,6 +173,7 @@ namespace SuruIHA
             ApplyJammers(f);
             ApplyGcs(f);
             ApplyJamCells(f);
+            ApplyHeatMap(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
             ParseLinks(f);

@@ -30,6 +30,8 @@ Otonom karar alma (suru/decision.py): görevlerin değeri (önceliği) vardır v
 Görev sırasında yeni hedefler belirir (yer istasyonu ihbarı ya da İHA sensörü). Görev paylaşımı
 CBBA (merkeziyetsiz paket planlama ve uzlaşma), SGA (merkezi) ya da eski açgözlü yöntemle yapılır.
 """
+import base64
+import itertools
 from types import SimpleNamespace
 
 import numpy as np
@@ -42,6 +44,13 @@ from .terrain import Terrain
 
 CELL = 50.0  # karıştırma haritası hücre boyu (m)
 GRID_O, GRID_N = -1200.0, 48  # karıştırma haritası ızgarası: başlangıç köşesi (m) ve hücre sayısı
+
+# Karıştırma ısı haritası (yalnızca görselleştirme; simülasyonu etkilemez)
+FIELD_STEP = 10.0             # nokta aralığı (m)
+FIELD_MAX = 128               # bir kenardaki en fazla nokta (geniş alanda aralık büyür)
+FIELD_DB0, FIELD_DB_STEP = -100.0, 0.25   # bayt = (dBm - (-100)) / 0,25  ->  -100 ... -36 dBm
+FIELD_RESEND = 2.0            # değişmese de kaç saniyede bir yeniden gönderilir (s)
+_FIELD_REV = itertools.count(1)   # her yeni harita farklı numara alır (dünya yeniden kurulsa da)
 
 # Uçuş evreleri
 TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND, LANDED = range(7)
@@ -175,6 +184,8 @@ class World:
         self.gps_spoofers = [ew.GpsSpoofer(s) for s in c.gps_spoofers]
         self.jrx = np.full(N, -300.0)       # haberleşme kanalına düşen karıştırma (dBm)
         self.jrx_bar = np.full(N, -300.0)   # yalnızca geniş bant karıştırma (GPS'i ve FHSS'i de etkiler)
+        self._field, self._field_key = None, None           # karıştırma ısı haritası (bkz. jam_field)
+        self._field_sent, self._field_sent_t = 0, -np.inf
         self.gps_rx = np.ones(N, bool)      # alıcı GPS çözümü üretiyor mu (gerçek ya da sahte)
         self.gps_trust = np.ones(N, bool)   # İHA GPS'ine güveniyor mu (aldatma tespit edilince hayır)
         self.gps_ok = np.ones(N, bool)      # İHA konumu için GPS kullanıyor mu (= alıyor ve güveniyor)
@@ -1618,6 +1629,42 @@ class World:
         return [{"p": [round(float(q[0]), 1), round(float(q[1]), 1), round(float(self.terrain.height(*q)), 1)],
                  "pw": round(P, 1), "r": round(radio.jam_radius(P, self.cfg), 1)} for q, P in self.loc_est[i]]
 
+    def _field_axes(self):
+        """Isı haritasının kapsadığı alan: üs, görev alanı ve karıştırıcıların (rotalarıyla) çevresi."""
+        c = self.cfg
+        ac, h = np.asarray(c.area_center, float), c.area_half + 200.0
+        pts = [ac - h, ac + h, self.home - 200.0, self.home + 200.0]
+        for d in c.jammers:
+            for p in [d["pos"][:2]] + list(d.get("route") or []):
+                pts += [np.asarray(p, float) - 300.0, np.asarray(p, float) + 300.0]
+        lo, hi = np.min(pts, axis=0), np.max(pts, axis=0)
+        if not self.terrain.flat:
+            edge = self.terrain.origin + (self.terrain.n - 1) * self.terrain.step
+            lo, hi = np.maximum(lo, self.terrain.origin), np.minimum(hi, edge)
+        step = max(FIELD_STEP, float((hi - lo).max()) / (FIELD_MAX - 1))
+        return np.arange(lo[0], hi[0] + 1e-6, step), np.arange(lo[1], hi[1] + 1e-6, step), step
+
+    def jam_field(self):
+        """Karıştırma ısı haritası: uçuş yüksekliğinde haberleşme kanalına düşen karıştırma gücü.
+        Karıştırıcı bir ızgara aralığı kadar yer değiştirmedikçe yeniden hesaplanmaz. Karıştırıcı yoksa None."""
+        if not self.jammers:
+            return None
+        xs, ys, step = self._field_axes() if self._field is None else self._field["axes"]
+        key = np.round(np.array([j.xy for j in self.jammers]) / step)
+        if self._field is None or not np.array_equal(key, self._field_key):
+            J = radio.jam_field_dbm(xs, ys, self.jammers, self.cfg, self.terrain, self.cfg.agl)
+            q = np.clip(np.round((J - FIELD_DB0) / FIELD_DB_STEP), 0, 255).astype(np.uint8)
+            self._field_key = key
+            self._field = {"axes": (xs, ys, step), "msg": {
+                "rev": next(_FIELD_REV), "x0": round(float(xs[0]), 2), "y0": round(float(ys[0]), 2),
+                "step": round(step, 3), "nx": len(xs), "ny": len(ys), "agl": self.cfg.agl,
+                "db0": FIELD_DB0, "dbStep": FIELD_DB_STEP,
+                # Haritadaki eş güç çizgileri: İHA karıştırmayı fark eder / 60 m'deki komşuyla bağlantı kopar
+                "detect": self.cfg.jam_detect_dbm, "cut": round(radio.jam_tolerance_dbm(self.cfg, 60.0), 2),
+                "q": base64.b64encode(q.tobytes()).decode("ascii"),   # satır = kuzey (y), sütun = doğu (x)
+            }}
+        return self._field["msg"]
+
     def _ew_summary(self):
         errs = [e for _, e in self.loc_err_log]
         tail = [e for t, e in self.loc_err_log if t >= self.t - 60.0]
@@ -1737,7 +1784,7 @@ class World:
         dominant = int(np.bincount(live, minlength=7).argmax()) if len(live) else LANDED
         fm = self.alive & M_FORM[self.phase]
         sched = np.isfinite(self.appear) & (self.appear <= self.t)
-        return {
+        out = {
             "t": round(self.t, 2),
             "strategy": c.strategy,
             "planner": c.planner,
@@ -1774,3 +1821,9 @@ class World:
                 "liars": round(float(np.nan_to_num(self._trust_stats()[0], nan=-1.0)), 2),
             },
         }
+        # Isı haritası büyük (~16 KB): yalnızca değişince ve ara ara (Unity sonradan bağlanırsa diye) eklenir
+        field = self.jam_field()
+        if field is not None and (field["rev"] != self._field_sent or self.t - self._field_sent_t >= FIELD_RESEND):
+            out["jamField"] = field
+            self._field_sent, self._field_sent_t = field["rev"], self.t
+        return out

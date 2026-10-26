@@ -80,6 +80,32 @@ namespace SuruIHA
             return m;
         }
 
+        // Dokulu yarı saydam örtü (karıştırma ısı haritası): renk ve saydamlık dokudan gelir, doku hafifçe
+        // parlar (gölgede de okunsun). Doku çalışma anında değişir; buradaki beyaz doku yer tutucudur ve
+        // HDRP'nin dokulu varyantı seçmesini sağlar (Sahneyi Kur malzemeyle birlikte kaydeder).
+        public static Material Overlay(float emission)
+        {
+            var m = Transparent(Color.white);
+            var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false) { name = "YerTutucu" };
+            var px = new Color32[16];
+            for (int i = 0; i < px.Length; i++) px[i] = new Color32(255, 255, 255, 255);
+            tex.SetPixels32(px);
+            tex.Apply();
+            SetOverlayTexture(m, tex);
+            SetEmission(m, Color.white, emission);
+            Validate(m);
+            return m;
+        }
+
+        // Renk + saydamlık dokusu ve parlama dokusu (parlama verilmezse renk dokusu kullanılır)
+        public static void SetOverlayTexture(Material m, Texture tex, Texture emission = null)
+        {
+            foreach (var p in new[] { "_BaseColorMap", "_MainTex", "_BaseMap" })
+                if (m.HasProperty(p)) m.SetTexture(p, tex);
+            foreach (var p in new[] { "_EmissiveColorMap", "_EmissionMap" })
+                if (m.HasProperty(p)) m.SetTexture(p, emission != null ? emission : tex);
+        }
+
         public static void SetColor(Material m, Color c)
         {
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);

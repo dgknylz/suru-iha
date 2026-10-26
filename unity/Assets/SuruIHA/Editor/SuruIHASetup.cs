@@ -516,9 +516,20 @@ namespace SuruIHA.EditorTools
                 if (f.FieldType != typeof(Material)) continue;
                 var mat = (Material)f.GetValue(m);
                 string path = $"{dir}/RT_{f.Name}.mat";
+                // Kodla üretilen doku (ısı haritasının yer tutucusu) kayıtta düşer: önce alınır, malzemenin içine
+                // alt varlık olarak eklenip yeniden bağlanır. Yoksa HDRP dokulu parlama varyantını derlemeye almaz.
+                var tex = mat.HasProperty("_BaseColorMap") ? mat.GetTexture("_BaseColorMap") : null;
                 AssetDatabase.DeleteAsset(path);
                 AssetDatabase.CreateAsset(mat, path);
-                f.SetValue(m, AssetDatabase.LoadAssetAtPath<Material>(path));
+                var saved = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (tex != null && !AssetDatabase.Contains(tex))
+                {
+                    AssetDatabase.AddObjectToAsset(tex, path);
+                    SwarmMaterials.SetOverlayTexture(saved, tex);
+                    HDMaterial.ValidateMaterial(saved);
+                    EditorUtility.SetDirty(saved);
+                }
+                f.SetValue(m, saved);
             }
             AssetDatabase.SaveAssets();
             return m;

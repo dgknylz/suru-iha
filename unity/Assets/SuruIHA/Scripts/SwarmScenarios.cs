@@ -59,8 +59,9 @@ namespace SuruIHA
             {
                 Id = "sirt", Tag = "ARAZİ", TagColor = Ui.Good, Title = "Sırt arkasında karıştırıcı",
                 Short = "Tepeler sinyali gölgeliyor: arazinin kalkan etkisi.",
-                Watch = "30 dBm karıştırıcı tepenin arkasında. Tepe sinyali kırınımla zayıflatır; gölgede kalan İHA'lar etkilenmez. " +
-                        "Arazi hesaba katılmasaydı korumasız sürü %65 yapacaktı; tepeler sayesinde %92 yapıyor.",
+                Watch = "30 dBm karıştırıcı tepenin arkasında. Tepe sinyali kırınımla zayıflatır; ısı haritasındaki açık renkli " +
+                        "boşluklar tepenin gölgesidir, oradaki İHA'lar etkilenmez. Arazi hesaba katılmasaydı korumasız sürü %65 " +
+                        "yapacaktı; tepeler sayesinde %92 yapıyor.",
                 Args = "--jammer 30 --jammer-mode sirt", RefCentral = 91.5f, RefDecentral = 92.1f, RefResilient = 100f,
             },
             new Scenario
