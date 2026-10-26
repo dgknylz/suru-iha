@@ -15,8 +15,8 @@ Sol sürü UDP 5065'ten, sağ sürü 5067'den yayınlanır.
 import argparse
 import time
 
-from run_live import (Controls, GPS_SPOOFS, JAMMER_MODES, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES, apply,
-                      describe)
+from run_live import (Controls, GPS_SPOOFS, JAMMER_MODES, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES, add_custom_args,
+                      apply, custom_kw, custom_state, describe)
 from suru import World, make_config
 from suru.bridge import UnityBridge
 
@@ -37,20 +37,25 @@ def parse():
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--loop", action="store_true")
     p.add_argument("--formation", default="V", choices=["V", "hat", "kol", "halka"])
+    p.add_argument("--drones", type=int, default=10)
+    p.add_argument("--tasks", type=int, default=20)
+    p.add_argument("--failures", type=int, default=0, help="görev sırasında arızalanacak İHA sayısı (iki tarafta aynı)")
+    add_custom_args(p)
     return p.parse_args()
 
 
 def make_world(st, strategy, a):
     return World(make_config(strategy, st["power"], st["spoof"], st["seed"], formation=st["formation"],
                              planner=st["planner"], n_popup=a.popups, live_reserve=8, jammer_mode=st["jammer_mode"],
-                             gps_spoof=st["gps_spoof"], spoof_mode=st["spoof_mode"]))
+                             gps_spoof=st["gps_spoof"], spoof_mode=st["spoof_mode"], n_drones=a.drones,
+                             n_tasks=a.tasks, failures=a.failures, **custom_kw(st)))
 
 
 def main():
     a = parse()
     st = {"strategy": a.left, "power": None if a.jammer.lower() == "off" else float(a.jammer), "spoof": a.spoof,
           "seed": a.seed, "planner": a.planner, "jammer_mode": a.jammer_mode, "gps_spoof": a.gps_spoof,
-          "spoof_mode": a.spoof_mode, "formation": a.formation}
+          "spoof_mode": a.spoof_mode, "formation": a.formation, **custom_state(a)}
     left, right = UnityBridge(port=5065), UnityBridge(port=5067)
     try:
         ctl = Controls(5066)

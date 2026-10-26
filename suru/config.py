@@ -163,9 +163,29 @@ GPS_SPOOF_MODES = {
 }
 
 
-def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jammer_mode="sabit", gps_spoof="", **kw):
-    """Deney betikleri için kısayol. jammer_power=None -> karıştırıcı yok."""
-    jammers = [] if jammer_power is None else jammer_scenario(jammer_mode, jammer_power)
+def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jammer_mode="sabit", gps_spoof="",
+                jammer_xy=None, jammer_band="genis", spoofer_xy=None, **kw):
+    """Deney betikleri için kısayol. jammer_power=None -> karıştırıcı yok.
+    jammer_xy: [(x, y), ...] verilirse karıştırıcılar bu noktalara konur (Unity'de "Kendi senaryon");
+    spoofer_xy: (x, y) verilirse GPS aldatıcı oraya taşınır."""
+    if jammer_power is None:
+        jammers = []
+    elif jammer_xy:
+        jammers = [{"pos": (float(x), float(y), 15.0), "power_dbm": float(jammer_power), "band": jammer_band}
+                   for x, y in jammer_xy]
+        jammer_mode = "ozel"
+    else:
+        jammers = jammer_scenario(jammer_mode, jammer_power)
     spoofers = GPS_SPOOF_MODES[gps_spoof] if gps_spoof else []
+    if spoofers and spoofer_xy is not None:
+        spoofers = [dict(s, pos=(float(spoofer_xy[0]), float(spoofer_xy[1]))) for s in spoofers]
     return SimConfig(strategy=strategy, jammers=jammers, spoof_fraction=spoof, seed=seed, jammer_mode=jammer_mode,
                      gps_spoof=gps_spoof, gps_spoofers=spoofers, **kw)
+
+
+def parse_points(spec):
+    """'x,y;x,y' -> [(x, y), ...] (Unity'deki "Kendi senaryon" ekranından gelir). Boşsa None."""
+    pts = [tuple(float(v) for v in part.split(",")) for part in (spec or "").split(";") if part.strip()]
+    if any(len(p) != 2 for p in pts):
+        raise ValueError(f"nokta listesi 'x,y;x,y' biçiminde olmalı: {spec}")
+    return pts or None

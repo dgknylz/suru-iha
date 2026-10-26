@@ -9,6 +9,7 @@ namespace SuruIHA
         public string Id, Tag, Title, Short, Watch, Args;
         public Color TagColor;
         public float RefCentral, RefDecentral, RefResilient;
+        public bool Custom;     // "Kendi senaryon" sekmesinde kurulan senaryo (deney ortalaması yok)
     }
 
     public static class SwarmScenarios

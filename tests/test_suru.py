@@ -255,6 +255,19 @@ def test_karistirma_isi_haritasi():
     assert "jamField" not in World(make_config("resilient", None, 0.0, 0)).frame(), "karıştırıcı yoksa harita yok"
 
 
+def test_kendi_senaryon():
+    """Unity'deki "Kendi senaryon": karıştırıcılar ve GPS aldatıcı verilen noktalara konur."""
+    from suru.config import parse_points
+    assert parse_points("-150,300;200.5,500") == [(-150.0, 300.0), (200.5, 500.0)]
+    assert parse_points("") is None
+    w = World(make_config("resilient", 25.0, 0.0, 1, gps_spoof="hizli", jammer_xy=[(-150.0, 300.0), (200.0, 500.0)],
+                          jammer_band="nokta", spoofer_xy=(100.0, 400.0), n_drones=8, n_tasks=12))
+    assert [tuple(j.xy) for j in w.jammers] == [(-150.0, 300.0), (200.0, 500.0)]
+    assert all(j.band == "nokta" and j.power == 25.0 for j in w.jammers) and w.cfg.jammer_mode == "ozel"
+    assert tuple(w.gps_spoofers[0].xy) == (100.0, 400.0) and w.N == 8
+    assert World(make_config("resilient", None, 0.0, 1, jammer_xy=[(0.0, 0.0)])).jammers == [], "güç kapalıysa karıştırıcı yok"
+
+
 def test_ucus_raporu():
     """Uçuş raporu iniş bitince gelir; İHA'ların yaptığı hedefler toplamı tamamlanan hedef sayısına eşittir."""
     w = World(make_config("resilient", 20.0, 0.0, 3, n_popup=4, failures=1))

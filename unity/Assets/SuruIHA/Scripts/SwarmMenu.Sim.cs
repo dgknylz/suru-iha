@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -428,7 +429,7 @@ namespace SuruIHA
                     Ui.Label(Ui.R(px, sy, pw, 24), detail, 15.5f, Ui.Ink2);
                     sy += 34f;
                 }
-                if (running != null)
+                if (running != null && !running.Custom)
                 {
                     var rb = Ui.R(px, sy, pw, 74);
                     Ui.Fill(rb, new Color(1f, 1f, 1f, 0.05f), 12);
@@ -461,7 +462,8 @@ namespace SuruIHA
             if (Ui.Button(Ui.R(px + 468, by, 180, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
             if (!cmpOn && running != null && Ui.Button(Ui.R(px + 662, by, 170, 54), "Yan yana izle", size: 17))
             {
-                scenario = Array.IndexOf(SwarmScenarios.All, running);
+                useCustom = running.Custom;
+                if (!useCustom) scenario = Array.IndexOf(SwarmScenarios.All, running);
                 compare = true;
                 if (strategy == 2) strategy = 1;
                 Launch();
@@ -543,6 +545,9 @@ namespace SuruIHA
             OpenMenu(Tab.Rapor);                   // henüz biten uçuş yok: boş rapor sekmesi
             yield return Wait(1f);
             yield return Shot("10b_sekme_rapor_bos");
+            OpenMenu(Tab.Ozel);
+            yield return Wait(1.5f);
+            yield return Shot("10c_sekme_kendi_senaryon");
             OpenMenu(Tab.Proje);
 
             fast = true;
@@ -642,6 +647,33 @@ namespace SuruIHA
             cam.mode = SwarmCamera.Mode.Cinematic;
             yield return Wait(4f);
             yield return Shot("21_isi_haritasi_sinematik");
+
+            // Kendi senaryon: iki karıştırıcı + GPS aldatıcı, 8 İHA, 10 hedef, 1 arıza (kayıtlı seçimlere dokunmaz)
+            var saved = custom;
+            custom = new CustomSetup
+            {
+                jammers = new List<Vector2> { new Vector2(-220f, 520f), new Vector2(240f, 250f) },
+                spoofer = true, spooferPos = new Vector2(60f, 640f), drones = 1, tasks = 0, failures = 1,
+            };
+            compare = false;
+            strategy = 2;
+            OpenMenu(Tab.Ozel);
+            yield return Wait(1f);
+            yield return Shot("22_kendi_senaryon_kurulu");
+            useCustom = true;
+            Launch();
+            yield return Until(() => SwarmVisualizer.Main.Frame?.drones?.Length == 8 && SwarmVisualizer.Main.Frame.t > 60f, 60f);
+            var cf = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"kendi senaryon: İHA {cf?.drones?.Length} · karıştırıcı {cf?.jammers?.Length} · aldatıcı {cf?.spoofers?.Length} · " +
+                           $"hedef {cf?.m?.total} · ısı haritası {(SwarmVisualizer.Main.Field != null ? "var" : "YOK")}");
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Top;
+            float th2 = cam.topHeight;
+            cam.topHeight = 1150f;
+            yield return Wait(4f);
+            yield return Shot("23_kendi_senaryon_ucus");
+            cam.topHeight = th2;
+            custom = saved;
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());
             yield return Wait(1f);

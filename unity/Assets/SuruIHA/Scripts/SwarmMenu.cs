@@ -4,16 +4,18 @@ using UnityEngine;
 
 namespace SuruIHA
 {
-    // Yarışma uygulaması: üstte sekmeler (Proje, Nasıl çalışır?, Kullanılanlar, Bulgular, Simülasyon, Uçuş raporu, Kullanım),
+    // Yarışma uygulaması: üstte sekmeler (Proje, Nasıl çalışır?, Kullanılanlar, Bulgular, Simülasyon, Kendi senaryon,
+    // Uçuş raporu, Kullanım),
     // simülasyon sırasında araç çubuğu, olay akışı, renk açıklamaları, görev sonu ekranı ve Esc menüsü.
     // Simülasyonu (Python) SimLauncher başlatır; terminal açmaya gerek yoktur.
     // Sekmeler ←/→ ya da PageUp/PageDown ile de değişir (sunum kumandası).
     public partial class SwarmMenu : MonoBehaviour
     {
         public enum Page { Menu, Sim, Pause, Quit }
-        public enum Tab { Proje, Nasil, Kullanilanlar, Bulgular, Simulasyon, Rapor, Kullanim }
+        public enum Tab { Proje, Nasil, Kullanilanlar, Bulgular, Simulasyon, Ozel, Rapor, Kullanim }
 
-        static readonly string[] TabNames = { "Proje", "Nasıl çalışır?", "Kullanılanlar", "Bulgular", "Simülasyon", "Uçuş raporu", "Kullanım" };
+        static readonly string[] TabNames =
+            { "Proje", "Nasıl çalışır?", "Kullanılanlar", "Bulgular", "Simülasyon", "Kendi senaryon", "Uçuş raporu", "Kullanım" };
 
         public static SwarmMenu Instance { get; private set; }
         public Page Current { get; private set; } = Page.Menu;
@@ -55,6 +57,7 @@ namespace SuruIHA
             launcher = GetComponent<SimLauncher>();
             if (cam != null) cam.mode = SwarmCamera.Mode.Cinematic;
             LoadLayers();
+            LoadCustom();
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, "-suruUiTest");
             if (i >= 0) StartCoroutine(UiTest(i + 1 < args.Length ? args[i + 1] : "UiTest"));
@@ -124,6 +127,7 @@ namespace SuruIHA
             strategy = 2;
             planner = 1;
             compare = false;
+            useCustom = false;
             Launch();
         }
 
@@ -135,7 +139,7 @@ namespace SuruIHA
                 Current = Page.Sim;
                 return;
             }
-            var sc = SwarmScenarios.All[scenario];
+            var sc = useCustom ? BuildCustom() : SwarmScenarios.All[scenario];
             string pl = SwarmScenarios.Planners[planner];
             seed = seed % 30 + 1;
             string common = $"--planner {pl} {sc.Args} --seed {seed} --speed {(fast ? 6 : 1)}";
@@ -229,6 +233,7 @@ namespace SuruIHA
                 case Tab.Kullanilanlar: DrawKullanilanlarTab(); break;
                 case Tab.Bulgular: DrawBulgularTab(); break;
                 case Tab.Simulasyon: DrawSimulasyonTab(); break;
+                case Tab.Ozel: DrawOzelTab(); break;
                 case Tab.Rapor: DrawRaporTab(); break;
                 case Tab.Kullanim: DrawKullanimTab(); break;
             }
@@ -270,7 +275,8 @@ namespace SuruIHA
             }
             string st = StatusLine();
             if (st.Length > 90) st = st.Substring(0, 88) + "…";
-            Ui.Label(Ui.R(x + 20, 15, rx - x - 36, 46), st, 13.5f, Ui.Ink2, false, TextAnchor.MiddleRight);
+            // Sekmeler çoğalınca durum yazısına yer kalmayabilir: o zaman yazılmaz (düğme zaten durumu söyler)
+            if (rx - x - 36 > 170f) Ui.Label(Ui.R(x + 20, 15, rx - x - 36, 46), st, 13.5f, Ui.Ink2, false, TextAnchor.MiddleRight);
         }
 
         // ---------------------------------------------------------------- Proje sekmesi
@@ -337,8 +343,10 @@ namespace SuruIHA
             float W = Ui.W, H = Ui.H;
             float x0 = 80f, cw = W - 160f;
             float y = BarH + Mathf.Max(24f, (H - BarH - 860f) / 2f);
-            Ui.Label(Ui.R(x0, y, cw, 28), "Bir senaryo seç, ayarları belirle ve başlat. Her senaryo aynı 10 İHA'lık sürüyü farklı bir " +
-                                          "elektronik harp tehdidiyle sınar.", 17, Ui.Ink2);
+            Ui.Label(Ui.R(x0, y, cw - 300, 28), "Bir senaryo seç, ayarları belirle ve başlat. Her senaryo aynı 10 İHA'lık sürüyü farklı bir " +
+                                               "elektronik harp tehdidiyle sınar.", 17, Ui.Ink2);
+            if (Ui.Button(Ui.R(x0 + cw - 280, y - 8, 280, 42), "Kendi senaryonu kur", Ui.Kind.Ghost, size: 15))
+                CurrentTab = Tab.Ozel;
             y += 42;
 
             const float gap = 16f, ch = 160f;
@@ -394,7 +402,10 @@ namespace SuruIHA
             float bx = x0 + cw - 270f;
             if (Ui.Button(Ui.R(bx, y + 4, 270, 64), "Başlat", Ui.Kind.Primary, size: 22, icon: true,
                           enabled: launcher.CanLaunch || launcher.Status == SimLauncher.State.External))
+            {
+                useCustom = false;
                 Launch();
+            }
             if (!launcher.CanLaunch)
                 Ui.Label(Ui.R(bx - 140, y + 76, 410, 80), StatusLine(), 13, Ui.Ink3);
         }

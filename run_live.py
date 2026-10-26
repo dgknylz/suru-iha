@@ -12,6 +12,10 @@ Unity'den klavyeyle senaryo değiştirilebilir (UDP 5066 komut kanalı):
     M karıştırıcı türü (sabit / hareketli / iki / nokta / tepe), U GPS aldatıcı (yok / hızlı / yavaş),
     X saldırgan (yok / saf / sinsi), N yeni harita, V düzen tipi (V / hat / kol / halka),
     Z bir İHA'yı arızalandır, Y görev alanına yeni bir hedef ekle.
+
+Kendi senaryon (Unity'deki "Kendi senaryon" sekmesi; negatif sayılar için = ile yazılır):
+    python run_live.py --jammer 20 --jammers=-150,300;200,500 --jammer-band nokta
+    python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400 --drones 8 --tasks 15 --failures 1
 Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
 İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
 Çıkmak için Ctrl+C.
@@ -22,6 +26,7 @@ import socket
 import time
 
 from suru import World, make_config, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES
+from suru.config import parse_points
 from suru.bridge import UnityBridge
 
 POWER_STEPS = [None, 10.0, 20.0, 30.0]   # karıştırıcı kademeleri (None = kapalı)
@@ -51,7 +56,25 @@ def parse():
     p.add_argument("--jammer-mode", default="sabit", choices=JAMMER_MODES, help="karıştırıcı senaryosu")
     p.add_argument("--gps-spoof", default="", choices=GPS_SPOOFS, help="GPS aldatıcı: '' | hizli | yavas")
     p.add_argument("--spoof-mode", default="naive", choices=["naive", "sneaky"], help="saldırgan davranışı")
+    add_custom_args(p)
     return p.parse_args()
+
+
+def add_custom_args(p):
+    """Kendi senaryon: karıştırıcıların ve GPS aldatıcının yeri (run_compare.py de kullanır)."""
+    p.add_argument("--jammers", default="", help="karıştırıcıların yeri 'x,y;x,y' (m); verilirse --jammer-mode yok sayılır")
+    p.add_argument("--jammer-band", default="genis", choices=["genis", "nokta"], help="özel karıştırıcıların türü")
+    p.add_argument("--spoofer", default="", help="GPS aldatıcının yeri 'x,y' (m); --gps-spoof ile birlikte")
+
+
+def custom_state(a):
+    sp = parse_points(a.spoofer)
+    return {"jammer_xy": parse_points(a.jammers), "jammer_band": a.jammer_band, "spoofer_xy": sp[0] if sp else None}
+
+
+def custom_kw(st):
+    return {"jammer_xy": st.get("jammer_xy"), "jammer_band": st.get("jammer_band", "genis"),
+            "spoofer_xy": st.get("spoofer_xy")}
 
 
 class Controls:
@@ -102,7 +125,10 @@ def apply(cmd, st, world):
         k = SPOOF_STEPS.index((st["spoof"], st["spoof_mode"])) if (st["spoof"], st["spoof_mode"]) in SPOOF_STEPS else 0
         st["spoof"], st["spoof_mode"] = SPOOF_STEPS[(k + 1) % len(SPOOF_STEPS)]
     elif c == "jammer_mode":
-        st["jammer_mode"] = JAMMER_MODES[(JAMMER_MODES.index(st["jammer_mode"]) + 1) % len(JAMMER_MODES)]
+        if st.get("jammer_xy"):              # özel yerleşimden hazır senaryolara geçilir
+            st["jammer_xy"] = None
+        else:
+            st["jammer_mode"] = JAMMER_MODES[(JAMMER_MODES.index(st["jammer_mode"]) + 1) % len(JAMMER_MODES)]
         if st["power"] is None:
             st["power"] = 20.0
     elif c == "gps_spoof":
@@ -115,7 +141,8 @@ def apply(cmd, st, world):
 
 
 def describe(st):
-    p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm {st['jammer_mode']}"
+    mode = f"özel ({len(st['jammer_xy'])} karıştırıcı)" if st.get("jammer_xy") else st["jammer_mode"]
+    p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm {mode}"
     g = f" | GPS aldatma: {st['gps_spoof']}" if st["gps_spoof"] else ""
     sp = f"%{st['spoof'] * 100:.0f} {'sinsi' if st['spoof_mode'] == 'sneaky' else 'saf'}" if st["spoof"] else "yok"
     return (f"{STRATEGY_NAMES[st['strategy']]} | {PLANNER_NAMES[st['planner']]} | karıştırıcı: {p}{g} | "
@@ -126,7 +153,7 @@ def main():
     a = parse()
     st = {"strategy": a.strategy, "power": None if a.jammer.lower() == "off" else float(a.jammer),
           "spoof": a.spoof, "seed": a.seed, "planner": a.planner, "jammer_mode": a.jammer_mode,
-          "gps_spoof": a.gps_spoof, "spoof_mode": a.spoof_mode}
+          "gps_spoof": a.gps_spoof, "spoof_mode": a.spoof_mode, **custom_state(a)}
     bridge = UnityBridge(port=a.port)
     try:
         ctl = Controls(a.cmd_port)
@@ -141,7 +168,7 @@ def main():
         cfg = make_config(st["strategy"], st["power"], st["spoof"], st["seed"], n_drones=a.drones, n_tasks=a.tasks,
                           formation=st["formation"], failures=a.failures, relay=a.relay, planner=st["planner"],
                           n_popup=a.popups, live_reserve=8, jammer_mode=st["jammer_mode"],
-                          gps_spoof=st["gps_spoof"], spoof_mode=st["spoof_mode"])
+                          gps_spoof=st["gps_spoof"], spoof_mode=st["spoof_mode"], **custom_kw(st))
         world = World(cfg)
         print(f"\n== {describe(st)} ==")
         steps_per_frame = max(1, round(a.speed / a.fps / cfg.dt))

@@ -61,6 +61,7 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
    | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
    | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, hız; **Başlat** |
+   | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı ve GPS aldatıcı koy; İHA ve hedef sayısı, arıza, saldırgan seç; **Başlat** |
    | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
 
@@ -111,6 +112,14 @@ Simülasyon sırasında ekranda:
   Yan yana uçuşta iki sürünün raporu ayrı ayrı açılır.
 
   ![Uçuş raporu](gorseller/61_ucus_raporu.jpg)
+- **Kendi senaryon:** haritaya tıklayarak en fazla 3 karıştırıcı ve bir GPS aldatıcı konur (aynı yere tekrar
+  tıklayınca kalkar). Haritada karıştırıcının düz arazide bağlantıyı kopardığı ve GPS'i kestiği alan, aldatıcının
+  250 m'lik alanı görünür. Yanında karıştırıcı gücü (10/20/30 dBm) ve türü (geniş bant / nokta), aldatma hızı,
+  İHA sayısı (6-12), hedef sayısı, görevde beliren yeni hedef, arızalanan İHA, saldırgan İHA (saf / sinsi), karar
+  mimarisi, görev paylaşımı, tek sürü ya da yan yana ve hız seçilir. Seçimler bilgisayarda hatırlanır; jüri
+  "şunu deneyin" dediğinde yerinde senaryo kurulup gösterilebilir.
+
+  ![Kendi senaryon](gorseller/63_kendi_senaryon.jpg)
 
 ![Simülasyon ekranı](gorseller/47_arayuz_simulasyon.jpg)
 
@@ -153,6 +162,9 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --jammer-mode hareketli` | Karıştırıcı araç görev alanının çevresinde devriye gezer (ayrıca: `iki`, `nokta`, `tepe`, `sirt`) |
 | `python run_live.py --jammer off --gps-spoof hizli` | GPS aldatıcı (İHA'ların konumunu 2 m/s sürükler; `yavas` 0,5 m/s) |
 | `python run_live.py --jammer off --spoof 0.2 --spoof-mode sneaky` | Sinsi saldırgan İHA'lar |
+| `python run_live.py --jammer 20 --jammers=-150,300;200,500` | Kendi senaryon: karıştırıcıları verilen noktalara koy (`--jammer-band nokta` ile nokta karıştırıcı) |
+| `python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400` | GPS aldatıcıyı verilen noktaya koy |
+| `python run_live.py --drones 8 --tasks 10 --failures 1` | İHA, hedef ve arıza sayısı (`run_compare.py` de kabul eder) |
 
 ### Yan yana karşılaştırma (sunum için)
 
@@ -387,14 +399,14 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-31 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+32 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
 elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ ağı.
 Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB kayıp, açıkta 0), nokta
 karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
-yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
+yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, kendi senaryonun karıştırıcı ve aldatıcıyı doğru yere koyması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
 sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 
 ---
