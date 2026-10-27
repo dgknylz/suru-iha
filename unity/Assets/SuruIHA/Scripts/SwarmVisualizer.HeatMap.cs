@@ -34,6 +34,7 @@ namespace SuruIHA
             Report = r;
             ReportFrame = f;
             ReportField = Field;
+            ReportHistory = new System.Collections.Generic.List<MetricSample>(History);
             ReportVersion++;
         }
 

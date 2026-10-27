@@ -70,7 +70,7 @@ namespace SuruIHA
         {
             rows.Clear();
             var m = f.m;
-            rows.Add(("GPS'i kesilen İHA", $"{m.gpsLost}", m.gpsLost > 0 ? Ui.Warn : Ui.Ink));
+            rows.Add(("GPS'siz uçan İHA", $"{m.gpsLost}", m.gpsLost > 0 ? Ui.Warn : Ui.Ink));
             rows.Add(("Yanlış \"bitti\"", $"{m.falseDone}", m.falseDone > 0 ? Ui.Bad : Ui.Ink));
             rows.Add(("Paket iletimi", $"%{m.pdr * 100:0}", Ui.Ink));
             if (f.jammers != null && f.jammers.Length > 0)

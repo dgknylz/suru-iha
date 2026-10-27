@@ -76,6 +76,10 @@ Simülasyon sırasında ekranda:
   ("Ne izlemeliyim?" ile yeniden açılır).
 - **Sağda olay akışı:** sürüde olanları canlı anlatır ("İHA-4: GPS karıştırıldı", "Sürü karıştırıcının yerini
   buldu (hata 40 m)", "İHA-3 aldatmayı fark etti"...).
+- **Canlı grafikler:** olay akışının altında uçuş boyunca üç çizgi grafik akar: paket iletimi, GPS'siz uçan İHA
+  sayısı (GPS'i karıştırılan ya da aldatmayı fark edip GPS'e güvenmeyen) ve görev puanı (yanlarında anlık değer). Karıştırma alanına girilince paket iletiminin düştüğü, sürü
+  toparlanınca yükseldiği görülür; grafiğin üstüne gelince o anın değeri okunur. Yan yana uçuşta iki sürü aynı
+  grafikte (turuncu solda korumasız, yeşil sağda dirençli). Araç çubuğundaki **Grafikler** ile açılıp kapanır.
 - **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
 - **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
   düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
@@ -108,8 +112,9 @@ Simülasyon sırasında ekranda:
   (yapılan / yapılamayan), karıştırıcı ve sürünün tahmini de işaretlidir. Sağda özet sayılar, İHA tablosu
   (yaptığı hedef, uçtuğu yol, GPS'siz ve karıştırma altında geçen süre, ne yaptığı: spiral arama, GPS kurtarma,
   röle, arıza, aldatma) ve uçuşun öne çıkanları ("En çok hedefi İHA-5 yaptı", "Sürü karıştırıcının yerini
-  31 m hatayla buldu"...). Tablodaki bir İHA'nın üstüne gelince izi ve yaptığı hedefler haritada öne çıkar.
-  Yan yana uçuşta iki sürünün raporu ayrı ayrı açılır.
+  31 m hatayla buldu"...) ile "Uçuş boyunca" grafikleri (paket iletimi, GPS'siz uçan İHA, görev puanı). Tablodaki
+  bir İHA'nın üstüne gelince izi ve yaptığı hedefler haritada öne çıkar. Yan yana uçuşta iki sürünün raporu ayrı
+  ayrı açılır.
 
   ![Uçuş raporu](gorseller/61_ucus_raporu.jpg)
 - **Bölgeler:** her senaryo üç haritada uçulabilir (Simülasyon ve Kendi senaryon sekmelerinde **Bölge**). Bölge

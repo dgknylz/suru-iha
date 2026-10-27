@@ -35,12 +35,14 @@ namespace SuruIHA
             DrawBanner(top);
             // Yan yana İHA kamerasında sağdaki kart olay akışının yerini alır; akış kartın altına iner
             bool cardRight = tpp && CompareOn;
-            if (feedOpen) DrawFeed(cardRight ? top + 50f + 132f + 14f : top, cardRight ? 3 : legendOpen ? 4 : 6);
+            float feedTop = cardRight ? top + 50f + 132f + 14f : top, below = feedTop;
+            if (feedOpen) below = DrawFeed(feedTop, cardRight || (chartsOpen && !legendOpen) ? 3 : legendOpen ? 4 : 6) + 12f;
             if (tpp) DrawDroneCards(top + 50f);
             float tbTop = DrawToolbar();
             float above = tbTop;
             if (tpp) above = DrawDroneSelector(tbTop);
             DrawHeatScale(above);
+            if (chartsOpen && !legendOpen) DrawLiveCharts(Ui.W - 450f, below, 430f, above - 16f - below);   // akışın altında
             if (legendOpen) DrawLegendPanel(above);
             if (layersOpen) DrawLayersPanel(above);
             DrawResults();
@@ -238,10 +240,11 @@ namespace SuruIHA
         }
 
         // ------------------------------------------------------------ olay akışı
-        void DrawFeed(float top, int max)
+        // Olay akışı kartı; alt kenarını döndürür (altına canlı grafikler gelir)
+        float DrawFeed(float top, int max)
         {
             var ev = SwarmEvents.Instance;
-            if (ev == null || !SimConnected) return;
+            if (ev == null || !SimConnected) return top;
             float w = 430f, x = Ui.W - w - 20f, tw = w - 56f;
             int n = Mathf.Min(max, ev.Items.Count);
             float ph = 46f;
@@ -266,6 +269,7 @@ namespace SuruIHA
                 Ui.Label(Ui.R(x + 36, y + 17, tw, hs[k] + 4), e.text, 15, new Color(Ui.Ink.r, Ui.Ink.g, Ui.Ink.b, a));
                 y += hs[k] + 30f;
             }
+            return top + ph;
         }
 
         // ------------------------------------------------------------ araç çubuğu
@@ -314,6 +318,8 @@ namespace SuruIHA
                              layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
+                    new Tool("Grafikler", "Canlı grafikler: paket iletimi, GPS'siz uçan İHA ve görev puanı uçuş boyunca. Üstüne gelince o anın değeri.",
+                             chartsOpen, () => chartsOpen = !chartsOpen),
                 } : new[]
                 {
                     heatTool,
@@ -321,6 +327,8 @@ namespace SuruIHA
                              layersOpen, () => layersOpen = !layersOpen),
                     new Tool("Renkler", "Renklerin anlamı [I]", legendOpen, () => legendOpen = !legendOpen),
                     new Tool("Olaylar", "Sağdaki olay akışını göster ya da gizle.", feedOpen, () => feedOpen = !feedOpen),
+                    new Tool("Grafikler", "Canlı grafikler: paket iletimi, GPS'siz uçan İHA ve görev puanı uçuş boyunca. Üstüne gelince o anın değeri.",
+                             chartsOpen, () => chartsOpen = !chartsOpen),
                     new Tool("Panel", "Soldaki bilgi paneli [H]", hud != null && hud.visible, () => { if (hud != null) hud.visible = !hud.visible; }),
                 }),
                 ("MÜDAHALE", new[]

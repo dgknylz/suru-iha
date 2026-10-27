@@ -114,8 +114,9 @@ namespace SuruIHA
             DrawReportStats(rx, my, rw, rep, f);
             float ty = my + 112f;
             float th = DrawDroneTable(rx, ty, rw, rep, Spoofing(f));
-            float hy = ty + th + 14f;
-            DrawHighlights(rx, hy, rw, H - 24f - hy, rep, f, v);
+            float hy = ty + th + 14f, hw = rw * 0.56f;
+            DrawHighlights(rx, hy, hw, H - 24f - hy, rep, f, v);
+            DrawReportCharts(rx + hw + 14f, hy, rw - hw - 14f, H - 24f - hy, v);
         }
 
         void SetSide(int s)
@@ -242,11 +243,11 @@ namespace SuruIHA
             float ly = y + 42f;
             foreach (var line in highlights)
             {
-                float lh = Ui.TextHeight(line, 15.5f, w - 64f);
+                float lh = Ui.TextHeight(line, 14.5f, w - 64f);
                 if (ly + lh > y + h - 10f) break;
                 Ui.Dot(new Vector2((x + 26) * Ui.S, (ly + 11) * Ui.S), 3f, Ui.Accent);
-                Ui.Label(Ui.R(x + 40, ly, w - 64, lh), line, 15.5f, Ui.Ink);
-                ly += lh + 7f;
+                Ui.Label(Ui.R(x + 40, ly, w - 64, lh), line, 14.5f, Ui.Ink);
+                ly += lh + 6f;
             }
         }
 

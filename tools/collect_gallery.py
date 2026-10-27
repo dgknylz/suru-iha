@@ -81,6 +81,7 @@ SHOTS = [
     (r"C:\SuruIHA\arayuz_testi\27_kizilirmak_sinematik.png", "68_kizilirmak.jpg"),
     (r"C:\SuruIHA\arayuz_testi\28_kizilirmak_iha_kamerasi.png", "69_kizilirmak_iha_kamerasi.jpg"),
     (r"C:\SuruIHA\arayuz_testi\29_kizilirmak_tepeden.png", "70_kizilirmak_tepeden.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\13_gorevde.png", "71_canli_grafikler.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)
