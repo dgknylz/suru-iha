@@ -298,7 +298,8 @@ namespace SuruIHA.EditorTools
                     uvs.Add(new Vector2((s + 1) * half / 16f, len / 16f));    // 16 m'de bir doku tekrarı
                 }
                 int n = verts.Count;
-                if (n >= 4) tris.AddRange(new[] { n - 4, n - 2, n - 3, n - 3, n - 2, n - 1 });
+                // Üçgenler yukarı baksın (Unity'de ön yüz saat yönünde): ters dizilirse yüzey üstten görünmez
+                if (n >= 4) tris.AddRange(new[] { n - 4, n - 3, n - 2, n - 3, n - 1, n - 2 });
             }
             var mesh = new Mesh { name = "Kizilirmak_Su", indexFormat = IndexFormat.UInt32 };
             mesh.SetVertices(verts);

@@ -66,6 +66,12 @@ namespace SuruIHA.EditorTools
             cam.transform.LookAt(o + new Vector3(60, 20, 60));
             cam.fieldOfView = 55;
             Capture(cam, Path.Combine(outDir, "14_kar_genel.png"));
+            // Kızılırmak (12 km batı): nehir, köprü ve kızıl yar
+            var r = SwarmRegions.RiverOffset;
+            cam.transform.position = r + new Vector3(-230, 70, 260);
+            cam.transform.LookAt(r + new Vector3(-10, 0, 470));
+            cam.fieldOfView = 55;
+            Capture(cam, Path.Combine(outDir, "15_kizilirmak.png"));
             Debug.Log("[SuruIHA] Önizlemeler: " + outDir);
         }
 
