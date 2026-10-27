@@ -60,7 +60,7 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
    | **Nasıl çalışır?** | Sürü zekâsı (uçuş evreleri), CBBA döngüsü, tehdit → savunma eşleşmesi, simülasyon mimarisi |
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
    | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
-   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, hız; **Başlat** |
+   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, bölge (ova / karlı dağlar), hız; **Başlat** |
    | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı ve GPS aldatıcı koy; İHA ve hedef sayısı, arıza, saldırgan seç; **Başlat** |
    | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
@@ -112,6 +112,15 @@ Simülasyon sırasında ekranda:
   Yan yana uçuşta iki sürünün raporu ayrı ayrı açılır.
 
   ![Uçuş raporu](gorseller/61_ucus_raporu.jpg)
+- **Bölgeler:** her senaryo iki haritada uçulabilir (Simülasyon ve Kendi senaryon sekmelerinde **Bölge**):
+  *Orta Anadolu ovası* (tarlalar, bozkır tepeler; deneylerin yapıldığı harita) ve *Karlı dağlar*: karla kaplı geniş
+  bir vadi, yamaçlarda karlı çam ormanları, çevresi 400-500 m yükselen sarp dağlar. Karlı bölge sahnede ana araziden
+  12 km doğudadır; seçilince simülasyon, kamera ve İHA'lar oraya geçer, güneş alçalır, kar yağar, pus artar ve renkler
+  soğur. Python da o bölgenin yükseklik haritasıyla uçar (`--region kar`): tepeler sinyali orada da gölgeler, İHA'lar
+  dağların arasında araziyi izleyerek uçar. Kar dokuları Poly Haven'dan (CC0) fotoğraf taramasıdır; çamların iğnelerine
+  kar öbekleri kurulumda eklenir.
+
+  ![Karlı dağlar](gorseller/65_karli_bolge.jpg)
 - **Kendi senaryon:** haritaya tıklayarak en fazla 3 karıştırıcı ve bir GPS aldatıcı konur (aynı yere tekrar
   tıklayınca kalkar). Haritada karıştırıcının düz arazide bağlantıyı kopardığı ve GPS'i kestiği alan, aldatıcının
   250 m'lik alanı görünür. Yanında karıştırıcı gücü (10/20/30 dBm) ve türü (geniş bant / nokta), aldatma hızı,
@@ -165,6 +174,7 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --jammer 20 --jammers=-150,300;200,500` | Kendi senaryon: karıştırıcıları verilen noktalara koy (`--jammer-band nokta` ile nokta karıştırıcı) |
 | `python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400` | GPS aldatıcıyı verilen noktaya koy |
 | `python run_live.py --drones 8 --tasks 10 --failures 1` | İHA, hedef ve arıza sayısı (`run_compare.py` de kabul eder) |
+| `python run_live.py --region kar` | Karlı dağlar bölgesinde uç (varsayılan `ova`: Orta Anadolu ovası; `run_compare.py` de kabul eder) |
 
 ### Yan yana karşılaştırma (sunum için)
 
@@ -399,14 +409,14 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-32 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+33 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
 elle eklenen hedeflerin yapılması, sahte teklife dayanıklılık, yapay zekâ ağı.
 Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB kayıp, açıkta 0), nokta
 karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
-yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, kendi senaryonun karıştırıcı ve aldatıcıyı doğru yere koyması, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
+yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, kendi senaryonun karıştırıcı ve aldatıcıyı doğru yere koyması, karlı bölgenin farklı ve dağlık arazisinde sürünün görevi bitirip yere sürtmemesi, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
 sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 
 ---
@@ -588,7 +598,7 @@ Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly H
 | `blender/village.py` | Orta Anadolu köyü: kiremit kırma çatılı sıvalı evler (güneş enerjili su ısıtıcılı), revaklı kubbeli minareli cami, ahşap elektrik direği |
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
 | `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı |
-| `tools/fetch_assets.py` | Poly Haven'dan (CC0) 2K fotoğraf dokuları: havadan çimen, kuru ot (bozkır), kuru toprak (anız), sürülmüş tarla, havadan kaya, çakıl, meşe ve çam kabuğu, taranmış kaya. MD5 ile doğrular, HDRP maske haritasını üretir; `C:\SuruIHA\assets\polyhaven` altına iner, lisans ve yazarlar `manifest.json`'da |
+| `tools/fetch_assets.py` | Poly Haven'dan (CC0) 2K fotoğraf dokuları: havadan çimen, kuru ot (bozkır), kuru toprak (anız), sürülmüş tarla, havadan kaya, çakıl, meşe ve çam kabuğu, taranmış kaya; karlı bölge için taze kar, havadan kar ve tekerlek izli kar. MD5 ile doğrular, HDRP maske haritasını üretir; `C:\SuruIHA\assets\polyhaven` altına iner, lisans ve yazarlar `manifest.json`'da |
 | `unity/Assets/SuruIHA/Editor/SuruIHASetup.cs` | **SürüİHA → Sahneyi Kur** menüsü: malzemeler, prefab'lar, 2,4 km ana arazi (tarla parselleri, bozkır tepeler, çam ormanı, tarla sınırında meşeler, çakıl yollar, 1,6 milyon ot öbeği), 24 evli köy ve cami, ana yol boyunca 42 direkli elektrik hattı, ufka uzanan 8 parça dağ silsilesi, gökyüzü, hacimsel bulutlar, sis |
 
 ### Görsel kalite

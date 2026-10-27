@@ -60,6 +60,12 @@ namespace SuruIHA.EditorTools
                 foreach (var dv in vis.Drones) dv.UpdateBeacon(cam);
                 Capture(cam, Path.Combine(outDir, s.name + ".png"));
             }
+            // Karlı bölge (12 km doğu): vadi ve dağlar (kış havası yerel hacimden gelir)
+            var o = SwarmRegions.SnowOffset;
+            cam.transform.position = o + new Vector3(-260, 150, -330);
+            cam.transform.LookAt(o + new Vector3(60, 20, 60));
+            cam.fieldOfView = 55;
+            Capture(cam, Path.Combine(outDir, "14_kar_genel.png"));
             Debug.Log("[SuruIHA] Önizlemeler: " + outDir);
         }
 

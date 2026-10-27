@@ -91,11 +91,12 @@ def cell_centers(grid):
     return np.c_[ix, iy].astype(float) * CELL + GRID_O + CELL / 2
 
 
-def shared_terrain(flat):
+def shared_terrain(flat, region="ova"):
     """Arazi dosyası bir kez yüklenir, tüm simülasyonlar paylaşır."""
-    if flat not in _TERRAIN_CACHE:
-        _TERRAIN_CACHE[flat] = Terrain(flat=flat)
-    return _TERRAIN_CACHE[flat]
+    key = (flat, region)
+    if key not in _TERRAIN_CACHE:
+        _TERRAIN_CACHE[key] = Terrain(flat=flat, region=region)
+    return _TERRAIN_CACHE[key]
 
 
 class World:
@@ -107,7 +108,7 @@ class World:
         self.resilient = c.strategy == "resilient"
         self.central = c.strategy == "centralized"
         self.relay_on = c.relay_enabled()
-        self.terrain = shared_terrain(not c.terrain)
+        self.terrain = shared_terrain(not c.terrain, c.region)
         self.cbba = c.planner in ("cbba", "ai")
         self.ai = None
         if c.planner == "ai":
@@ -1857,6 +1858,7 @@ class World:
         out = {
             "t": round(self.t, 2),
             "strategy": c.strategy,
+            "region": c.region,
             "planner": c.planner,
             "phase": PHASE_NAMES[dominant],
             "formation": self.form_kind,

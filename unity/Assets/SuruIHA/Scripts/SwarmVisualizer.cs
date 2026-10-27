@@ -88,7 +88,7 @@ namespace SuruIHA
         public class Materials
         {
             public Material Body, Shell, Dark, PropBlur, Led, Trail, Ghost, GhostLine,
-                Link, GcsLink, TaskBeam, TaskRing, Dome, DomeRing, JamCell, HeatMap, Concrete, Metal;
+                Link, GcsLink, TaskBeam, TaskRing, Dome, DomeRing, JamCell, HeatMap, Snow, Concrete, Metal;
 
             // Boş olan her malzemeyi kodla üretir (editörde asset olarak kaydedilebilir)
             public void FillMissing(float glow)
@@ -109,6 +109,7 @@ namespace SuruIHA
                 if (DomeRing == null) DomeRing = SwarmMaterials.Glow(new Color(1f, 0.3f, 0.18f), glow * 0.5f);
                 if (JamCell == null) JamCell = SwarmMaterials.Transparent(new Color(1f, 0.3f, 0.1f, 0.07f), glow * 0.05f);
                 if (HeatMap == null) HeatMap = SwarmMaterials.Overlay(glow * 0.25f);
+                if (Snow == null) Snow = SwarmMaterials.Transparent(new Color(1f, 1f, 1f, 0.9f));   // kar tanesi (parlamasız)
                 if (Concrete == null) Concrete = SwarmMaterials.Lit(new Color(0.55f, 0.55f, 0.52f), 0f, 0.2f);
                 if (Metal == null) Metal = SwarmMaterials.Lit(new Color(0.6f, 0.62f, 0.65f), 0.8f, 0.5f);
             }

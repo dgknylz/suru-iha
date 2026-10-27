@@ -23,7 +23,8 @@ RunUnity "SuruIHA.EditorTools.SuruIHASetup.BuildFromCommandLine" "C:\SuruIHA\bui
 # Unity'nin ürettiği arazi yüksekliğini simülasyona kopyala (Python aynı araziyi kullanır)
 $data = Join-Path $repo "suru\data"
 New-Item -ItemType Directory -Force $data | Out-Null
-Copy-Item (Join-Path $proj "Arazi\arazi_yukseklik.*") $data -Force
+# her bölgenin haritası: arazi_yukseklik.* (ova) ve arazi_yukseklik_kar.* (karlı dağlar)
+Copy-Item (Join-Path $proj "Arazi\arazi_yukseklik*") $data -Force
 $frame = "C:\SuruIHA\kare_60.json"
 & (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\dump_frame.py") $frame 45 | Out-Null
 RunUnity "SuruIHA.EditorTools.SuruIHAPreview.FromCommandLine" "C:\SuruIHA\preview.log" @("-frame", $frame, "-out", "C:\SuruIHA\preview")

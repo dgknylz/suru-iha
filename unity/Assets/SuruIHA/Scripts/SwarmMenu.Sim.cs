@@ -217,7 +217,7 @@ namespace SuruIHA
                 float h = 96f + wh;
                 Ui.Panel(Ui.R(x, top, w, h), 14);
                 float cx = Ui.Chip(x + 24, top + 18, runCompare ? "YAN YANA" : "SENARYO", Ui.Accent, 11.5f);
-                Ui.Label(Ui.R(x + 36 + cx, top + 12, w - 120 - cx, 32), running.Title, 22, Ui.Ink, true);
+                Ui.Label(Ui.R(x + 36 + cx, top + 12, w - 120 - cx, 32), RunTitle, 22, Ui.Ink, true);
                 if (Ui.Button(Ui.R(x + w - 52, top + 12, 34, 34), "×", Ui.Kind.Ghost, size: 20)) bannerOpen = false;
                 string arch = f == null ? "" : runCompare
                     ? $"Solda {SwarmScenarios.StrategyTitle(f.strategy)}, sağda EH dirençli sürü · {SwarmScenarios.PlannerTitle(f.planner, "resilient")}"
@@ -227,7 +227,7 @@ namespace SuruIHA
             }
             else
             {
-                string s = "Ne izlemeliyim?  ·  " + running.Title;
+                string s = "Ne izlemeliyim?  ·  " + RunTitle;
                 float pw = Ui.TextWidth(s, 15, true) + 44f;
                 if (Ui.Button(Ui.R((Ui.W - pw) / 2f, top, pw, 38), s, size: 15))
                 {
@@ -410,7 +410,7 @@ namespace SuruIHA
             Ui.Chip(px, y + 24, "UÇUŞ BİTTİ", Ui.Good, 11.5f);
             string title = cmpOn ? "Aynı saldırı, iki sürü: sonuç" : all ? "Görev tamamlandı" : "Sürü indi, bazı hedefler yapılamadı";
             Ui.Label(Ui.R(px, y + 52, pw, 36), title, 27, Ui.Ink, true);
-            Ui.Label(Ui.R(px, y + 90, pw, 24), (running?.Title ?? "Canlı simülasyon") + " · harita #" + f.ctl.seed, 15, Ui.Ink3);
+            Ui.Label(Ui.R(px, y + 90, pw, 24), (RunTitle ?? "Canlı simülasyon") + " · harita #" + f.ctl.seed, 15, Ui.Ink3);
             float sy = y + 126f;
 
             if (!cmpOn)
@@ -691,6 +691,33 @@ namespace SuruIHA
             yield return Shot("23_kendi_senaryon_ucus");
             cam.topHeight = th2;
             custom = saved;
+
+            // Karlı bölge: aynı senaryo karla kaplı dağlarda
+            region = 1;
+            scenario = 1;
+            strategy = 2;
+            compare = false;
+            useCustom = false;
+            Launch();
+            yield return Until(() => SwarmVisualizer.Main.Frame?.region == "kar" && SwarmVisualizer.Main.Frame.t > 70f, 60f);
+            var kf = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"karlı bölge: bölge={kf?.region} kök={SwarmVisualizer.Main.transform.position} İHA {kf?.drones?.Length} " +
+                           $"ısı haritası {(SwarmVisualizer.Main.Field != null ? "var" : "YOK")}");
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(4f);
+            yield return Shot("24_karli_bolge_sinematik");
+            yield return Fps("karlı bölge");
+            cam.SetFollow(2);
+            cam.mode = SwarmCamera.Mode.Follow;
+            yield return Wait(3f);
+            yield return Shot("25_karli_bolge_iha_kamerasi");
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1150f;
+            yield return Wait(4f);
+            yield return Shot("26_karli_bolge_tepeden");
+            cam.topHeight = th2;
+            region = 0;
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());
             yield return Wait(1f);

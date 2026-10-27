@@ -14,9 +14,16 @@ import numpy as np
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
+REGIONS = {"ova": "arazi_yukseklik.bin", "kar": "arazi_yukseklik_kar.bin"}   # Unity'deki bölgeler
+
+
 class Terrain:
-    def __init__(self, path=None, flat=False):
-        path = path or os.path.join(DATA, "arazi_yukseklik.bin")
+    def __init__(self, path=None, flat=False, region="ova"):
+        if region not in REGIONS:
+            raise ValueError(f"bilinmeyen bölge: {region} (seçenekler: {', '.join(REGIONS)})")
+        path = path or os.path.join(DATA, REGIONS[region])
+        if region != "ova" and not flat and not os.path.exists(path):
+            raise FileNotFoundError(f"{path} yok: Unity'de sahneyi kurup yükseklik haritasını kopyalayın (tools/full_build.ps1)")
         meta = os.path.splitext(path)[0] + ".json"
         if flat or not os.path.exists(path):
             self.h = None

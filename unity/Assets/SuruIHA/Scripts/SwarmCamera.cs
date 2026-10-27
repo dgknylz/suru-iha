@@ -31,6 +31,17 @@ namespace SuruIHA
         readonly TppRig rig = new TppRig();
         bool rigActive;
 
+        // Bölge değişince dünya kayar: kamera ve yumuşatma durumu da aynı miktarda kaydırılır
+        // (yoksa kamera 12 km'yi uçarak geçerdi)
+        public void Shift(Vector3 delta)
+        {
+            transform.position += delta;
+            smoothPos += delta;
+            pivot += delta;
+            rig.Shift(delta);
+            RigB.Shift(delta);
+        }
+
         public void ResetTpp()
         {
             TppYaw = 0f;
@@ -208,6 +219,8 @@ namespace SuruIHA
 
         // Film kesmesi: bir sonraki adımda doğrudan yerine geç
         public void Snap() => init = headingInit = false;
+
+        public void Shift(Vector3 delta) => pos += delta;
 
         public (Vector3, Quaternion) Step(SwarmVisualizer vis, DroneView d, float dt, float yawOff, float pitch, float dist)
         {

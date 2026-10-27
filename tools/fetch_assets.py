@@ -25,7 +25,9 @@ UA = {"User-Agent": "SuruIHA-TUBITAK-2204/1.0"}
 
 # Dokular (renk, normal, ARM) ve modeller (glTF)
 TEXTURES = ["aerial_grass_rock", "withered_grass", "dry_ground_01", "farm_soil", "dirt_aerial_02", "aerial_rocks_02",
-            "gravelly_sand", "bark_brown_02", "pine_bark"]
+            "gravelly_sand", "bark_brown_02", "pine_bark",
+            # Karlı bölge
+            "snow_field_aerial", "snow_02", "snow_04", "snow_05"]
 MODELS = ["boulder_01"]
 
 

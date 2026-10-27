@@ -127,7 +127,11 @@ namespace SuruIHA
         }
 
         // Film kesmesi: bir sonraki karede yumuşatmadan yeni konuma geç
-        public void Snap() => hasState = false;
+        public void Snap()
+        {
+            hasState = false;
+            if (trail != null) trail.Clear();     // kesmede (ya da bölge değişince) iz uzun bir çizgi bırakmasın
+        }
 
         // Durum ışığının rengi (arayüzdeki İHA seçici ve bilgi kartı da aynısını kullanır)
         public static Color StatusColor(DroneState s) =>

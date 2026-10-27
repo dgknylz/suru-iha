@@ -37,6 +37,7 @@ class SimConfig:
     area_center: tuple = (0.0, 380.0)
     area_half: float = 330.0        # görev alanının yarı kenarı (m)
     terrain: bool = True            # Unity'den aktarılan gerçek arazi (False = düz zemin)
+    region: str = "ova"             # harita: "ova" (Orta Anadolu ovası) ya da "kar" (karlı dağlar)
     agl: float = 40.0               # yerden uçuş yüksekliği (m)
     lookahead: float = 4.0          # arazi takibinde ileriye bakma süresi (s)
     max_climb: float = 5.0          # azami tırmanma/alçalma hızı (m/s)

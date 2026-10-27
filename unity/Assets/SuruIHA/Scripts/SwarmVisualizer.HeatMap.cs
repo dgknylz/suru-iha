@@ -40,12 +40,21 @@ namespace SuruIHA
         // Yerel (x doğu, z kuzey) noktadaki arazi yüksekliği (rapor haritasının gölgelemesi için)
         public float GroundHeight(float x, float z) => HeatGround(Terrain.activeTerrains, x, z);
 
+        // Verilen bölgedeki yerel noktanın arazi yüksekliği; kök o bölgede olmasa da ("Kendi senaryon" haritası)
+        public float RegionGroundHeight(Vector3 regionOrigin, float x, float z)
+        {
+            var w = new Vector3(regionOrigin.x + x, 0f, regionOrigin.z + z);
+            foreach (var t in Terrain.activeTerrains)
+                if (Covers(t, w)) return t.SampleHeight(w) + t.transform.position.y - transform.position.y;
+            return 0f;
+        }
+
         GameObject fieldGo;
         Mesh fieldMesh;
         Material fieldMat;
         Texture2D fieldTex, fieldEmit;
         string fieldQ, fieldGeom;
-        float fieldBuiltY;
+        Vector3 fieldBuiltPos;
         float[] fieldVals;
         Color32[] fieldPx, fieldEmitPx;
 
@@ -62,7 +71,7 @@ namespace SuruIHA
                     fieldQ = F.q;
                     Field = F;
                     string geom = $"{F.x0}|{F.y0}|{F.step}|{F.nx}|{F.ny}";
-                    if (geom != fieldGeom || Mathf.Abs(transform.position.y - fieldBuiltY) > 0.01f)
+                    if (geom != fieldGeom || (transform.position - fieldBuiltPos).sqrMagnitude > 0.01f)
                     {
                         BuildHeatMesh(F);
                         fieldGeom = geom;
@@ -75,8 +84,8 @@ namespace SuruIHA
                 Field = null;      // karıştırıcı kapatıldı; açılınca aynı harita gelse de yeniden çizilsin
                 fieldQ = null;
             }
-            // Kök zemine sonradan oturtulduysa örtü yeniden serilir
-            if (Field != null && fieldGo != null && Mathf.Abs(transform.position.y - fieldBuiltY) > 0.01f) BuildHeatMesh(Field);
+            // Kök zemine sonradan oturtulduysa ya da başka bölgeye taşındıysa örtü yeniden serilir
+            if (Field != null && fieldGo != null && (transform.position - fieldBuiltPos).sqrMagnitude > 0.01f) BuildHeatMesh(Field);
             if (fieldGo != null) fieldGo.SetActive(showHeatMap && Field != null);
         }
 
@@ -125,7 +134,7 @@ namespace SuruIHA
             fieldMesh.triangles = tris;
             fieldMesh.RecalculateNormals();
             fieldMesh.RecalculateBounds();
-            fieldBuiltY = transform.position.y;
+            fieldBuiltPos = transform.position;
         }
 
         // Arazi yüksekliği (yerel): noktanın üstünde durduğu arazi parçasından (binalara, araçlara takılmaz)

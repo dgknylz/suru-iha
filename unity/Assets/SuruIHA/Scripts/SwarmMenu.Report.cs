@@ -31,7 +31,7 @@ namespace SuruIHA
             var v = SwarmVisualizer.Main;
             if (v == null || v.ReportVersion == seenReport) return;
             seenReport = v.ReportVersion;
-            reportTitle = running?.Title;
+            reportTitle = RunTitle;
             reportCompare = runCompare;
             reportSel = reportHover = -1;
             if (!reportCompare) reportSide = 0;

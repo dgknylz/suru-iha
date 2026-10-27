@@ -268,6 +268,25 @@ def test_kendi_senaryon():
     assert World(make_config("resilient", None, 0.0, 1, jammer_xy=[(0.0, 0.0)])).jammers == [], "güç kapalıysa karıştırıcı yok"
 
 
+def test_karli_bolge():
+    """Karlı dağlar bölgesi: kendi arazisiyle uçulur; sürü dağlık arazide de görevi bitirir, yere sürtmez."""
+    from suru.terrain import DATA
+    if not os.path.exists(os.path.join(DATA, "arazi_yukseklik_kar.bin")):
+        pytest.skip("karlı bölge yükseklik haritası yok (Unity'de sahne kurulmadı)")
+    ova = World(make_config("resilient", 20.0, 0.0, 1)).terrain
+    kar = World(make_config("resilient", 20.0, 0.0, 1, region="kar")).terrain
+    xs = np.linspace(-1100, 1100, 23)
+    gx, gy = np.meshgrid(xs, xs)
+    assert np.abs(kar.height(gx, gy) - ova.height(gx, gy)).mean() > 20.0, "karlı bölgenin arazisi farklı olmalı"
+    assert np.ptp(kar.height(gx, gy)) > 250.0, "karlı bölge dağlık olmalı"
+    w = fly(make_config("resilient", 20.0, 0.0, 3, region="kar", n_popup=4), until="flight_over")
+    s = w.summary()
+    assert s["completion"] >= 0.9 and s["min_agl"] > 5.0
+    assert w.frame()["region"] == "kar"
+    with pytest.raises(ValueError):
+        World(make_config("resilient", 20.0, 0.0, 1, region="ay"))
+
+
 def test_ucus_raporu():
     """Uçuş raporu iniş bitince gelir; İHA'ların yaptığı hedefler toplamı tamamlanan hedef sayısına eşittir."""
     w = World(make_config("resilient", 20.0, 0.0, 3, n_popup=4, failures=1))

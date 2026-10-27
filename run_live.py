@@ -65,16 +65,18 @@ def add_custom_args(p):
     p.add_argument("--jammers", default="", help="karıştırıcıların yeri 'x,y;x,y' (m); verilirse --jammer-mode yok sayılır")
     p.add_argument("--jammer-band", default="genis", choices=["genis", "nokta"], help="özel karıştırıcıların türü")
     p.add_argument("--spoofer", default="", help="GPS aldatıcının yeri 'x,y' (m); --gps-spoof ile birlikte")
+    p.add_argument("--region", default="ova", choices=["ova", "kar"], help="harita: Orta Anadolu ovası ya da karlı dağlar")
 
 
 def custom_state(a):
     sp = parse_points(a.spoofer)
-    return {"jammer_xy": parse_points(a.jammers), "jammer_band": a.jammer_band, "spoofer_xy": sp[0] if sp else None}
+    return {"jammer_xy": parse_points(a.jammers), "jammer_band": a.jammer_band, "spoofer_xy": sp[0] if sp else None,
+            "region": a.region}
 
 
 def custom_kw(st):
     return {"jammer_xy": st.get("jammer_xy"), "jammer_band": st.get("jammer_band", "genis"),
-            "spoofer_xy": st.get("spoofer_xy")}
+            "spoofer_xy": st.get("spoofer_xy"), "region": st.get("region", "ova")}
 
 
 class Controls:

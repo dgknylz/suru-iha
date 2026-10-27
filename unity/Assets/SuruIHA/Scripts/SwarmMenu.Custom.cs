@@ -44,6 +44,7 @@ namespace SuruIHA
         bool useCustom;             // son başlatma kendi senaryon ile mi
         int placeTool;              // 0 karıştırıcı, 1 GPS aldatıcı
         Texture2D customMap;
+        int customMapRegion = -1;
 
         void LoadCustom()
         {
@@ -159,13 +160,15 @@ namespace SuruIHA
         void BuildCustomMap()
         {
             var v = SwarmVisualizer.Main;
-            if (customMap != null || v == null) return;
+            if ((customMap != null && customMapRegion == region) || v == null) return;
+            customMapRegion = region;
+            var origin = SwarmRegions.Offset(SwarmRegions.Ids[region]);
             const int N = 320;
             float cell = CustomMapSize / N;
             var h = new float[N * N];
             for (int j = 0, k = 0; j < N; j++)
             for (int i = 0; i < N; i++, k++)
-                h[k] = v.GroundHeight(CustomMapMin.x + (i + 0.5f) * cell, CustomMapMin.y + (j + 0.5f) * cell);
+                h[k] = v.RegionGroundHeight(origin, CustomMapMin.x + (i + 0.5f) * cell, CustomMapMin.y + (j + 0.5f) * cell);
             var px = new Color32[N * N];
             var light = new Vector3(-0.6f, 1.1f, 0.6f).normalized;
             var low = new Color(0.13f, 0.13f, 0.12f);
@@ -179,7 +182,8 @@ namespace SuruIHA
                 c.a = 1f;
                 px[k] = c;
             }
-            customMap = new Texture2D(N, N, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            if (customMap == null)
+                customMap = new Texture2D(N, N, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
             customMap.SetPixels32(px);
             customMap.Apply(false);
         }
@@ -295,7 +299,7 @@ namespace SuruIHA
 
         void DrawCustomSettings(float x, float y, float w, float H)
         {
-            const float labelW = 210f, rowH = 50f;
+            const float labelW = 210f, rowH = 46f;
             float sx = x + labelW, segW = Mathf.Min(150f, (w - labelW - 18f) / 4f);
             int Row(string label, string[] items, int sel, Func<int, bool> enabled = null)
             {
@@ -314,6 +318,7 @@ namespace SuruIHA
             custom.failures = Row("Arızalanan İHA", new[] { "Yok", "1", "2" }, custom.failures);
             custom.liars = Row("Saldırgan İHA", new[] { "Yok", "Saf", "Sinsi" }, custom.liars);
             y += 8f;
+            region = Row("Bölge", new[] { "Ova", "Karlı dağlar" }, region);
             int view = Row("Görünüm", new[] { "Tek sürü", "Yan yana" }, compare ? 1 : 0);
             if (view == 1 && !compare && strategy == 2) strategy = 1;
             compare = view == 1;

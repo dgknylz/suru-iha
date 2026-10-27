@@ -17,7 +17,7 @@ namespace SuruIHA.EditorTools
     // Blender modellerinden prefab üretir, HDRP malzemelerini kurar, gerçekçi bir arazi
     // (yükseklik, doku, ağaç, kaya, toprak yol) oluşturur, gökyüzü/bulut/sis ayarlar
     // ve simülasyon nesnelerini yerleştirip sahneyi kaydeder.
-    public static class SuruIHASetup
+    public static partial class SuruIHASetup
     {
         const string Root = "Assets/SuruIHA";
         const string ScenePath = Root + "/Scenes/SuruSahnesi.unity";
@@ -525,7 +525,7 @@ namespace SuruIHA.EditorTools
                 AssetDatabase.CopyAsset("Assets/OutdoorsScene.unity", ScenePath);
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             foreach (var go in scene.GetRootGameObjects())
-                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti") Object.DestroyImmediate(go);
+                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti" or "KarliBolge") Object.DestroyImmediate(go);
 
             // Güneş: ikindi ışığı, uzun gölgeler
             var sun = GameObject.Find("Sun");
@@ -554,6 +554,8 @@ namespace SuruIHA.EditorTools
             EditorUtility.DisplayProgressBar("SürüİHA", "Köy ve elektrik hattı", 0.9f);
             BuildVillage(prefabs, terrain);
             BuildPowerLine(prefabs, terrain);
+            EditorUtility.DisplayProgressBar("SürüİHA", "Karlı bölge", 0.93f);
+            BuildSnowRegion(prefabs);
 
             // Simülasyon nesneleri
             var sys = new GameObject("SuruSistemi");
@@ -627,23 +629,24 @@ namespace SuruIHA.EditorTools
 
         // Python simülasyonu aynı araziyi kullansın diye yükseklik haritasını dışa aktarır.
         // Biçim: 601x601 float32 (küçük-endian), satır = kuzey (z), sütun = doğu (x), değer = dünya y'si (m).
-        static void ExportHeightmap(Terrain t)
+        // origin: bölgenin dünya konumu (karlı bölge 12 km doğuda); suffix: dosya adı eki ("_kar")
+        static void ExportHeightmap(Terrain t, Vector3 origin = default, string suffix = "")
         {
             const int n = 601;
-            const float origin = -1200f, step = 4f;
+            const float gridOrigin = -1200f, step = 4f;
             var buf = new byte[n * n * 4];
             for (int j = 0; j < n; j++)
             for (int i = 0; i < n; i++)
             {
-                float x = origin + i * step, z = origin + j * step;
-                float y = t.SampleHeight(new Vector3(x, 0, z)) + t.transform.position.y;
+                float x = gridOrigin + i * step, z = gridOrigin + j * step;
+                float y = t.SampleHeight(new Vector3(origin.x + x, 0, origin.z + z)) + t.transform.position.y;
                 System.Buffer.BlockCopy(BitConverter.GetBytes(y), 0, buf, (j * n + i) * 4, 4);
             }
             string dir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Arazi"));
             Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, "arazi_yukseklik.bin"), buf);
-            File.WriteAllText(Path.Combine(dir, "arazi_yukseklik.json"),
-                $"{{\"n\": {n}, \"origin\": {origin}, \"step\": {step}}}");
+            File.WriteAllBytes(Path.Combine(dir, $"arazi_yukseklik{suffix}.bin"), buf);
+            File.WriteAllText(Path.Combine(dir, $"arazi_yukseklik{suffix}.json"),
+                $"{{\"n\": {n}, \"origin\": {gridOrigin}, \"step\": {step}}}");
             Debug.Log("[SuruIHA] Yükseklik haritası: " + dir);
         }
 
@@ -746,7 +749,6 @@ namespace SuruIHA.EditorTools
 
             var clouds = Get<VolumetricClouds>(prof);
             SetParam(clouds, "enable", true);
-            SetParam(clouds, "cloudPreset", VolumetricClouds.CloudPresets.Sparse);
 
             var fog = Get<Fog>(prof);
             SetParam(fog, "enabled", true);
@@ -821,7 +823,19 @@ namespace SuruIHA.EditorTools
         static void SetParam(VolumeComponent comp, string field, object value)
         {
             var f = comp.GetType().GetField(field, BindingFlags.Public | BindingFlags.Instance);
-            if (f == null) { Debug.LogWarning($"[SuruIHA] {comp.GetType().Name}.{field} bulunamadı"); return; }
+            if (f == null)
+            {
+                // Bazı ayarlar özelliktir (ör. VolumetricClouds.cloudPreset): doğrudan atanır
+                var prop = comp.GetType().GetProperty(field, BindingFlags.Public | BindingFlags.Instance);
+                if (prop != null && prop.CanWrite)
+                {
+                    try { prop.SetValue(comp, value); }
+                    catch (Exception e) { Debug.LogWarning($"[SuruIHA] {field}: {e.Message}"); }
+                    return;
+                }
+                Debug.LogWarning($"[SuruIHA] {comp.GetType().Name}.{field} bulunamadı");
+                return;
+            }
             var param = f.GetValue(comp) as VolumeParameter;
             if (param == null) return;
             param.overrideState = true;
@@ -1292,8 +1306,9 @@ namespace SuruIHA.EditorTools
         // ------------------------------------------------------------------ dokular
         // Python'un ürettiği dokular (tools/gen_textures.py) varsa onları kullanır, yoksa kendisi üretir.
         // tint: fotoğraf dokusunun renk çarpanı (aynı doku farklı katmanlarda farklı görünebilsin)
+        // floor: dokunun en koyu tonunun yükseltildiği oran (0: değişmez; karda koyu izler tekrar deseni yapmasın)
         static TerrainLayer Layer(string name, string gen, Color a, Color b, float tile, float smooth, int seed,
-                                  string photo = null, float photoTile = 0f, Color? tint = null)
+                                  string photo = null, float photoTile = 0f, Color? tint = null, float floor = 0f)
         {
             var (pa, pn, pm) = Photo(photo);
             if (pa != null)
@@ -1310,7 +1325,7 @@ namespace SuruIHA.EditorTools
                 pl.maskMapTexture = pm;
                 pl.normalScale = 1f;
                 pl.tileSize = new Vector2(photoTile, photoTile);
-                pl.diffuseRemapMin = Vector4.zero;
+                pl.diffuseRemapMin = new Vector4((tint ?? Color.white).r * floor, (tint ?? Color.white).g * floor, (tint ?? Color.white).b * floor, 0f);
                 var tc = tint ?? Color.white;
                 pl.diffuseRemapMax = new Vector4(tc.r, tc.g, tc.b, 1f);
                 pl.smoothness = smooth;

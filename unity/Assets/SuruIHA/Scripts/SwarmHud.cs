@@ -135,7 +135,8 @@ namespace SuruIHA
             float h = 300f + rows.Count * rowH + 40f;
             Ui.Panel(Ui.R(x, y0, w, h), 16, 0.92f);
             float y = y0 + 18f;
-            Ui.Label(Ui.R(x + pad, y, iw, 18), "SENARYO", 11.5f, Ui.Ink3, true);
+            string rg = menu != null ? menu.RunningRegion : null;
+            Ui.Label(Ui.R(x + pad, y, iw, 18), rg != null ? "SENARYO · " + Ui.Upper(rg) : "SENARYO", 11.5f, Ui.Ink3, true);
             y += 18f;
             Ui.Label(Ui.R(x + pad, y, iw, 30), menu != null && menu.RunningTitle != null ? menu.RunningTitle : "Canlı simülasyon", 21, Ui.Ink, true);
             y += 32f;

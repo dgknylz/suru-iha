@@ -21,7 +21,10 @@ namespace SuruIHA
         public Page Current { get; private set; } = Page.Menu;
         public Tab CurrentTab { get; private set; } = Tab.Proje;
         public bool HidesHud => Current == Page.Menu || Current == Page.Quit;
-        public string RunningTitle => running?.Title;
+        public string RunningTitle => running?.Title;          // bilgi panelinde tek satır; bölge ayrıca yazılır
+        public string RunningRegion => running != null ? SwarmRegions.Titles[runRegion] : null;
+        // Çalışan senaryonun adı; karlı bölgede bölge adı da eklenir
+        string RunTitle => running == null ? null : running.Title + (runRegion == 1 ? " · Karlı dağlar" : "");
 
         const float BarH = 76f;     // üst sekme çubuğunun yüksekliği
         Page beforeQuit = Page.Menu;
@@ -29,6 +32,7 @@ namespace SuruIHA
         bool compare, fast;
         Scenario running;
         int runStrategy = 2;
+        int region, runRegion;      // harita: 0 Orta Anadolu ovası, 1 karlı dağlar (SwarmRegions)
         bool runCompare;
         bool bannerOpen, legendOpen, feedOpen = true, wasRunning, wasTpp;
         float bannerUntil;
@@ -103,6 +107,9 @@ namespace SuruIHA
             if (Current == Page.Sim && SwarmInput.Down(SwarmInput.K.I)) legendOpen = !legendOpen;
             SaveLayersIfChanged();
             NoteReport();
+            // Simülasyonun bildirdiği bölge (terminalden başlatılsa da) sahneye uygulanır
+            var fr = SwarmVisualizer.Main != null ? SwarmVisualizer.Main.Frame : null;
+            if (fr != null && !string.IsNullOrEmpty(fr.region) && fr.region != SwarmRegions.Current) SwarmRegions.Apply(fr.region);
 
             // İHA kamerasına geçince senaryo kutusu küçülür (İHA bilgi kartına yer açılır)
             bool tppNow = cam != null && cam.mode == SwarmCamera.Mode.Follow;
@@ -142,12 +149,14 @@ namespace SuruIHA
             var sc = useCustom ? BuildCustom() : SwarmScenarios.All[scenario];
             string pl = SwarmScenarios.Planners[planner];
             seed = seed % 30 + 1;
-            string common = $"--planner {pl} {sc.Args} --seed {seed} --speed {(fast ? 6 : 1)}";
+            string common = $"--planner {pl} {sc.Args} --seed {seed} --speed {(fast ? 6 : 1)} --region {SwarmRegions.Ids[region]}";
             bool ok = compare
                 ? launcher.Launch("run_compare.py", $"--left {(strategy == 0 ? "centralized" : "decentralized")} {common}")
                 : launcher.Launch("run_live.py", $"--strategy {SwarmScenarios.Strategies[strategy]} {common}");
             if (!ok) return;
             running = sc;
+            runRegion = region;
+            SwarmRegions.Apply(SwarmRegions.Ids[region]);   // kamera hemen o bölgeye geçsin
             runStrategy = compare ? 2 : strategy;
             runCompare = compare;
             var cmp = SwarmCompare.Instance;
@@ -385,6 +394,11 @@ namespace SuruIHA
             compare = view == 1;
             Ui.Label(Ui.R(ix, y + 1, iw, 46), compare ? "Ekran ikiye bölünür; aynı haritada aynı saldırı. Arıza ve yeni hedef iki tarafa aynı uygulanır."
                                                        : "Tek bir sürü uçar; mimariyi ve algoritmayı sen seçersin.", 14.5f, Ui.Ink2);
+            y += 54;
+            Ui.Label(Ui.R(lx, y + 11, 210, 24), "Bölge", 16, Ui.Ink2, true);
+            region = Segments(sx, y, segW * 1.5f + 3, SwarmRegions.Titles, region);
+            Ui.Label(Ui.R(ix, y + 1, iw, 46), region == 1 ? "Karla kaplı vadi, karlı çam ormanları ve sarp dağlar; kar yağar. Tepeler sinyali daha çok gölgeler."
+                                                         : "Tarlalar, bozkır tepeler ve kuzeyde dağ silsilesi (deneylerin yapıldığı harita).", 14.5f, Ui.Ink2);
             y += 54;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), "Hız", 16, Ui.Ink2, true);
             fast = Segments(sx, y, segW, new[] { "Normal", "Hızlı" }, fast ? 1 : 0) == 1;
