@@ -78,6 +78,9 @@ SHOTS = [
     (r"C:\SuruIHA\arayuz_testi\24_karli_bolge_sinematik.png", "65_karli_bolge.jpg"),
     (r"C:\SuruIHA\arayuz_testi\25_karli_bolge_iha_kamerasi.png", "66_karli_bolge_iha_kamerasi.jpg"),
     (r"C:\SuruIHA\arayuz_testi\26_karli_bolge_tepeden.png", "67_karli_bolge_tepeden.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\27_kizilirmak_sinematik.png", "68_kizilirmak.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\28_kizilirmak_iha_kamerasi.png", "69_kizilirmak_iha_kamerasi.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\29_kizilirmak_tepeden.png", "70_kizilirmak_tepeden.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

@@ -65,7 +65,8 @@ def add_custom_args(p):
     p.add_argument("--jammers", default="", help="karıştırıcıların yeri 'x,y;x,y' (m); verilirse --jammer-mode yok sayılır")
     p.add_argument("--jammer-band", default="genis", choices=["genis", "nokta"], help="özel karıştırıcıların türü")
     p.add_argument("--spoofer", default="", help="GPS aldatıcının yeri 'x,y' (m); --gps-spoof ile birlikte")
-    p.add_argument("--region", default="ova", choices=["ova", "kar"], help="harita: Orta Anadolu ovası ya da karlı dağlar")
+    p.add_argument("--region", default="ova", choices=["ova", "kar", "nehir"],
+                   help="harita: Orta Anadolu ovası, karlı dağlar ya da Kızılırmak vadisi (Sivas)")
 
 
 def custom_state(a):

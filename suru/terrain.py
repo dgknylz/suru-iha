@@ -14,7 +14,8 @@ import numpy as np
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
-REGIONS = {"ova": "arazi_yukseklik.bin", "kar": "arazi_yukseklik_kar.bin"}   # Unity'deki bölgeler
+# Unity'deki bölgeler: Orta Anadolu ovası, karlı dağlar, Kızılırmak vadisi (Sivas)
+REGIONS = {"ova": "arazi_yukseklik.bin", "kar": "arazi_yukseklik_kar.bin", "nehir": "arazi_yukseklik_nehir.bin"}
 
 
 class Terrain:

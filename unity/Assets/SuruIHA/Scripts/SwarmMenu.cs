@@ -24,7 +24,7 @@ namespace SuruIHA
         public string RunningTitle => running?.Title;          // bilgi panelinde tek satır; bölge ayrıca yazılır
         public string RunningRegion => running != null ? SwarmRegions.Titles[runRegion] : null;
         // Çalışan senaryonun adı; karlı bölgede bölge adı da eklenir
-        string RunTitle => running == null ? null : running.Title + (runRegion == 1 ? " · Karlı dağlar" : "");
+        string RunTitle => running == null ? null : running.Title + (runRegion > 0 ? " · " + SwarmRegions.Titles[runRegion] : "");
 
         const float BarH = 76f;     // üst sekme çubuğunun yüksekliği
         Page beforeQuit = Page.Menu;
@@ -32,7 +32,7 @@ namespace SuruIHA
         bool compare, fast;
         Scenario running;
         int runStrategy = 2;
-        int region, runRegion;      // harita: 0 Orta Anadolu ovası, 1 karlı dağlar (SwarmRegions)
+        int region, runRegion;      // harita: 0 Orta Anadolu ovası, 1 karlı dağlar, 2 Kızılırmak (SwarmRegions)
         bool runCompare;
         bool bannerOpen, legendOpen, feedOpen = true, wasRunning, wasTpp;
         float bannerUntil;
@@ -396,9 +396,10 @@ namespace SuruIHA
                                                        : "Tek bir sürü uçar; mimariyi ve algoritmayı sen seçersin.", 14.5f, Ui.Ink2);
             y += 54;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), "Bölge", 16, Ui.Ink2, true);
-            region = Segments(sx, y, segW * 1.5f + 3, SwarmRegions.Titles, region);
+            region = Segments(sx, y, segW, SwarmRegions.Titles, region);
             Ui.Label(Ui.R(ix, y + 1, iw, 46), region == 1 ? "Karla kaplı vadi, karlı çam ormanları ve sarp dağlar; kar yağar. Tepeler sinyali daha çok gölgeler."
-                                                         : "Tarlalar, bozkır tepeler ve kuzeyde dağ silsilesi (deneylerin yapıldığı harita).", 14.5f, Ui.Ink2);
+                                            : region == 2 ? "Sivas'ta Kızılırmak vadisi: kızıl yarlar, kavaklı kıyılar, köprü ve sulu tarlalar; görev alanı nehrin iki yakasında."
+                                            : "Tarlalar, bozkır tepeler ve kuzeyde dağ silsilesi (deneylerin yapıldığı harita).", 14.5f, Ui.Ink2);
             y += 54;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), "Hız", 16, Ui.Ink2, true);
             fast = Segments(sx, y, segW, new[] { "Normal", "Hızlı" }, fast ? 1 : 0) == 1;

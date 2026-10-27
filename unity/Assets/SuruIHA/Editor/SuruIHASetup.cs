@@ -525,7 +525,8 @@ namespace SuruIHA.EditorTools
                 AssetDatabase.CopyAsset("Assets/OutdoorsScene.unity", ScenePath);
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             foreach (var go in scene.GetRootGameObjects())
-                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti" or "KarliBolge") Object.DestroyImmediate(go);
+                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti" or "KarliBolge" or "Kizilirmak")
+                    Object.DestroyImmediate(go);
 
             // Güneş: ikindi ışığı, uzun gölgeler
             var sun = GameObject.Find("Sun");
@@ -556,6 +557,8 @@ namespace SuruIHA.EditorTools
             BuildPowerLine(prefabs, terrain);
             EditorUtility.DisplayProgressBar("SürüİHA", "Karlı bölge", 0.93f);
             BuildSnowRegion(prefabs);
+            EditorUtility.DisplayProgressBar("SürüİHA", "Kızılırmak", 0.96f);
+            BuildRiverRegion(prefabs);
 
             // Simülasyon nesneleri
             var sys = new GameObject("SuruSistemi");

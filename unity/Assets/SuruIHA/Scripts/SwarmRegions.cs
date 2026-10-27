@@ -7,9 +7,10 @@ namespace SuruIHA
     // Karlı bölgede güneş alçalır ve kar yağar; sis ve renkler bölgenin yerel hacim ayarından (Volume) gelir.
     public static class SwarmRegions
     {
-        public static readonly string[] Ids = { "ova", "kar" };
-        public static readonly string[] Titles = { "Orta Anadolu ovası", "Karlı dağlar" };
-        public static readonly Vector3 SnowOffset = new Vector3(12000f, 0f, 0f);   // ana araziden 12 km doğu
+        public static readonly string[] Ids = { "ova", "kar", "nehir" };
+        public static readonly string[] Titles = { "Orta Anadolu ovası", "Karlı dağlar", "Kızılırmak (Sivas)" };
+        public static readonly Vector3 SnowOffset = new Vector3(12000f, 0f, 0f);    // ana araziden 12 km doğu
+        public static readonly Vector3 RiverOffset = new Vector3(-12000f, 0f, 0f);  // ana araziden 12 km batı
 
         public static string Current { get; private set; } = "ova";
 
@@ -20,7 +21,7 @@ namespace SuruIHA
         }
 
         public static string Title(string id) => Titles[Index(id)];
-        public static Vector3 Offset(string id) => id == "kar" ? SnowOffset : Vector3.zero;
+        public static Vector3 Offset(string id) => id == "kar" ? SnowOffset : id == "nehir" ? RiverOffset : Vector3.zero;
 
         static Light sun;
         static Quaternion sunRot;

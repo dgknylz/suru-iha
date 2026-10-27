@@ -318,7 +318,7 @@ namespace SuruIHA
             custom.failures = Row("Arızalanan İHA", new[] { "Yok", "1", "2" }, custom.failures);
             custom.liars = Row("Saldırgan İHA", new[] { "Yok", "Saf", "Sinsi" }, custom.liars);
             y += 8f;
-            region = Row("Bölge", new[] { "Ova", "Karlı dağlar" }, region);
+            region = Row("Bölge", new[] { "Ova", "Karlı dağlar", "Kızılırmak" }, region);
             int view = Row("Görünüm", new[] { "Tek sürü", "Yan yana" }, compare ? 1 : 0);
             if (view == 1 && !compare && strategy == 2) strategy = 1;
             compare = view == 1;

@@ -287,6 +287,23 @@ def test_karli_bolge():
         World(make_config("resilient", 20.0, 0.0, 1, region="ay"))
 
 
+def test_kizilirmak():
+    """Kızılırmak bölgesi: nehir yatağı ova tabanından alçakta, kuzeyde yarlar; sürü nehrin iki yakasında görevi bitirir."""
+    from suru.terrain import DATA
+    if not os.path.exists(os.path.join(DATA, "arazi_yukseklik_nehir.bin")):
+        pytest.skip("Kızılırmak yükseklik haritası yok (Unity'de sahne kurulmadı)")
+    t = World(make_config("resilient", 20.0, 0.0, 1, region="nehir")).terrain
+    xs = np.linspace(-800, 800, 9)
+    river = 470 + 95 * np.sin(xs * 0.0045) + 38 * np.sin(xs * 0.011 + 1.3) + 14 * np.sin(xs * 0.027 + 0.4)
+    bed, bank = t.height(xs, river), t.height(xs, river - 120)
+    assert (bank - bed).mean() > 4.0, "nehir yatağı kıyıdan alçakta olmalı"
+    assert t.height(0.0, 900.0) - t.height(0.0, 200.0) > 20.0, "kuzey yakada yar ve plato olmalı"
+    w = fly(make_config("resilient", 20.0, 0.0, 4, region="nehir", n_popup=4), until="flight_over")
+    s = w.summary()
+    assert s["completion"] >= 0.9 and s["min_agl"] > 5.0
+    assert w.frame()["region"] == "nehir"
+
+
 def test_ucus_raporu():
     """Uçuş raporu iniş bitince gelir; İHA'ların yaptığı hedefler toplamı tamamlanan hedef sayısına eşittir."""
     w = World(make_config("resilient", 20.0, 0.0, 3, n_popup=4, failures=1))

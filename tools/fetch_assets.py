@@ -27,7 +27,9 @@ UA = {"User-Agent": "SuruIHA-TUBITAK-2204/1.0"}
 TEXTURES = ["aerial_grass_rock", "withered_grass", "dry_ground_01", "farm_soil", "dirt_aerial_02", "aerial_rocks_02",
             "gravelly_sand", "bark_brown_02", "pine_bark",
             # Karlı bölge
-            "snow_field_aerial", "snow_02", "snow_04", "snow_05"]
+            "snow_field_aerial", "snow_02", "snow_04", "snow_05",
+            # Kızılırmak (Sivas)
+            "terrain_red_01", "red_laterite_soil_stones", "river_small_rocks"]
 MODELS = ["boulder_01"]
 
 

@@ -717,6 +717,28 @@ namespace SuruIHA
             yield return Wait(4f);
             yield return Shot("26_karli_bolge_tepeden");
             cam.topHeight = th2;
+
+            // Kızılırmak (Sivas): aynı senaryo nehir vadisinde
+            region = 2;
+            Launch();
+            yield return Until(() => SwarmVisualizer.Main.Frame?.region == "nehir" && SwarmVisualizer.Main.Frame.t > 70f, 60f);
+            var nf = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"Kızılırmak: bölge={nf?.region} kök={SwarmVisualizer.Main.transform.position} İHA {nf?.drones?.Length} " +
+                           $"görev {nf?.m?.done}/{nf?.m?.total}");
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(4f);
+            yield return Shot("27_kizilirmak_sinematik");
+            yield return Fps("Kızılırmak");
+            cam.SetFollow(4);
+            cam.mode = SwarmCamera.Mode.Follow;
+            yield return Wait(3f);
+            yield return Shot("28_kizilirmak_iha_kamerasi");
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1150f;
+            yield return Wait(4f);
+            yield return Shot("29_kizilirmak_tepeden");
+            cam.topHeight = th2;
             region = 0;
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());
