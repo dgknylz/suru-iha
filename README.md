@@ -577,7 +577,8 @@ Elektronik harp senaryoları (her uçuşta 6 yeni hedef, n=30; dirençli diğer 
 
 ## 4. 3D modeller ve sahne
 
-Tüm modeller ve dokular kodla üretilir (hazır model veya dış kaynaklı doku yok):
+Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly Haven'dan alınmış fotoğraf taramalarıdır
+(CC0: ücretsiz, atıf gerekmez; `tools/fetch_assets.py` indirir). İndirilmemişse kodla üretilen dokular kullanılır:
 
 | Dosya | İçerik |
 |---|---|
@@ -587,7 +588,22 @@ Tüm modeller ve dokular kodla üretilir (hazır model veya dış kaynaklı doku
 | `blender/village.py` | Orta Anadolu köyü: kiremit kırma çatılı sıvalı evler (güneş enerjili su ısıtıcılı), revaklı kubbeli minareli cami, ahşap elektrik direği |
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
 | `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı |
+| `tools/fetch_assets.py` | Poly Haven'dan (CC0) 2K fotoğraf dokuları: havadan çimen, kuru ot (bozkır), kuru toprak (anız), sürülmüş tarla, havadan kaya, çakıl, meşe ve çam kabuğu, taranmış kaya. MD5 ile doğrular, HDRP maske haritasını üretir; `C:\SuruIHA\assets\polyhaven` altına iner, lisans ve yazarlar `manifest.json`'da |
 | `unity/Assets/SuruIHA/Editor/SuruIHASetup.cs` | **SürüİHA → Sahneyi Kur** menüsü: malzemeler, prefab'lar, 2,4 km ana arazi (tarla parselleri, bozkır tepeler, çam ormanı, tarla sınırında meşeler, çakıl yollar, 1,6 milyon ot öbeği), 24 evli köy ve cami, ana yol boyunca 42 direkli elektrik hattı, ufka uzanan 8 parça dağ silsilesi, gökyüzü, hacimsel bulutlar, sis |
+
+### Görsel kalite
+
+- **Fotoğraf tabanlı arazi:** havadan çekilmiş çimen (15 m döşeme), kuru ot bozkır (7 m, zeytinimsi gri ton), altın sarısı
+  anız, sürülmüş tarla, havadan kaya (40 m), çakıl yol ve tepelerde iri toprak lekeleri (aşınmış yamaçlar). Aynı doku
+  farklı katmanlarda farklı renk çarpanıyla kullanılır. Ağaç kabukları ve kayalar da fotoğraf taramasıdır (kayalarda UV
+  yerine dünya uzayında üç yönlü eşleme). Her dokunun renk, normal ve HDRP maske haritası (ortam kapatma, pürüzsüzlük) var.
+- **Işık:** güneş gölgesi 4096 piksel ve 32 bit derinlik, 1600 m gölge mesafesi, temas gölgeleri, mikro gölgeler; ekran
+  uzayı küresel aydınlatma (SSGI: gölgeye yansıyan ışık), ekran uzayı yansımalar (SSR), ortam kapatma (SSAO).
+- **Atmosfer:** fiziksel gökyüzü, gölge düşüren hacimsel bulutlar, güneş huzmeli hacimsel sis, uzak tepelerde hafif pus.
+- **Kamera:** yüksek kaliteli zamansal kenar yumuşatma (TAA), ACES ton eşleme, hafif hareket bulanıklığı ve film greni;
+  uzaktaki ağaç ve evler daha geç sadeleşir (LOD sapması 2), arazi siluetleri keskin (piksel hatası 1,5).
+- **Kare hızı:** RTX 4060 dizüstü ekran kartında 1600×900 pencerede sinematik görünümde 44, taktik görünümde 45 fps
+  (arayüz testi ölçer, `C:\SuruIHA\arayuz_testi\rapor.txt`). Kalite **K** tuşuyla düşürülebilir.
 
 ### Modelleri yeniden üretmek
 
@@ -596,6 +612,10 @@ Tüm modeller ve dokular kodla üretilir (hazır model veya dış kaynaklı doku
 ```
 ```bash
 .venv\Scripts\python.exe tools/gen_textures.py C:\SuruIHA\models\textures
+```
+Fotoğraf dokuları (bir kez, ~100 MB; internet gerekir; indirilmezse üretilen dokular kullanılır):
+```bash
+.venv\Scripts\python.exe tools/fetch_assets.py
 ```
 ```bash
 powershell -File tools/sync_unity.ps1

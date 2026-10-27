@@ -511,6 +511,21 @@ namespace SuruIHA
                 Destroy(tex);
                 log.AppendLine($"çekim {name}: sayfa={Current} durum={launcher.Status}");
             }
+            // Kare hızı: 4 saniyede çizilen kare sayısı (dikey eşitleme açık: en fazla ekran tazeleme hızı)
+            IEnumerator Fps(string view)
+            {
+                yield return Wait(0.5f);          // ekran görüntüsünün kaydı ölçüme karışmasın
+                int f0 = Time.frameCount;
+                float t0 = Time.realtimeSinceStartup, worst = 0f;
+                while (Time.realtimeSinceStartup - t0 < 4f)
+                {
+                    worst = Mathf.Max(worst, Time.unscaledDeltaTime);
+                    yield return null;
+                }
+                float fps = (Time.frameCount - f0) / (Time.realtimeSinceStartup - t0);
+                log.AppendLine($"kare hızı ({view}): {fps:0} fps, en yavaş kare {worst * 1000f:0} ms, {Screen.width}x{Screen.height}");
+            }
+
             IEnumerator Until(Func<bool> cond, float max)
             {
                 float t = Time.realtimeSinceStartup + max;
@@ -563,6 +578,7 @@ namespace SuruIHA
                                       : "ısı haritası: GELMEDİ");
             yield return Wait(14f);
             yield return Shot("13_gorevde");
+            yield return Fps("sinematik");
             SetLinkMode(SwarmVisualizer.Main, 1);  // sürü karıştırma bölgesindeyken yalnızca karıştırılan bağlantılar
             cam.mode = SwarmCamera.Mode.Top;
             yield return Wait(2f);
@@ -575,6 +591,7 @@ namespace SuruIHA
             cam.mode = SwarmCamera.Mode.Top;       // taktik görünümde tıklanabilir İHA numaraları
             yield return Wait(2.5f);
             yield return Shot("13c_taktik_numaralar");
+            yield return Fps("taktik");
             layersOpen = true;
             yield return Wait(1f);
             yield return Shot("13d_katmanlar");

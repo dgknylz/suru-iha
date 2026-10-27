@@ -211,8 +211,9 @@ namespace SuruIHA
                 ("Python 3.14", "Simülasyon, deneyler ve yapay zekâ. NumPy, SciPy, pandas, Matplotlib, pytest."),
                 ("Unity 6 · HDRP", "3D görselleştirme: gerçekçi ışık, gölge, sis ve bulutlar. Bütün sahne C# ile kodla kuruluyor."),
                 ("Blender 5.2", "İHA, karıştırıcı aracı, yer istasyonu, köy ve bitki modelleri Python betikleriyle üretildi."),
+                ("Poly Haven (CC0)", "Arazi, kaya ve ağaç kabuğu için fotoğraftan taranmış dokular; ücretsiz, serbest lisanslı."),
                 ("UDP + JSON", "Python ile Unity arasında saniyede 30 kare; Unity'den komutlar geri gider."),
-                ("Git", "Sürüm takibi: her aşama etiketli (v1 görsel → v6 arayüz)."),
+                ("Git", "Sürüm takibi: her aşama etiketli (v1 görsel → v13 görsel kalite)."),
                 ("PowerShell", "Derleme, uçtan uca test, arayüz testi ve video hattının otomasyonu."),
             };
             foreach (var (name, what) in tools)

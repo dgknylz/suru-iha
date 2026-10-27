@@ -75,10 +75,30 @@ namespace SuruIHA.EditorTools
                 var so = new SerializedObject(asset);
                 foreach (var path in new[] { "m_RenderPipelineSettings.supportVolumetricClouds",
                                              "m_RenderPipelineSettings.supportVolumetrics",
-                                             "m_RenderPipelineSettings.supportSSAO" })
+                                             "m_RenderPipelineSettings.supportSSAO",
+                                             "m_RenderPipelineSettings.supportSSR",      // parlak yüzeylerde yansıma
+                                             "m_RenderPipelineSettings.supportSSGI" })   // gölgede yansıyan ışık
                 {
                     var p = so.FindProperty(path);
                     if (p != null) p.boolValue = true;
+                }
+                // Güneş gölgesi: 32 bit derinlik, en yüksek kademe 4096 piksel
+                var bits = so.FindProperty("m_RenderPipelineSettings.hdShadowInitParams.directionalShadowsDepthBits");
+                if (bits != null) bits.intValue = 32;
+                var maxRes = so.FindProperty("m_RenderPipelineSettings.hdShadowInitParams.maxDirectionalShadowMapResolution");
+                if (maxRes != null) maxRes.intValue = 4096;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            // Uzaktaki ağaç ve evler daha geç sadeleşsin (LOD sapması 2)
+            var qs = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/QualitySettings.asset").FirstOrDefault();
+            if (qs != null)
+            {
+                var so = new SerializedObject(qs);
+                var levels = so.FindProperty("m_QualitySettings");
+                for (int i = 0; levels != null && i < levels.arraySize; i++)
+                {
+                    var lod = levels.GetArrayElementAtIndex(i).FindPropertyRelative("lodBias");
+                    if (lod != null && i == 0) lod.floatValue = 2f;
                 }
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
@@ -127,8 +147,8 @@ namespace SuruIHA.EditorTools
             ["MAT_Bark"] = new MatDef(0.16f, 0.11f, 0.075f, 0.95f),
             ["MAT_BarkPine"] = new MatDef(1f, 1f, 1f, 0.92f),
             ["MAT_BarkOak"] = new MatDef(1f, 1f, 1f, 0.92f),
-            ["MAT_Needles"] = new MatDef(1.25f, 1.3f, 1.2f, 0.75f),
-            ["MAT_Leaves"] = new MatDef(1.25f, 1.25f, 1.2f, 0.7f),
+            ["MAT_Needles"] = new MatDef(0.86f, 0.9f, 0.82f, 0.75f),     // doğal koyu çam yeşili (parlak çizgi film yeşili değil)
+            ["MAT_Leaves"] = new MatDef(0.9f, 0.9f, 0.8f, 0.7f),         // kurak bölge meşesi: zeytinimsi
             ["MAT_Rock"] = new MatDef(1f, 1f, 1f, 0.88f),
             ["MAT_Flag"] = new MatDef(1f, 1f, 1f, 0.55f),
             ["MAT_GrassGreen"] = new MatDef(1.1f, 1.1f, 1.05f, 0.8f),
@@ -183,6 +203,68 @@ namespace SuruIHA.EditorTools
                 ["MAT_Sandbag"] = ("Srf_Siva", 1.2f, 1f),
                 ["MAT_Frame"] = ("Srf_Siva", 0.8f, 0.4f),
             };
+
+        // Fotoğraf tabanlı dokular (Poly Haven, CC0; tools/fetch_assets.py indirir, sync_unity.ps1 kopyalar).
+        // Varsa üretilen dokuların yerine geçer. triplanar > 0: UV yerine dünya uzayında üç yönlü eşleme (1/m).
+        const string PhotoTex = Root + "/Textures/Photo";
+        static readonly Dictionary<string, (string id, float triplanar)> PhotoMap =
+            new Dictionary<string, (string, float)>
+            {
+                ["MAT_BarkPine"] = ("pine_bark", 0f),
+                ["MAT_BarkOak"] = ("bark_brown_02", 0f),
+                ["MAT_Rock"] = ("boulder_01", 0.45f),
+                ["MAT_Stone"] = ("boulder_01", 1.2f),
+            };
+
+        static Texture2D PhotoImport(string path, bool normal, bool srgb)
+        {
+            var ti = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (ti == null) return null;
+            bool dirty = false;
+            if (normal && ti.textureType != TextureImporterType.NormalMap) { ti.textureType = TextureImporterType.NormalMap; dirty = true; }
+            if (!normal && ti.sRGBTexture != srgb) { ti.sRGBTexture = srgb; dirty = true; }
+            if (ti.maxTextureSize != 2048) { ti.maxTextureSize = 2048; dirty = true; }
+            if (ti.anisoLevel != 16) { ti.anisoLevel = 16; dirty = true; }
+            if (ti.textureCompression != TextureImporterCompression.CompressedHQ) { ti.textureCompression = TextureImporterCompression.CompressedHQ; dirty = true; }
+            if (dirty) ti.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        // (renk, normal, HDRP maske: R metal, G ortam kapatma, B yükseklik, A pürüzsüzlük); yoksa renk null
+        static (Texture2D albedo, Texture2D normal, Texture2D mask) Photo(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return (null, null, null);
+            string b = $"{PhotoTex}/{id}";
+            var albedo = PhotoImport($"{b}_diff_2k.jpg", false, true);
+            if (albedo == null) return (null, null, null);
+            return (albedo, PhotoImport($"{b}_nor_gl_2k.jpg", true, false), PhotoImport($"{b}_mask_2k.png", false, false));
+        }
+
+        static bool ApplyPhoto(Material m, string id, float triplanar)
+        {
+            var (albedo, normal, mask) = Photo(id);
+            if (albedo == null) return false;
+            m.SetColor("_BaseColor", Color.white);
+            m.SetTexture("_BaseColorMap", albedo);
+            if (normal != null) { m.SetTexture("_NormalMap", normal); m.SetFloat("_NormalScale", 1f); }
+            if (mask != null)
+            {
+                m.SetTexture("_MaskMap", mask);
+                m.SetFloat("_SmoothnessRemapMin", 0f);
+                m.SetFloat("_SmoothnessRemapMax", 1f);
+                m.SetFloat("_AORemapMin", 0f);
+                m.SetFloat("_AORemapMax", 1f);
+            }
+            m.SetFloat("_Metallic", 0f);
+            if (triplanar > 0f)
+            {
+                m.SetFloat("_UVBase", 5f);                   // Triplanar
+                m.SetFloat("_ObjectSpaceUVMapping", 0f);     // dünya uzayı: kayanın boyu ne olursa olsun aynı ölçek
+                m.SetFloat("_TexWorldScale", triplanar);
+                m.SetFloat("_InvTilingScale", 1f / triplanar);
+            }
+            return true;
+        }
 
         // Yapraklar arkadan gelen güneşi geçirsin (HDRP "Foliage" yayılım profili varsa)
         static void TryFoliageTranslucency(Material m)
@@ -250,7 +332,11 @@ namespace SuruIHA.EditorTools
                     m.SetFloat("_EmissiveExposureWeight", 0f);
                     m.SetFloat("_UseEmissiveIntensity", 0f);
                 }
-                if (TexMap.TryGetValue(kv.Key, out var tx))
+                if (PhotoMap.TryGetValue(kv.Key, out var ph) && ApplyPhoto(m, ph.id, ph.triplanar))
+                {
+                    m.enableInstancing = true;
+                }
+                else if (TexMap.TryGetValue(kv.Key, out var tx))
                 {
                     var albedo = LoadTex(tx.albedo, false, tx.foliage);
                     var normal = LoadTex(tx.normal, true, false);
@@ -452,7 +538,7 @@ namespace SuruIHA.EditorTools
                 var hdl = sun.GetComponent<HDAdditionalLightData>();
                 if (hdl != null)
                 {
-                    foreach (var (name, arg) in new (string, object)[] { ("SetShadowResolutionOverride", false), ("SetShadowResolutionLevel", 2) })
+                    foreach (var (name, arg) in new (string, object)[] { ("SetShadowResolutionOverride", false), ("SetShadowResolutionLevel", 3) })
                     {
                         var mi = typeof(HDAdditionalLightData).GetMethod(name, new[] { arg.GetType() });
                         mi?.Invoke(hdl, new[] { arg });
@@ -494,7 +580,11 @@ namespace SuruIHA.EditorTools
                 hud.visualizer = vis;
                 hud.cam = sc;
                 var hd = cam.GetComponent<HDAdditionalCameraData>();
-                if (hd != null) hd.antialiasing = HDAdditionalCameraData.AntialiasingMode.TemporalAntialiasing;
+                if (hd != null)
+                {
+                    hd.antialiasing = HDAdditionalCameraData.AntialiasingMode.TemporalAntialiasing;
+                    hd.TAAQuality = HDAdditionalCameraData.TAAQualityLevel.High;
+                }
             }
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -660,7 +750,7 @@ namespace SuruIHA.EditorTools
 
             var fog = Get<Fog>(prof);
             SetParam(fog, "enabled", true);
-            SetParam(fog, "meanFreePath", 3500f);
+            SetParam(fog, "meanFreePath", 2400f);             // uzak tepeler hafif puslu (hava perspektifi)
             SetParam(fog, "baseHeight", 0f);
             SetParam(fog, "maximumHeight", 600f);
 
@@ -701,7 +791,13 @@ namespace SuruIHA.EditorTools
             SetParam(ao, "intensity", 1.2f);
 
             var shadows = Get<HDShadowSettings>(prof);
-            SetParam(shadows, "maxShadowDistance", 900f);
+            SetParam(shadows, "maxShadowDistance", 1600f);
+
+            // Gerçekçilik: parlak yüzeylerde ekran uzayı yansıma, gölgelerde yansıyan ışık (SSGI)
+            var ssr = Get<ScreenSpaceReflection>(prof);
+            SetParam(ssr, "enabled", true);
+            var ssgi = Get<GlobalIllumination>(prof);
+            SetParam(ssgi, "enable", true);
 
             var tone = Get<Tonemapping>(prof);
             SetParam(tone, "mode", TonemappingMode.ACES);
@@ -755,15 +851,20 @@ namespace SuruIHA.EditorTools
             }
             td.SetHeights(0, 0, heights);
 
-            // Doku katmanları: 0 çimen, 1 bozkır, 2 sürülmüş tarla, 3 anız, 4 kaya, 5 çakıl
+            // Doku katmanları: 0 çimen, 1 bozkır, 2 sürülmüş tarla, 3 anız, 4 kaya, 5 çakıl, 6 toprak (tepelerde iri lekeler)
             var layers = new[]
             {
-                Layer("Cimen", "Ter_Cimen", new Color(0.29f, 0.36f, 0.16f), new Color(0.2f, 0.27f, 0.1f), 6f, 0.05f, 1),
-                Layer("Bozkir", "Ter_Bozkir", new Color(0.55f, 0.5f, 0.31f), new Color(0.4f, 0.36f, 0.21f), 7f, 0.04f, 2),
-                Layer("Tarla", "Ter_Tarla", new Color(0.42f, 0.34f, 0.24f), new Color(0.3f, 0.24f, 0.17f), 9f, 0.06f, 3),
-                Layer("Aniz", "Ter_Aniz", new Color(0.7f, 0.6f, 0.4f), new Color(0.55f, 0.46f, 0.3f), 7f, 0.05f, 5),
-                Layer("Kaya", "Ter_Kaya", new Color(0.47f, 0.46f, 0.44f), new Color(0.3f, 0.3f, 0.29f), 22f, 0.12f, 4),
-                Layer("Cakil", "Ter_Cakil", new Color(0.55f, 0.52f, 0.46f), new Color(0.4f, 0.38f, 0.33f), 5f, 0.08f, 6),
+                // Fotoğraf dokusu varsa o kullanılır (döşeme boyu gerçek boyuna yakın; havadan bakınca tekrar seçilmesin)
+                Layer("Cimen", "Ter_Cimen", new Color(0.29f, 0.36f, 0.16f), new Color(0.2f, 0.27f, 0.1f), 6f, 0.05f, 1, "aerial_grass_rock", 15f),
+                Layer("Bozkir", "Ter_Bozkir", new Color(0.55f, 0.5f, 0.31f), new Color(0.4f, 0.36f, 0.21f), 7f, 0.04f, 2, "withered_grass", 7f,
+                      new Color(0.74f, 0.71f, 0.6f)),     // kuru ot: zeytinimsi gri, kum gibi açık durmasın
+                Layer("Tarla", "Ter_Tarla", new Color(0.42f, 0.34f, 0.24f), new Color(0.3f, 0.24f, 0.17f), 9f, 0.06f, 3, "farm_soil", 5f),
+                Layer("Aniz", "Ter_Aniz", new Color(0.7f, 0.6f, 0.4f), new Color(0.55f, 0.46f, 0.3f), 7f, 0.05f, 5, "withered_grass", 4f,
+                      new Color(1f, 0.88f, 0.62f)),       // biçilmiş ekin: altın sarısı saman
+                Layer("Kaya", "Ter_Kaya", new Color(0.47f, 0.46f, 0.44f), new Color(0.3f, 0.3f, 0.29f), 22f, 0.12f, 4, "aerial_rocks_02", 40f),
+                Layer("Cakil", "Ter_Cakil", new Color(0.55f, 0.52f, 0.46f), new Color(0.4f, 0.38f, 0.33f), 5f, 0.08f, 6, "gravelly_sand", 4f),
+                Layer("Toprak", "Ter_Tarla", new Color(0.45f, 0.36f, 0.25f), new Color(0.32f, 0.25f, 0.17f), 9f, 0.05f, 7, "dirt_aerial_02", 25f,
+                      new Color(0.9f, 0.88f, 0.84f)),
             };
             td.terrainLayers = layers;
             int amRes = 2048;
@@ -787,6 +888,8 @@ namespace SuruIHA.EditorTools
                 float forest = Fbm(x * 0.0035f + 100f, z * 0.0035f - 50f, 4);
                 w[1] = 1f;
                 w[0] = Mathf.Clamp01((moist - 0.52f) * 4f) + Mathf.Clamp01((forest - 0.55f) * 4f) * 0.8f;
+                // Tepelerde iri toprak lekeleri (aşınmış yamaçlar): uzaktan tek renk kum tepesi gibi görünmesin
+                if (w.Length > 6) w[6] = Mathf.Clamp01((Fbm(x * 0.006f - 33f, z * 0.006f + 21f, 4) - 0.52f) * 3f) * 0.9f;
 
                 // Ova: tarla parselleri (ova kenarına doğru bozkıra karışır)
                 float plain = (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(650f, 980f, r))) * (1f - VillageMask(x, z));
@@ -834,10 +937,10 @@ namespace SuruIHA.EditorTools
             var t = go.GetComponent<Terrain>();
             t.treeDistance = 2500f;
             t.treeBillboardDistance = 2500f;
-            t.heightmapPixelError = 3f;
+            t.heightmapPixelError = 1.5f;     // tepe siluetleri keskin
             t.basemapDistance = 20000f;   // basemap (uzak, önceden pişmiş doku) HDRP'de siyah çıkıyor; hep tam doku
             t.drawInstanced = true;
-            t.detailObjectDistance = 140f;
+            t.detailObjectDistance = 220f;
             t.detailObjectDensity = 1f;
             GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.BatchingStatic | StaticEditorFlags.ContributeGI);
             EditorUtility.DisplayProgressBar("SürüİHA", "Uzak dağlar", 0.8f);
@@ -1188,8 +1291,33 @@ namespace SuruIHA.EditorTools
 
         // ------------------------------------------------------------------ dokular
         // Python'un ürettiği dokular (tools/gen_textures.py) varsa onları kullanır, yoksa kendisi üretir.
-        static TerrainLayer Layer(string name, string gen, Color a, Color b, float tile, float smooth, int seed)
+        // tint: fotoğraf dokusunun renk çarpanı (aynı doku farklı katmanlarda farklı görünebilsin)
+        static TerrainLayer Layer(string name, string gen, Color a, Color b, float tile, float smooth, int seed,
+                                  string photo = null, float photoTile = 0f, Color? tint = null)
         {
+            var (pa, pn, pm) = Photo(photo);
+            if (pa != null)
+            {
+                string pp = $"{Root}/Terrain/{name}.terrainlayer";
+                var pl = AssetDatabase.LoadAssetAtPath<TerrainLayer>(pp);
+                if (pl == null)
+                {
+                    pl = new TerrainLayer();
+                    AssetDatabase.CreateAsset(pl, pp);
+                }
+                pl.diffuseTexture = pa;
+                pl.normalMapTexture = pn;
+                pl.maskMapTexture = pm;
+                pl.normalScale = 1f;
+                pl.tileSize = new Vector2(photoTile, photoTile);
+                pl.diffuseRemapMin = Vector4.zero;
+                var tc = tint ?? Color.white;
+                pl.diffuseRemapMax = new Vector4(tc.r, tc.g, tc.b, 1f);
+                pl.smoothness = smooth;
+                pl.metallic = 0f;
+                EditorUtility.SetDirty(pl);
+                return pl;
+            }
             string albedo = $"{GenTex}/{gen}_Renk.png", normal = $"{GenTex}/{gen}_Normal.png";
             if (AssetDatabase.LoadAssetAtPath<Texture2D>(albedo) == null)
             {
