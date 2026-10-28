@@ -46,7 +46,7 @@ namespace SuruIHA
         {
             var w = new Vector3(regionOrigin.x + x, 0f, regionOrigin.z + z);
             foreach (var t in Terrain.activeTerrains)
-                if (Covers(t, w)) return t.SampleHeight(w) + t.transform.position.y - transform.position.y;
+                if (Covers(t, w)) return Mathf.Max(t.SampleHeight(w) + t.transform.position.y, SwarmRegions.WaterFloor) - transform.position.y;
             return 0f;
         }
 
@@ -149,7 +149,7 @@ namespace SuruIHA
                 if (Covers(ts[i], w)) t = ts[i];
             if (t == null) return LocalGround(x, z);
             lastTerrain = t;
-            return t.SampleHeight(w) + t.transform.position.y - transform.position.y;
+            return Mathf.Max(t.SampleHeight(w) + t.transform.position.y, SwarmRegions.WaterFloor) - transform.position.y;
         }
 
         static bool Covers(Terrain t, Vector3 w)
@@ -194,6 +194,8 @@ namespace SuruIHA
             var cutLine = new Color32(255, 232, 222, 205);
             var detectLine = new Color32(255, 214, 204, 115);
             float fade = 6f * FieldUp;    // kenarda 6 nokta aralığı boyunca söner (harita dikdörtgen gibi bitmesin)
+            // Bembeyaz karın üstünde aynı saydamlık bütün vadiyi pembeye boyar: karlı bölgede örtü daha ince
+            float regionK = SwarmRegions.Current == "kar" ? 0.5f : 1f;
             for (int b = 0, k = 0; b < H; b++)
             for (int a = 0; a < W; a++, k++)
             {
@@ -202,7 +204,7 @@ namespace SuruIHA
                           : Crosses(k, a, b, W, H, detect, true) ? detectLine
                           : HeatColor(fieldVals[k], detect, cut);
                 float e = Mathf.Clamp01(Mathf.Min(Mathf.Min(a, W - 1 - a), Mathf.Min(b, H - 1 - b)) / fade);
-                c.a = (byte)(c.a * e * e * (3f - 2f * e));
+                c.a = (byte)(c.a * e * e * (3f - 2f * e) * regionK);
                 fieldPx[k] = c;
                 // Parlama saydamlıkla çarpılır (HDRP parlamayı saydamlıktan bağımsız ekler; yoksa soluk yerler de parlar)
                 fieldEmitPx[k] = new Color32((byte)(c.r * c.a / 255), (byte)(c.g * c.a / 255), (byte)(c.b * c.a / 255), 255);

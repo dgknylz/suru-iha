@@ -77,7 +77,8 @@ namespace SuruIHA.EditorTools
                                              "m_RenderPipelineSettings.supportVolumetrics",
                                              "m_RenderPipelineSettings.supportSSAO",
                                              "m_RenderPipelineSettings.supportSSR",      // parlak yüzeylerde yansıma
-                                             "m_RenderPipelineSettings.supportSSGI" })   // gölgede yansıyan ışık
+                                             "m_RenderPipelineSettings.supportSSGI",     // gölgede yansıyan ışık
+                                             "m_RenderPipelineSettings.supportWater" })  // deniz ve göl: HDRP su benzetimi
                 {
                     var p = so.FindProperty(path);
                     if (p != null) p.boolValue = true;
@@ -164,6 +165,17 @@ namespace SuruIHA.EditorTools
             ["MAT_Plaster_D"] = new MatDef(0.62f, 0.64f, 0.60f, 0.88f),
             ["MAT_GrassDry"] = new MatDef(1.05f, 1.05f, 1.0f, 0.85f),
             ["MAT_Marking"] = new MatDef(0.75f, 0.76f, 0.72f, 0.6f),
+            // Divriği: sarımsı kalker kesme taş, taş oyması, toprak dam, kale taşı
+            ["MAT_KesmeTas"] = new MatDef(0.8f, 0.7f, 0.53f, 0.85f),
+            ["MAT_Oyma"] = new MatDef(0.86f, 0.76f, 0.58f, 0.88f),
+            ["MAT_Toprak"] = new MatDef(0.45f, 0.38f, 0.3f, 0.95f),
+            ["MAT_KaleTas"] = new MatDef(0.55f, 0.48f, 0.4f, 0.9f),
+            // Akdeniz ve Gökpınar: badana, fener kırmızısı, tekne mavisi, açık ahşap, mavi panjur
+            ["MAT_BoyaBeyaz"] = new MatDef(0.86f, 0.86f, 0.83f, 0.8f),
+            ["MAT_BoyaKirmizi"] = new MatDef(0.62f, 0.08f, 0.06f, 0.55f),
+            ["MAT_TekneMavi"] = new MatDef(0.05f, 0.22f, 0.48f, 0.45f),
+            ["MAT_AhsapAcik"] = new MatDef(0.48f, 0.34f, 0.2f, 0.7f),
+            ["MAT_PanjurMavi"] = new MatDef(0.12f, 0.33f, 0.52f, 0.6f),
         };
 
         // Malzeme -> (renk dokusu, normal dokusu, alfa kesimli yaprak mı)
@@ -198,6 +210,11 @@ namespace SuruIHA.EditorTools
                 ["MAT_Plaster_C"] = ("Srf_Siva", 0.35f, 1f),
                 ["MAT_Plaster_D"] = ("Srf_Siva", 0.35f, 1f),
                 ["MAT_RoofTile"] = ("Srf_Kiremit", 0.18f, 1.2f),
+                ["MAT_KesmeTas"] = ("Srf_KesmeTas", 0.25f, 1.3f),      // 4 m'de bir tekrar: 35-55 cm'lik taş sıraları
+                ["MAT_Oyma"] = ("Srf_Oyma", 1.6f, 2.0f),              // 15 cm'lik yıldız geçmeleri
+                ["MAT_KaleTas"] = ("Srf_KesmeTas", 0.5f, 1.8f),
+                ["MAT_Toprak"] = ("Srf_Beton", 0.3f, 1.2f),
+                ["MAT_BoyaBeyaz"] = ("Srf_Siva", 0.35f, 1f),
                 ["MAT_Concrete"] = ("Srf_Beton", 0.3f, 0.8f),
                 ["MAT_Stone"] = ("Srf_Beton", 0.5f, 1f),
                 ["MAT_Sandbag"] = ("Srf_Siva", 1.2f, 1f),
@@ -387,6 +404,7 @@ namespace SuruIHA.EditorTools
                 rocks = new List<GameObject>(), shrubs = new List<GameObject>(), grass = new List<GameObject>(),
                 houses = new List<GameObject>();
             public GameObject mosque, pole;
+            public readonly Dictionary<string, GameObject> named = new Dictionary<string, GameObject>();   // bütün prefab'lar adıyla
         }
 
         static Prefabs BuildPrefabs(Dictionary<string, Material> mats)
@@ -445,6 +463,7 @@ namespace SuruIHA.EditorTools
                 {
                     // Arazi ağacı olarak kullanılacak: kökte LODGroup şart
                     ConfigureLods(inst, name.StartsWith("House") || name.StartsWith("Mosque") || name.StartsWith("Pole") ? new[] { 0.002f }
+                                       : name.StartsWith("Yapi") ? new[] { 0.0015f }
                                        : name.StartsWith("Tree") ? new[] { 0.07f, 0.006f }
                                        : name.StartsWith("Shrub") ? new[] { 0.012f } : new[] { 0.006f });
                 }
@@ -458,6 +477,7 @@ namespace SuruIHA.EditorTools
                 Object.DestroyImmediate(wrapper);
                 Debug.Log($"[SuruIHA] Prefab: {prefabPath}  boyut={Bounds(prefab)}");
 
+                p.named[name] = prefab;
                 if (name == "Drone") p.drone = prefab;
                 else if (name == "Jammer") p.jammer = prefab;
                 else if (name == "GCS") p.gcs = prefab;
@@ -525,7 +545,8 @@ namespace SuruIHA.EditorTools
                 AssetDatabase.CopyAsset("Assets/OutdoorsScene.unity", ScenePath);
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             foreach (var go in scene.GetRootGameObjects())
-                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti" or "KarliBolge" or "Kizilirmak")
+                if (go.name is "Arazi" or "SuruSistemi" or "UzakArazi" or "Koy" or "ElektrikHatti" or "KarliBolge" or "Kizilirmak"
+                    or "Divrigi" or "Gokpinar" or "AkdenizKiyisi")
                     Object.DestroyImmediate(go);
 
             // Güneş: ikindi ışığı, uzun gölgeler
@@ -559,6 +580,12 @@ namespace SuruIHA.EditorTools
             BuildSnowRegion(prefabs);
             EditorUtility.DisplayProgressBar("SürüİHA", "Kızılırmak", 0.96f);
             BuildRiverRegion(prefabs);
+            EditorUtility.DisplayProgressBar("SürüİHA", "Divriği", 0.97f);
+            BuildDivrigiRegion(prefabs);
+            EditorUtility.DisplayProgressBar("SürüİHA", "Gökpınar Gölü", 0.98f);
+            BuildGokpinarRegion(prefabs);
+            EditorUtility.DisplayProgressBar("SürüİHA", "Akdeniz kıyısı", 0.99f);
+            BuildSeaRegion(prefabs);
 
             // Simülasyon nesneleri
             var sys = new GameObject("SuruSistemi");
@@ -633,7 +660,7 @@ namespace SuruIHA.EditorTools
         // Python simülasyonu aynı araziyi kullansın diye yükseklik haritasını dışa aktarır.
         // Biçim: 601x601 float32 (küçük-endian), satır = kuzey (z), sütun = doğu (x), değer = dünya y'si (m).
         // origin: bölgenin dünya konumu (karlı bölge 12 km doğuda); suffix: dosya adı eki ("_kar")
-        static void ExportHeightmap(Terrain t, Vector3 origin = default, string suffix = "")
+        static void ExportHeightmap(Terrain t, Vector3 origin = default, string suffix = "", float floorY = float.NegativeInfinity)
         {
             const int n = 601;
             const float gridOrigin = -1200f, step = 4f;
@@ -642,7 +669,7 @@ namespace SuruIHA.EditorTools
             for (int i = 0; i < n; i++)
             {
                 float x = gridOrigin + i * step, z = gridOrigin + j * step;
-                float y = t.SampleHeight(new Vector3(origin.x + x, 0, origin.z + z)) + t.transform.position.y;
+                float y = Mathf.Max(t.SampleHeight(new Vector3(origin.x + x, 0, origin.z + z)) + t.transform.position.y, floorY);
                 System.Buffer.BlockCopy(BitConverter.GetBytes(y), 0, buf, (j * n + i) * 4, 4);
             }
             string dir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Arazi"));
@@ -791,6 +818,9 @@ namespace SuruIHA.EditorTools
             var bloom = Get<Bloom>(prof);
             SetParam(bloom, "intensity", 0.18f);
             SetParam(bloom, "scatter", 0.6f);
+
+            var water = Get<WaterRendering>(prof);
+            SetParam(water, "enable", true);                  // HDRP su yüzeyleri (yalnızca Akdeniz ve Gökpınar'da açık)
 
             var ao = Get<ScreenSpaceAmbientOcclusion>(prof);
             SetParam(ao, "intensity", 1.2f);

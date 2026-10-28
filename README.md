@@ -50,7 +50,15 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
 
 ### Unity açmadan: hazır Windows uygulaması (fuar için)
 
-`C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur:
+`C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur.
+
+**Başka bilgisayarda (jüri, fuar):** `C:\SuruIHA\Build` klasörünün tamamını (ya da `yedek\SuruIHA_uygulama.zip`'i açıp)
+kopyalamak yeter; Python kurmak gerekmez. Uygulamanın yanındaki `sim` klasöründe simülasyon ve yalın bir Python
+(numpy, scipy) vardır (`tools/make_portable.py`, her derlemede kurulur, ~170 MB). Uygulama depoyu bulamazsa bu paketi
+kullanır; geliştirme bilgisayarında depodaki güncel kod çalışır. Paketi bu bilgisayarda denemek için
+`SuruIHA.exe -suruTasinabilir` (ya da `tools/ui_test.ps1 -Portable`).
+
+Kullanım:
 1. `SuruIHA.exe`'yi çift tıkla (tam ekran açılır; Alt+Enter pencereye alır).
 2. Uygulama bir sunum gibi üstte sekmelere ayrılmıştır (← → ya da sunum kumandasıyla da geçilir):
 
@@ -60,7 +68,7 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
    | **Nasıl çalışır?** | Sürü zekâsı (uçuş evreleri), CBBA döngüsü, tehdit → savunma eşleşmesi, simülasyon mimarisi |
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
    | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
-   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, bölge (ova / karlı dağlar / Kızılırmak), hız; **Başlat** |
+   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, bölge (ova, karlı dağlar, Kızılırmak, Divriği, Gökpınar, Akdeniz), hız; **Başlat** |
    | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı ve GPS aldatıcı koy; İHA ve hedef sayısı, arıza, saldırgan seç; **Başlat** |
    | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
@@ -80,6 +88,14 @@ Simülasyon sırasında ekranda:
   sayısı (GPS'i karıştırılan ya da aldatmayı fark edip GPS'e güvenmeyen) ve görev puanı (yanlarında anlık değer). Karıştırma alanına girilince paket iletiminin düştüğü, sürü
   toparlanınca yükseldiği görülür; grafiğin üstüne gelince o anın değeri okunur. Yan yana uçuşta iki sürü aynı
   grafikte (turuncu solda korumasız, yeşil sağda dirençli). Araç çubuğundaki **Grafikler** ile açılıp kapanır.
+- **Sesler:** her İHA'nın pervane uğultusu 3B duyulur: kameraya yaklaşınca artar, uzaklaştıkça hem kısılır hem
+  boğuklaşır (havada yol alan sesin tizleri söner). Pervaneler gibi kalkışta hızlanır, tırmanırken biraz incelir, inince
+  ya da arızada durur; her İHA'nın devri biraz farklıdır, sürü tek bir ton değil hafif dalgalanan bir uğultu çıkarır.
+  Bölgeye göre rüzgâr (karlı dağlarda daha boğuk ve esintili), Kızılırmak'ta kıyıdan gelen su sesi, Akdeniz'de kıyıya vuran dalgalar; olay akışında
+  yalnızca önemli anlarda yumuşak bir ton (hedefler tamamlanınca ya da karıştırıcı bulununca iki nota yukarı, GPS
+  karıştırılınca ya da arızada iki nota aşağı, görev bitince kısa bir arpej; en az 2,5 saniye arayla). Bütün sesler
+  2 kHz'in altında yoğunlaşır, tiz ve sert ses yoktur. Menüdeyken ortam sesleri kısılır. Araç çubuğundaki **Ses** ile açılıp kapanır,
+  seviye Simülasyon sekmesinden (Kapalı / Kısık / Normal).
 - **Solda bilgi paneli:** uçuş evresi, hedef, puan, süre ve EH durumu.
 - **Altta araç çubuğu:** kamera, katmanlar, renklerin anlamı, arıza ve yeni hedef gibi müdahaleler. Her
   düğmenin üstüne gelince ne yaptığı yazar; klavye kısayolu bilmek gerekmez.
@@ -117,23 +133,50 @@ Simülasyon sırasında ekranda:
   ayrı açılır.
 
   ![Uçuş raporu](gorseller/61_ucus_raporu.jpg)
-- **Bölgeler:** her senaryo üç haritada uçulabilir (Simülasyon ve Kendi senaryon sekmelerinde **Bölge**). Bölge
+- **Bölgeler:** her senaryo altı haritada uçulabilir (Simülasyon ve Kendi senaryon sekmelerinde **Bölge**). Bölge
   seçilince simülasyon, kamera ve İHA'lar oraya geçer; Python da o bölgenin yükseklik haritasıyla uçar (`--region`):
   tepeler sinyali her bölgede kendi arazisine göre gölgeler, İHA'lar araziyi izleyerek uçar.
   - *Orta Anadolu ovası* (`ova`): tarlalar, bozkır tepeler, köy; deneylerin yapıldığı harita.
   - *Karlı dağlar* (`kar`, ana araziden 12 km doğuda): karla kaplı geniş bir vadi, yamaçlarda karlı çam ormanları,
     çevresi 400-500 m yükselen sarp dağlar. Güneş alçalır, kar yağar, pus artar, renkler soğur; çamların iğnelerine
-    kar öbekleri kurulumda eklenir.
+    kar öbekleri kurulumda eklenir. Vadide parlak, mavimsi buzu gökyüzünü yansıtan donmuş bir göl ve çatıları karla
+    örtülü bir dağ köyü var; köyün bacalarından ince duman tüter. Isı haritası bembeyaz karın üstünde daha ince çizilir.
   - *Kızılırmak (Sivas)* (`nehir`, 12 km batıda): Sivas platosunda geniş bir vadi; görev alanının ortasından
     kıvrılarak akan kızıl-kahve, alüvyonlu Kızılırmak (akan, parlak su yüzeyi). Kuzey yakada nehre adını veren kızıl
     kil yarlar ve plato, kıyılarda kavak ve söğüt sıraları, çakıllı kum adacıkları, sulu tarlalar, yolun nehri geçtiği
     beton köprü ve kıyıda bir köy. İHA'lar görevde nehrin iki yakası arasında gidip gelir.
+  - *Divriği (Sivas)* (`divrigi`, 12 km kuzeyde): Çaltı Çayı vadisine inen yamaçta tarihî kent. Tepede kayalık kale
+    (yıkık surlar, yuvarlak ve kare burçlar), yamaçta taraça üstünde **Ulu Camii ve Darüşşifası** (1228-29, UNESCO
+    Dünya Mirası), çevresinde cumbalı, taş zeminli Divriği evleri ve bahçeler; vadide kavak sıraları ve meyve bahçeleri,
+    kuzeyde demir yüklü kızıl dağlar. Külliye Blender'da yayımlanmış tasvirlere göre kodla kuruldu (ölçüler yaklaşık):
+    32 x 64 m kesme taş gövde, kuzeyde beş sahınlı cami, güneyde kıble duvarına bitişik iki katlı darüşşifa; duvardan
+    yükselen kuzey taç kapısı (derin sivri kemerli niş, mukarnas kavsara, gömme sütunlar, yüksek kabartma madalyonlar,
+    tepede altıgen motif), dokuma gibi oymalı batı kapısı, doğuda Şah Mahfili kapısı, darüşşifanın iç içe iki kemerli
+    ve hilal çerçeveli madalyonlu taç kapısı; damda mihrap önü kubbesinin sekizgen külahı, türbenin altıgen külahı, iki
+    fener; kuzeybatıda payanda üstünde silindir minare. Taş yüzeyler kodla üretilen kesme taş (sarımsı kalker, harç
+    derzi, aşınmış kenar) ve Selçuklu oyması (sekiz kollu yıldız geçmesi, rozet) dokularıyla kaplı.
+  - *Gökpınar Gölü (Gürün)* (`gokpinar`, 12 km güneyde): bozkır platosunun ortasında yerden kaynayan turkuaz karstik
+    göl; kıyıda sığ ve açık turkuaz, ortada 17 m'ye inen koyu mavi huni, dibe kadar berrak (HDRP su yüzeyi: dalgacık
+    ve dipte kostik ışık oyunları, beyaz kalker dibi). Gölden çıkan dere boyunca kavak ve söğütler, alabalık
+    havuzları; kıyıda ahşap kameriyeler ve suyun üstünden geçen yürüyüş iskelesi; batıda kalker sırt, güneydoğuda köy.
+  - *Akdeniz kıyısı* (`deniz`, 12 km kuzeydoğuda): kuzeyde açık deniz (HDRP okyanus benzetimi: gerçek dalga ve köpük,
+    kıyıdaki sığlıkta turkuaz, açıkta lacivert), ortada kumlu koy ve balıkçı limanı (taş mendirek ve feneri, beton
+    iskele, balıkçı tekneleri), iki yanda kalker yalıyarlar, doğu burnunda deniz feneri ve bekçi evi, koyun üstündeki
+    yamaçta beyaz badanalı mavi panjurlu kıyı evleri ve zeytinlik, güneyde kızılçam ormanlı tepeler. Görev alanının
+    kuzey yarısı denizin üstündedir: Python'a giden haritada deniz yüzeyinin altı deniz yüzeyi sayılır (İHA'lar suyun
+    üstünde uçar), hedef işaretleri ve ısı haritası suya oturur. Kıyıya vuran dalgaların sesi duyulur.
 
   Kar, kızıl toprak ve nehir çakılı dokuları Poly Haven'dan (CC0) fotoğraf taramasıdır.
 
   ![Karlı dağlar](gorseller/65_karli_bolge.jpg)
 
   ![Kızılırmak](gorseller/68_kizilirmak.jpg)
+
+  ![Divriği Ulu Camii](gorseller/72_divrigi_ulu_cami.jpg)
+
+  ![Gökpınar Gölü](gorseller/75_gokpinar_golu.jpg)
+
+  ![Akdeniz kıyısı](gorseller/77_akdeniz_kiyisi.jpg)
 - **Kendi senaryon:** haritaya tıklayarak en fazla 3 karıştırıcı ve bir GPS aldatıcı konur (aynı yere tekrar
   tıklayınca kalkar). Haritada karıştırıcının düz arazide bağlantıyı kopardığı ve GPS'i kestiği alan, aldatıcının
   250 m'lik alanı görünür. Yanında karıştırıcı gücü (10/20/30 dBm) ve türü (geniş bant / nokta), aldatma hızı,
@@ -187,7 +230,7 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --jammer 20 --jammers=-150,300;200,500` | Kendi senaryon: karıştırıcıları verilen noktalara koy (`--jammer-band nokta` ile nokta karıştırıcı) |
 | `python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400` | GPS aldatıcıyı verilen noktaya koy |
 | `python run_live.py --drones 8 --tasks 10 --failures 1` | İHA, hedef ve arıza sayısı (`run_compare.py` de kabul eder) |
-| `python run_live.py --region kar` | Karlı dağlar bölgesinde uç (`nehir`: Kızılırmak, Sivas; varsayılan `ova`: Orta Anadolu ovası; `run_compare.py` de kabul eder) |
+| `python run_live.py --region kar` | Karlı dağlar bölgesinde uç (`nehir`: Kızılırmak, `divrigi`: Divriği, `gokpinar`: Gökpınar Gölü, `deniz`: Akdeniz kıyısı; varsayılan `ova`: Orta Anadolu ovası; `run_compare.py` de kabul eder) |
 
 ### Yan yana karşılaştırma (sunum için)
 
@@ -422,7 +465,7 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-34 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+37 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
@@ -612,6 +655,10 @@ Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly H
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
 | `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı |
 | `tools/fetch_assets.py` | Poly Haven'dan (CC0) 2K fotoğraf dokuları: havadan çimen, kuru ot (bozkır), kuru toprak (anız), sürülmüş tarla, havadan kaya, çakıl, meşe ve çam kabuğu, taranmış kaya; karlı bölge için taze kar, havadan kar ve tekerlek izli kar; Kızılırmak için kızıl toprak, taşlı kızıl toprak ve nehir çakılı. MD5 ile doğrular, HDRP maske haritasını üretir; `C:\SuruIHA\assets\polyhaven` altına iner, lisans ve yazarlar `manifest.json`'da |
+| `blender/divrigi.py` | Divriği Ulu Camii ve Darüşşifası (taç kapılar, mukarnas, madalyonlar, külahlar, fenerler, minare), kale burçları ve sur parçası, dört Divriği evi (taş zemin kat, ahşap karkaslı üst kat, konsollu cumba) |
+| `blender/kiyi.py` | Deniz feneri ve bekçi evi, iki balıkçı teknesi (kesitlerden örülen gövde), üç kıyı evi, ahşap kameriye ve göl iskelesi |
+| `tools/make_portable.py` | Taşınabilir paket: uygulamanın yanına `sim` klasörü (bu bilgisayardaki Python'un yalın kopyası, numpy ve scipy, simülasyon kodu ve arazi haritaları); paketteki Python'la simülasyonu çalıştırıp dener. `full_build.ps1` her derlemede çalıştırır |
+| `tools/make_sounds.py` | Seslerin sentezi (indirme yok): dört pervaneli İHA uğultusu (kanat geçiş frekansı ve harmonikleri, pervaneler arası vuru, devir düzeltmeleri, kanatlardan kopan türbülans), ova ve karlı dağ rüzgârı (esintiyle parlaklaşan gürültü), ırmak (su hışırtısı ve kabarcık çağıltısı), Akdeniz'de kıyıya vuran dalga (yavaş yükselen uğultu, köpüklü çekilme), arayüz tonları. Döngüler dikişsizdir; `C:\SuruIHA\audio` altına yazar, `full_build.ps1` her derlemede çalıştırır |
 | `unity/Assets/SuruIHA/Editor/SuruIHASetup.cs` | **SürüİHA → Sahneyi Kur** menüsü: malzemeler, prefab'lar, 2,4 km ana arazi (tarla parselleri, bozkır tepeler, çam ormanı, tarla sınırında meşeler, çakıl yollar, 1,6 milyon ot öbeği), 24 evli köy ve cami, ana yol boyunca 42 direkli elektrik hattı, ufka uzanan 8 parça dağ silsilesi, gökyüzü, hacimsel bulutlar, sis |
 
 ### Görsel kalite

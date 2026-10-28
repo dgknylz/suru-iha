@@ -6,6 +6,8 @@ $u = "C:\Program Files\Unity\Hub\Editor\6000.3.1f1\Editor\Unity.exe"
 $proj = "C:\SuruIHA\SuruIHA_Unity"
 Get-Process Unity -ErrorAction SilentlyContinue | Stop-Process -Force
 Remove-Item -Recurse -Force (Join-Path $proj "Temp\__Backupscenes") -ErrorAction SilentlyContinue
+# Sesler kodla sentezlenir (birkaç saniye; aynı tohumla hep aynı dosyalar)
+& (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\make_sounds.py") | Out-Null
 & (Join-Path $PSScriptRoot "sync_unity.ps1") | Out-Null
 
 function RunUnity($method, $log, $extra = @()) {
@@ -33,4 +35,6 @@ if (-not $SkipPlayer) { RunUnity "SuruIHA.EditorTools.SuruIHABuild.BuildFromComm
 foreach ($d in @("C:\SuruIHA\Build", $proj)) {
     if (Test-Path $d) { [IO.File]::WriteAllText((Join-Path $d "simulasyon_yolu.txt"), $repo, (New-Object Text.UTF8Encoding $false)) }
 }
+# Taşınabilir paket: uygulamanın yanına Python ve simülasyon (başka bilgisayarda kurulum gerekmez)
+if (-not $SkipPlayer) { & (Join-Path $repo ".venv\Scripts\python.exe") (Join-Path $repo "tools\make_portable.py") "C:\SuruIHA\Build" | Select-Object -Last 2 }
 if (-not $SkipTest) { & (Join-Path $PSScriptRoot "autotest.ps1") }

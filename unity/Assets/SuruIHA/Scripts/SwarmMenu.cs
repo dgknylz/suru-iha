@@ -32,7 +32,7 @@ namespace SuruIHA
         bool compare, fast;
         Scenario running;
         int runStrategy = 2;
-        int region, runRegion;      // harita: 0 Orta Anadolu ovası, 1 karlı dağlar, 2 Kızılırmak (SwarmRegions)
+        int region, runRegion;      // harita: SwarmRegions.Ids sırası (ova, kar, nehir, divrigi, gokpinar, deniz)
         bool runCompare;
         bool bannerOpen, legendOpen, feedOpen = true, wasRunning, wasTpp;
         float bannerUntil;
@@ -268,7 +268,7 @@ namespace SuruIHA
                 if (hover && !act) Ui.Fill(Ui.R(x + 6, 14, tw - 12, BarH - 28), new Color(1f, 1f, 1f, 0.06f), 8);
                 Ui.Label(r, TabNames[i], 17, act || hover ? Ui.Ink : Ui.Ink2, act, TextAnchor.MiddleCenter);
                 if (act) Ui.Fill(Ui.R(x + 14, BarH - 4, tw - 28, 4), Ui.Accent, 2);
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) CurrentTab = (Tab)i;
+                if (Ui.Click(r)) CurrentTab = (Tab)i;
                 x += tw;
             }
 
@@ -374,7 +374,7 @@ namespace SuruIHA
                 float other = Mathf.Max(sc.RefCentral, sc.RefDecentral), low = Mathf.Min(sc.RefCentral, sc.RefDecentral);
                 string refText = $"Deneyde dirençli %{Pct(sc.RefResilient)} · diğerleri %{Pct(low)}" + (other - low > 0.6f ? $"-{Pct(other)}" : "");
                 Ui.Label(Ui.R(rx + 16, ry + ch - 32, cwd - 32, 22), refText, 13.5f, Ui.Ink3);
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) scenario = i;
+                if (Ui.Click(r)) scenario = i;
             }
             y += 2 * ch + gap + 24;
 
@@ -396,15 +396,22 @@ namespace SuruIHA
                                                        : "Tek bir sürü uçar; mimariyi ve algoritmayı sen seçersin.", 14.5f, Ui.Ink2);
             y += 54;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), "Bölge", 16, Ui.Ink2, true);
-            region = Segments(sx, y, segW, SwarmRegions.Titles, region);
-            Ui.Label(Ui.R(ix, y + 1, iw, 46), region == 1 ? "Karla kaplı vadi, karlı çam ormanları ve sarp dağlar; kar yağar. Tepeler sinyali daha çok gölgeler."
-                                            : region == 2 ? "Sivas'ta Kızılırmak vadisi: kızıl yarlar, kavaklı kıyılar, köprü ve sulu tarlalar; görev alanı nehrin iki yakasında."
-                                            : "Tarlalar, bozkır tepeler ve kuzeyde dağ silsilesi (deneylerin yapıldığı harita).", 14.5f, Ui.Ink2);
+            const float rw = 132f;                 // altı bölge: dar düğmeler, açıklama sağda
+            region = Segments(sx, y, rw, SwarmRegions.ShortTitles, region);
+            float infoX = sx + SwarmRegions.Ids.Length * (rw + 6f) + 18f;
+            Ui.Label(Ui.R(infoX, y + 1, W - 80f - infoX, 46), RegionInfo[region], 14f, Ui.Ink2);
             y += 54;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), "Hız", 16, Ui.Ink2, true);
             fast = Segments(sx, y, segW, new[] { "Normal", "Hızlı" }, fast ? 1 : 0) == 1;
             Ui.Label(Ui.R(ix, y + 1, iw, 46), fast ? "Simülasyon gerçeğin 6 katı hızda akar (bir uçuş yaklaşık 40 saniye)."
                                                    : "Simülasyon gerçeğin 3 katı hızda akar (bir uçuş yaklaşık 1-1,5 dakika).", 14.5f, Ui.Ink2);
+            y += 54;
+            Ui.Label(Ui.R(lx, y + 11, 210, 24), "Ses", 16, Ui.Ink2, true);
+            var lvl = (SwarmAudio.Level)Segments(sx, y, segW, SwarmAudio.LevelTitles, (int)SwarmAudio.Setting);
+            if (lvl != SwarmAudio.Setting) SwarmAudio.Setting = lvl;
+            Ui.Label(Ui.R(ix, y + 1, iw, 46), lvl == SwarmAudio.Level.Kapali
+                ? "Ses kapalı. Simülasyonda alttaki \"Ses\" düğmesiyle de açılır."
+                : "Pervane uğultusu (yaklaşınca artar), rüzgâr, Kızılırmak'ta akan su; önemli olaylarda yumuşak bir ton.", 14.5f, Ui.Ink2);
             y += 66;
 
             var sel2 = SwarmScenarios.All[scenario];
@@ -424,6 +431,16 @@ namespace SuruIHA
             if (!launcher.CanLaunch)
                 Ui.Label(Ui.R(bx - 140, y + 76, 410, 80), StatusLine(), 13, Ui.Ink3);
         }
+
+        static readonly string[] RegionInfo =
+        {
+            "Tarlalar, bozkır tepeler ve kuzeyde dağ silsilesi (deneylerin yapıldığı harita).",
+            "Karla kaplı vadi, karlı çam ormanları ve sarp dağlar; kar yağar. Tepeler sinyali daha çok gölgeler.",
+            "Sivas'ta Kızılırmak vadisi: kızıl yarlar, kavaklı kıyılar, köprü ve sulu tarlalar; görev alanı nehrin iki yakasında.",
+            "Divriği: tepede kale, yamaçta Ulu Camii ve Darüşşifası (1228, UNESCO), bahçeli evler; Çaltı Çayı vadisi ve kızıl dağlar.",
+            "Gürün'de bozkırın ortasında turkuaz Gökpınar Gölü: dibi görünen kaynak suyu, dere boyunca kavaklar, alabalık havuzları.",
+            "Akdeniz kıyısı: kumlu koy, balıkçı limanı, deniz feneri, kızılçam ormanı; görev alanının yarısı denizin üstünde.",
+        };
 
         static string Pct(float v) => v >= 99.95f ? "100" : v.ToString(v % 1f < 0.05f ? "0" : "0.0").Replace('.', ',');
     }

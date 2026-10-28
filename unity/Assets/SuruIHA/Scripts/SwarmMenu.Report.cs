@@ -191,7 +191,7 @@ namespace SuruIHA
                          d.jam > 0.5f ? DroneView.ColJammed : Ui.Ink3, false, mid);
                 float ww = w - TableCols[5] - 28f;
                 Ui.Label(Ui.R(x + 14 + TableCols[5], ry, ww, rowH - 4), Fit(DroneSummary(d, spoofing), 14f, ww), 14f, Ui.Ink2, false, mid);
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) reportSel = sel ? -1 : i;
+                if (Ui.Click(r)) reportSel = sel ? -1 : i;
                 ry += rowH;
             }
             if (Event.current.type == EventType.Repaint) reportHover = hover;

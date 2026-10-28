@@ -204,7 +204,17 @@ namespace SuruIHA
             }
             else
                 GUI.Label(tr, text, Style(size, ink, kind == Kind.Primary || selected, anchor, false));
-            return enabled && GUI.Button(r, GUIContent.none, GUIStyle.none);
+            return enabled && Click(r);
+        }
+
+        // Görünmez tıklama alanı; her tıklamada Clicked olayı (arayüzün hafif tık sesi)
+        public static event System.Action Clicked;
+
+        public static bool Click(Rect r)
+        {
+            if (!GUI.Button(r, GUIContent.none, GUIStyle.none)) return false;
+            Clicked?.Invoke();
+            return true;
         }
 
         // Küçük renkli etiket (senaryo türü gibi)

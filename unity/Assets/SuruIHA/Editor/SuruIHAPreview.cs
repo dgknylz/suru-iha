@@ -72,7 +72,50 @@ namespace SuruIHA.EditorTools
             cam.transform.LookAt(r + new Vector3(-10, 0, 470));
             cam.fieldOfView = 55;
             Capture(cam, Path.Combine(outDir, "15_kizilirmak.png"));
+            // Yeni bölgeler: suları yalnızca kendi çekiminde açık
+            void Region(string regionId)
+            {
+                foreach (var ro in UnityEngine.Object.FindObjectsByType<SwarmRegionObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    ro.gameObject.SetActive(ro.region == regionId);
+            }
+            void Shot(string file, Vector3 org, Vector2 at, float above, Vector2 to, float toAbove, float viewFov)
+            {
+                cam.transform.position = RegionGround(org, at.x, at.y, above);
+                cam.transform.LookAt(RegionGround(org, to.x, to.y, toAbove));
+                cam.fieldOfView = viewFov;
+                Capture(cam, Path.Combine(outDir, file + ".png"));
+            }
+            var dv0 = SwarmRegions.DivrigiOffset;
+            Region("divrigi");
+            Shot("16_divrigi_genel", dv0, new Vector2(-330, 930), 120, new Vector2(-20, 400), 20, 55);
+            Shot("17_ulu_cami", dv0, new Vector2(-150, 540), 14, new Vector2(-110, 452), 8, 50);
+            Shot("17b_ulu_cami_bati", dv0, new Vector2(-185, 430), 10, new Vector2(-126, 440), 8, 55);
+            Shot("17c_divrigi_kale", dv0, new Vector2(-40, 520), 60, new Vector2(170, 250), 20, 50);
+            var gk = SwarmRegions.GokpinarOffset;
+            Region("gokpinar");
+            Shot("18_gokpinar_golu", gk, new Vector2(-60, 330), 26, new Vector2(-140, 430), -2, 55);
+            Shot("18b_gokpinar_yakin", gk, new Vector2(-180, 395), 6, new Vector2(-120, 445), -3, 60);
+            var sea = SwarmRegions.SeaOffset;
+            Region("deniz");
+            Shot("19_akdeniz_koy", sea, new Vector2(330, 360), 45, new Vector2(-120, 420), -15, 60);
+            Shot("19b_akdeniz_fener", sea, new Vector2(250, 640), 20, new Vector2(430, 600), 5, 55);
+            Shot("19c_akdeniz_liman", sea, new Vector2(-150, 300), 30, new Vector2(-20, 360), -16, 55);
+            Region("ova");
             Debug.Log("[SuruIHA] Önizlemeler: " + outDir);
+        }
+
+        // Bölgenin (dünya kökü o) yerel x, z noktasında arazinin üstü
+        static Vector3 RegionGround(Vector3 o, float x, float z, float above)
+        {
+            var w = new Vector3(o.x + x, 0f, o.z + z);
+            foreach (var t in Terrain.activeTerrains)
+            {
+                var p = t.transform.position;
+                var s = t.terrainData.size;
+                if (w.x >= p.x && w.x <= p.x + s.x && w.z >= p.z && w.z <= p.z + s.z)
+                    return new Vector3(w.x, t.SampleHeight(w) + p.y + above, w.z);
+            }
+            return new Vector3(w.x, o.y + above, w.z);
         }
 
         static Vector3 Ground(float x, float z, float above)

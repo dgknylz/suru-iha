@@ -524,6 +524,100 @@ def surf_concrete():
     save("Srf_Beton_Normal", normal_from_height(n * 0.4 + crack * 0.2 - pits * 0.3, 2.0))
 
 
+def surf_ashlar():
+    """Selçuklu kesme taş duvar (4 m döşeme): farklı yükseklikte taş sıraları, her sırada farklı boyda bloklar,
+    ince harç derzi, aşınmış blok kenarları, keski izi, gözenek, blok blok ton farkı ve yer yer liken lekesi."""
+    u, v = grid(N)
+    rng = np.random.default_rng(301)
+    # sıra yükseklikleri (toplamı tam döşeme: dikişsiz)
+    hs = rng.uniform(0.75, 1.25, 9)
+    edges_v = np.concatenate([[0], np.cumsum(hs / hs.sum())])
+    row = np.clip(np.searchsorted(edges_v, v, side="right") - 1, 0, 8)
+    v0, v1 = edges_v[row], edges_v[row + 1]
+    fv = (v - v0) / (v1 - v0)                      # sıra içinde 0..1
+    dv = np.minimum(v - v0, v1 - v) * 4.0          # derze uzaklık (m)
+    du = np.zeros_like(u)
+    bid = np.zeros(u.shape, int)
+    for r in range(9):
+        lens = rng.uniform(0.55, 1.35, 12)
+        lens = lens[: max(3, int(round(4.0 / lens.mean())))]
+        e = np.concatenate([[0], np.cumsum(lens / lens.sum())]) + rng.uniform(0, 1)
+        m = row == r
+        uu = (u[m] - e[0]) % 1.0 + e[0]
+        k = np.clip(np.searchsorted(e, uu, side="right") - 1, 0, len(lens) - 1)
+        du[m] = np.minimum(uu - e[k], e[k + 1] - uu) * 4.0
+        bid[m] = r * 31 + k
+    d = np.minimum(du, dv)                          # bloğun kenarına uzaklık (m)
+    tone = hash01(bid, 302)
+    tone2 = hash01(bid * 7 + 3, 303)
+    edge_noise = fbm(u, v, 40, 3, 304)
+    bevel = np.clip((d - 0.004 - 0.012 * edge_noise) / 0.03, 0, 1)         # aşınmış, düzensiz kenar
+    mortar = d < 0.003 + 0.003 * edge_noise
+    chisel = fbm(u, v, 160, 3, 305)                                         # keski/tarak izi
+    pores = np.clip((fbm(u, v, 256, 2, 306) - 0.68) * 5, 0, 1)
+    face = 0.5 + 0.12 * (fbm(u, v, 12, 4, 307) - 0.5) + 0.06 * (tone - 0.5)  # bloğun hafif şişkin yüzü
+    h = np.where(mortar, 0.0, 0.35 + 0.65 * bevel * face + 0.05 * chisel - 0.15 * pores)
+    # renk: sarımsı-gri kalker, bloktan bloğa sıcak/soğuk ton farkı (malzeme rengi taşı boyar)
+    base = 0.9 + 0.07 * (tone - 0.5) + 0.04 * (chisel - 0.5) - 0.08 * pores
+    warm = np.stack([1.0 + 0.04 * tone2, 1.0 + 0.01 * tone2, 1.0 - 0.08 * tone2], -1)   # yalnız sıcak tonlar
+    rgb = _gray(base) * warm
+    rgb = rgb * (0.86 + 0.14 * bevel)[..., None]                            # kenarlarda kir/gölge
+    streak = np.clip((fbm(u * 0.2, v, 4, 4, 310, aniso=(5, 1)) - 0.55) * 3, 0, 1)   # yağmur akıntısı izleri
+    rgb = rgb * (1 - 0.13 * streak)[..., None]
+    lichen = np.clip((fbm(u, v, 18, 4, 308) - 0.7) * 6, 0, 1) * np.clip((fbm(u, v, 64, 2, 309) - 0.4) * 3, 0, 1)
+    rgb = lerp(rgb, np.array([0.78, 0.66, 0.42]), lichen * 0.45)
+    rgb = np.where(mortar[..., None], np.array([0.72, 0.68, 0.6]), rgb)
+    save("Srf_KesmeTas", rgb)
+    save("Srf_KesmeTas_Normal", normal_from_height(h, 6.0))
+
+
+def surf_carving():
+    """Selçuklu taş oyması (1 m döşeme): sekiz kollu yıldız ve haç geçmeli şerit örgüsü, yıldızların içinde
+    kabartma rozet (rumi yapraklı çiçek), zeminde derin oyuk ve matkap delikleri. Divriği kapılarındaki gibi."""
+    n = N
+    u, v = grid(n)
+    cells = 4                                      # 25 cm motif
+    X, Y = u * cells, v * cells
+    fx, fy = X - np.floor(X) - 0.5, Y - np.floor(Y) - 0.5     # hücre merkezine göre
+    # sekiz kollu yıldız: iki kare (biri 45° dönük) birleşimi; sınıra işaretli uzaklık
+    a = 0.46
+    sq1 = np.maximum(np.abs(fx), np.abs(fy)) - a * 0.72
+    rx, ry = (fx + fy) / np.sqrt(2), (fx - fy) / np.sqrt(2)
+    sq2 = np.maximum(np.abs(rx), np.abs(ry)) - a * 0.72
+    star = np.minimum(sq1, sq2)                   # <0 yıldızın içi
+    band = np.clip(1 - np.abs(star) / 0.04, 0, 1) ** 0.6     # geçmeli çift şerit (ortası oluklu)
+    band = band - 0.45 * np.clip(1 - np.abs(star) / 0.01, 0, 1)
+    # haç kollarının içinde küçük dört yapraklı çiçek (hücre köşelerinde)
+    cx_, cy_ = np.abs(fx) - 0.5, np.abs(fy) - 0.5
+    rc = np.hypot(cx_, cy_) * 2
+    tc = np.arctan2(cy_, cx_)
+    flower = np.clip(1 - rc / (0.16 + 0.08 * np.cos(4 * tc)), 0, 1) ** 0.6 * (star > 0.04)
+    # haçları bağlayan ikinci şerit ağı (hücre kenarlarına göre)
+    gx, gy = np.abs(np.abs(fx) - 0.5), np.abs(np.abs(fy) - 0.5)
+    lattice = np.clip(1 - np.minimum(gx, gy) / 0.022, 0, 1) ** 0.6 * (star > 0.02)
+    # yıldızın içinde rozet: 8 yapraklı çiçek, ortada göbek
+    r = np.hypot(fx, fy) * 2
+    th = np.arctan2(fy, fx)
+    petal = np.clip(1 - r / (0.5 + 0.18 * np.cos(8 * th)), 0, 1) ** 0.5
+    petal *= 0.75 + 0.25 * np.cos(16 * th) ** 2
+    bud = np.clip(1 - r / 0.12, 0, 1) ** 0.5
+    rosette = np.maximum(petal * 0.75, bud) * (star < -0.03)
+    # zemin: haç içinde matkap delikleri, her yerde keski pürüzü
+    holes = np.clip(1 - np.hypot(fx - 0.5 * np.sign(fx), fy - 0.5 * np.sign(fy)) / 0.05, 0, 1) * (star > 0.03)
+    grit = fbm(u, v, 96, 3, 311)
+    h = np.maximum(band, lattice * 0.85)
+    h = np.maximum(h, rosette * 0.8)
+    h = np.maximum(h, flower * 0.6)
+    h = h * 0.9 + 0.06 * grit - 0.35 * holes
+    h = np.clip(h, -0.4, 1.0)
+    # renk: kabartmalar açık, oyuklar koyu (ortam kapatma), oyuklarda toz
+    ao = np.clip(0.62 + 0.38 * (h + 0.4) / 1.4, 0, 1)
+    base = (0.88 + 0.08 * (grit - 0.5)) * ao
+    rgb = _gray(base) * np.array([1.0, 0.97, 0.92])
+    save("Srf_Oyma", rgb)
+    save("Srf_Oyma_Normal", normal_from_height(h, 9.0))
+
+
 def turkish_flag():
     """Türk bayrağı (Türk Bayrağı Kanunu oranları: G yükseklik, boy 1.5G)."""
     G, W = 400, 600
@@ -560,7 +654,7 @@ if __name__ == "__main__":
     only = sys.argv[2:]
     funcs = (ter_grass, ter_steppe, ter_plowed, ter_stubble, ter_rock, ter_gravel,
              bark_pine, bark_oak, pine_needles, oak_leaves, turkish_flag, grass_green, grass_dry, surf_composite, surf_carbon, surf_paint_wear,
-             surf_plaster, surf_roof_tile, surf_concrete)
+             surf_plaster, surf_roof_tile, surf_concrete, surf_ashlar, surf_carving)
     for f in funcs:
         if not only or f.__name__ in only:
             f()

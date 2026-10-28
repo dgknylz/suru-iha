@@ -14,8 +14,10 @@ import numpy as np
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
-# Unity'deki bölgeler: Orta Anadolu ovası, karlı dağlar, Kızılırmak vadisi (Sivas)
-REGIONS = {"ova": "arazi_yukseklik.bin", "kar": "arazi_yukseklik_kar.bin", "nehir": "arazi_yukseklik_nehir.bin"}
+# Unity'deki bölgeler: Orta Anadolu ovası, karlı dağlar, Kızılırmak vadisi (Sivas), Divriği (Sivas),
+# Gökpınar Gölü (Gürün) ve Akdeniz kıyısı (deniz yüzeyinin altı haritada deniz yüzeyi sayılır: İHA'lar suyun üstünde uçar)
+REGIONS = {"ova": "arazi_yukseklik.bin", "kar": "arazi_yukseklik_kar.bin", "nehir": "arazi_yukseklik_nehir.bin",
+           "divrigi": "arazi_yukseklik_divrigi.bin", "gokpinar": "arazi_yukseklik_gokpinar.bin", "deniz": "arazi_yukseklik_deniz.bin"}
 
 
 class Terrain:

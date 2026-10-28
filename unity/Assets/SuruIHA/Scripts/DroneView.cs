@@ -9,6 +9,7 @@ namespace SuruIHA
         public int Id { get; private set; }
         public DroneState State { get; private set; }
         public Vector3 Velocity => smoothVel;
+        public float Rpm { get; private set; }      // pervane devri: 0 duruyor, 900 yerde, 2400 havada (ses de bunu izler)
 
         SwarmVisualizer vis;
         Transform model;
@@ -211,6 +212,7 @@ namespace SuruIHA
 
             // İndikten sonra motorlar durur (gerçek İHA'lar inişte motoru kilitler)
             float rpm = Failed || Parked ? 0f : transform.localPosition.y - GroundY > 1.5f ? 2400f : 900f;
+            Rpm = rpm;
             propAngle = (propAngle + rpm * 6f * dt) % 360f;
             for (int i = 0; i < props.Length; i++)
             {

@@ -19,6 +19,8 @@ namespace SuruIHA
 
         public string RepoPath { get; private set; }
         public string PythonPath { get; private set; }
+        public bool Portable { get; private set; }      // uygulamanın yanındaki sim klasörü (Python kurulumu gerekmez)
+        string Flags => Portable ? "-s -E " : "";        // taşınabilir Python bilgisayardaki ayarlardan etkilenmesin
         public State Status { get; private set; } = State.Idle;
         public string LastError { get; private set; } = "";
         public string RunningArgs { get; private set; } = "";
@@ -48,7 +50,7 @@ namespace SuruIHA
             if (!CanLaunch) return;
             try
             {
-                warm = Process.Start(new ProcessStartInfo(PythonPath, "-c \"import numpy, scipy.optimize, suru\"")
+                warm = Process.Start(new ProcessStartInfo(PythonPath, Flags + "-c \"import numpy, scipy.optimize, suru\"")
                 {
                     WorkingDirectory = RepoPath, UseShellExecute = false, CreateNoWindow = true,
                 });
@@ -71,6 +73,8 @@ namespace SuruIHA
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             candidates.Add(Path.Combine(home, "OneDrive", "Desktop", "sürü_iha"));
             candidates.Add(Path.Combine(home, "Desktop", "sürü_iha"));
+            // -suruTasinabilir: depo olsa da taşınabilir paketi kullan (paketi denemek için)
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-suruTasinabilir") >= 0) candidates.Clear();
             foreach (var c in candidates)
             {
                 if (string.IsNullOrEmpty(c) || !File.Exists(Path.Combine(c, "run_live.py"))) continue;
@@ -79,6 +83,18 @@ namespace SuruIHA
                 PythonPath = File.Exists(venv) ? venv : "python";
                 Status = State.Idle;
                 Debug.Log($"[SuruIHA] Simülasyon bulundu: {RepoPath} ({PythonPath})");
+                return;
+            }
+            // Taşınabilir paket (ör. jüri bilgisayarı): uygulamanın yanındaki sim klasöründe Python ve simülasyon
+            // (tools/make_portable.py, full_build.ps1 her derlemede kurar)
+            string sim = Path.Combine(appDir, "sim"), simPy = Path.Combine(sim, "python", "python.exe");
+            if (File.Exists(Path.Combine(sim, "run_live.py")) && File.Exists(simPy))
+            {
+                RepoPath = sim;
+                PythonPath = simPy;
+                Portable = true;
+                Status = State.Idle;
+                Debug.Log($"[SuruIHA] Taşınabilir simülasyon: {sim}");
                 return;
             }
             Status = State.NotFound;
@@ -97,7 +113,7 @@ namespace SuruIHA
             var psi = new ProcessStartInfo
             {
                 FileName = PythonPath,
-                Arguments = $"-u {script} {args}",
+                Arguments = $"{Flags}-u {script} {args}",
                 WorkingDirectory = RepoPath,
                 UseShellExecute = false,
                 CreateNoWindow = true,

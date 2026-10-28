@@ -212,8 +212,9 @@ namespace SuruIHA
                 ("Unity 6 · HDRP", "3D görselleştirme: gerçekçi ışık, gölge, sis ve bulutlar. Bütün sahne C# ile kodla kuruluyor."),
                 ("Blender 5.2", "İHA, karıştırıcı aracı, yer istasyonu, köy ve bitki modelleri Python betikleriyle üretildi."),
                 ("Poly Haven (CC0)", "Arazi, kaya ve ağaç kabuğu için fotoğraftan taranmış dokular; ücretsiz, serbest lisanslı."),
+                ("Ses sentezi (NumPy)", "Pervane uğultusu, rüzgâr, ırmak ve arayüz tonları fizik temelli olarak kodla üretildi; kayıt ya da indirme yok."),
                 ("UDP + JSON", "Python ile Unity arasında saniyede 30 kare; Unity'den komutlar geri gider."),
-                ("Git", "Sürüm takibi: her aşama etiketli (v1 görsel → v13 görsel kalite)."),
+                ("Git", "Sürüm takibi: her aşama etiketli (v1 görsel → v17 sesler)."),
                 ("PowerShell", "Derleme, uçtan uca test, arayüz testi ve video hattının otomasyonu."),
             };
             foreach (var (name, what) in tools)
@@ -247,10 +248,10 @@ namespace SuruIHA
             y = Card(x, y0, colW, ch, "RAKAMLARLA PROJE", "Ne kadar büyük?", Ui.Warn);
             (string big, string cap)[] stats =
             {
-                ("13 000+", "satır kod (Python ~7 100, C# ~6 000)"), ("5976", "deney uçuşu"),
-                ("29", "otomatik test"), ("11", "EH savunma mekanizması"),
+                ("17 000+", "satır kod (Python ~7 800, C# ~10 100)"), ("5976", "deney uçuşu"),
+                ("37", "otomatik test"), ("11", "EH savunma mekanizması"),
                 ("9", "EH senaryosu (+ ana deney)"), ("10", "İHA, 20 hedef + beliren yeni hedefler"),
-                ("~11 000", "ağaç ve çalı (3D sahne)"), ("6", "sürüm (v1 → v6)"),
+                ("~11 000", "ağaç ve çalı (3D sahne)"), ("17", "sürüm (v1 → v17)"),
             };
             float sw = (colW - 44f - 12f) / 2f, sh = 124f;
             for (int i = 0; i < stats.Length; i++)
@@ -274,7 +275,7 @@ namespace SuruIHA
                 "Üstteki \"Simülasyonu başlat\"a bas ya da \"Simülasyon\" sekmesinden bir senaryo seç.",
                 "Üstteki kutu, bu senaryoda neye bakman gerektiğini söyler.",
                 "Sağdaki olay akışı, sürüde olanları canlı anlatır: GPS kesilmesi, karıştırıcının bulunması, yeni hedefler…",
-                "Alttaki düğmelerle kamerayı değiştir, katmanları aç-kapa ve sürüye müdahale et: bir İHA'yı arızalandır, yeni hedef ekle.",
+                "Alttaki düğmelerle kamerayı değiştir, katmanları ve sesi aç-kapa, sürüye müdahale et: bir İHA'yı arızalandır, yeni hedef ekle.",
                 "Görevler bitince sonuç ekranı çıkar ve aynı senaryonun 30 uçuşluk deney ortalamasıyla karşılaştırır.",
                 "Esc menüyü açar. Oradan senaryo değiştirebilir ya da bu sekmelere dönebilirsin.",
             };

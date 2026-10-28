@@ -6,12 +6,15 @@ param(
     [string]$Out = "C:\SuruIHA\arayuz_testi",
     [string]$Exe = "C:\SuruIHA\Build\SuruIHA.exe",
     [int]$Width = 1600,
-    [int]$Height = 900
+    [int]$Height = 900,
+    [switch]$Portable       # uygulamanın yanındaki taşınabilir Python'la (sim klasörü) dene
 )
 Remove-Item -Recurse -Force $Out -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $Out | Out-Null
-$p = Start-Process -FilePath $Exe -PassThru -ArgumentList @("-suruUiTest", $Out, "-screen-fullscreen", "0",
-    "-screen-width", "$Width", "-screen-height", "$Height", "-logFile", (Join-Path $Out "player.log"))
-if (-not $p.WaitForExit(600000)) { Write-Host "zaman aşımı"; $p.Kill() }
+$pargs = @("-suruUiTest", $Out, "-screen-fullscreen", "0", "-screen-width", "$Width", "-screen-height", "$Height",
+    "-logFile", (Join-Path $Out "player.log"))
+if ($Portable) { $pargs += "-suruTasinabilir" }
+$p = Start-Process -FilePath $Exe -PassThru -ArgumentList $pargs
+if (-not $p.WaitForExit(900000)) { Write-Host "zaman aşımı"; $p.Kill() }
 Get-Content (Join-Path $Out "rapor.txt") -ErrorAction SilentlyContinue
 Get-ChildItem $Out -Filter *.png | ForEach-Object { $_.Name }

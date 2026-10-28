@@ -106,7 +106,7 @@ namespace SuruIHA
                 var clone = Instantiate(mainCam.gameObject, mainCam.transform.parent);
                 clone.name = "KameraB_Direncli";
                 foreach (var mb in clone.GetComponents<MonoBehaviour>())
-                    if (mb is SwarmCamera || mb is SwarmHud || mb is SwarmCompare) Destroy(mb);
+                    if (mb is SwarmCamera || mb is SwarmHud || mb is SwarmCompare || mb is SwarmAudioTap) Destroy(mb);
                 var al = clone.GetComponent<AudioListener>();
                 if (al != null) Destroy(al);
                 camB = clone.GetComponent<Camera>();

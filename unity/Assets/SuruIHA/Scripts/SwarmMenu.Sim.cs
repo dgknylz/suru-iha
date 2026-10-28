@@ -141,7 +141,7 @@ namespace SuruIHA
             GUI.Label(r, text, Ui.Style(13.5f, Ui.Ink, true, TextAnchor.MiddleCenter, false));
             if (!clickable) return false;
             Ui.Block(r);
-            return GUI.Button(r, GUIContent.none, GUIStyle.none);
+            return Ui.Click(r);
         }
 
         static Color ChipColor(DroneView d)
@@ -349,6 +349,8 @@ namespace SuruIHA
                 }),
                 ("", new[]
                 {
+                    new Tool("Ses", "Sesi aç ya da kapat: pervane uğultusu, rüzgâr, ırmak ve olaylarda yumuşak bir ton. " +
+                                    "Seviye Simülasyon sekmesinde (Kısık / Normal).", SwarmAudio.On, SwarmAudio.Toggle),
                     new Tool("Menü", "Menü [Esc]: senaryo değiştir, proje bilgisi, ana ekran.", false, () => Go(Page.Pause)),
                 }),
             };
@@ -371,7 +373,7 @@ namespace SuruIHA
                     float bw = ToolW(t.label);
                     var r = Ui.R(x, y, bw, bh);
                     if (r.Contains(Event.current.mousePosition)) tip = t.tip;
-                    if (Ui.Button(r, t.label, g.name.Length == 0 ? Ui.Kind.Ghost : Ui.Kind.Normal, t.sel, fs)) t.act();
+                    if (Ui.Button(r, t.label, t.label == "Menü" ? Ui.Kind.Ghost : Ui.Kind.Normal, t.sel, fs)) t.act();
                     x += bw + gapB;
                 }
                 x += gapG - gapB;
@@ -584,6 +586,14 @@ namespace SuruIHA
             var hf = SwarmVisualizer.Main.Field;
             log.AppendLine(hf != null ? $"ısı haritası: {hf.nx}x{hf.ny} nokta, aralık {hf.step:0.#} m, eşikler {hf.detect:0} / {hf.cut:0.0} dBm"
                                       : "ısı haritası: GELMEDİ");
+            // Ses: dinleyicinin duyduğu karışım kaydedilir (hoparlör testte susar)
+            var snd = SwarmAudio.Instance;
+            void Rec(string file, float s, string label)
+            {
+                if (snd != null) StartCoroutine(snd.Record(Path.Combine(dir, file), s, label, log));
+                else log.AppendLine($"ses ({label}): SwarmAudio YOK");
+            }
+            Rec("ses_1_sinematik.wav", 10f, "sinematik");
             yield return Wait(14f);
             yield return Shot("13_gorevde");
             yield return Fps("sinematik");
@@ -594,8 +604,10 @@ namespace SuruIHA
             DefaultLayers(SwarmVisualizer.Main);
             cam.SetFollow(2);                      // İHA kamerası (TPP): İHA-3
             cam.mode = SwarmCamera.Mode.Follow;
+            Rec("ses_2_iha_kamerasi.wav", 8f, "İHA kamerası");
             yield return Wait(3f);
             yield return Shot("13b_iha_kamerasi");
+            yield return Wait(5.5f);
             cam.mode = SwarmCamera.Mode.Top;       // taktik görünümde tıklanabilir İHA numaraları
             yield return Wait(2.5f);
             yield return Shot("13c_taktik_numaralar");
@@ -713,6 +725,7 @@ namespace SuruIHA
                            $"ısı haritası {(SwarmVisualizer.Main.Field != null ? "var" : "YOK")}");
             bannerOpen = false;
             cam.mode = SwarmCamera.Mode.Cinematic;
+            Rec("ses_3_karli_bolge.wav", 8f, "karlı bölge");
             yield return Wait(4f);
             yield return Shot("24_karli_bolge_sinematik");
             yield return Fps("karlı bölge");
@@ -735,6 +748,7 @@ namespace SuruIHA
                            $"görev {nf?.m?.done}/{nf?.m?.total}");
             bannerOpen = false;
             cam.mode = SwarmCamera.Mode.Cinematic;
+            Rec("ses_4_kizilirmak.wav", 8f, "Kızılırmak");
             yield return Wait(4f);
             yield return Shot("27_kizilirmak_sinematik");
             yield return Fps("Kızılırmak");
@@ -747,6 +761,36 @@ namespace SuruIHA
             yield return Wait(4f);
             yield return Shot("29_kizilirmak_tepeden");
             cam.topHeight = th2;
+
+            // Divriği, Gökpınar Gölü ve Akdeniz kıyısı: aynı senaryo, her birinde üç görünüm
+            var extra = new (int idx, string id, string shot, int follow)[]
+            {
+                (3, "divrigi", "30_divrigi", 2), (4, "gokpinar", "33_gokpinar", 5), (5, "deniz", "36_akdeniz", 6),
+            };
+            foreach (var (idx, id, shot, follow) in extra)
+            {
+                region = idx;
+                Launch();
+                yield return Until(() => SwarmVisualizer.Main.Frame?.region == id && SwarmVisualizer.Main.Frame.t > 70f, 60f);
+                var ef = SwarmVisualizer.Main.Frame;
+                log.AppendLine($"{SwarmRegions.Titles[idx]}: bölge={ef?.region} kök={SwarmVisualizer.Main.transform.position} İHA {ef?.drones?.Length} " +
+                               $"görev {ef?.m?.done}/{ef?.m?.total}");
+                bannerOpen = false;
+                cam.mode = SwarmCamera.Mode.Cinematic;
+                if (id == "deniz") Rec("ses_5_akdeniz.wav", 8f, "Akdeniz");
+                yield return Wait(5f);
+                yield return Shot(shot + "_sinematik");
+                yield return Fps(SwarmRegions.ShortTitles[idx]);
+                cam.SetFollow(follow);
+                cam.mode = SwarmCamera.Mode.Follow;
+                yield return Wait(3f);
+                yield return Shot(shot + "_iha_kamerasi");
+                cam.mode = SwarmCamera.Mode.Top;
+                cam.topHeight = 1150f;
+                yield return Wait(4f);
+                yield return Shot(shot + "_tepeden");
+                cam.topHeight = th2;
+            }
             region = 0;
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());

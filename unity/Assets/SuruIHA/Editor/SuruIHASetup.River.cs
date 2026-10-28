@@ -19,12 +19,11 @@ namespace SuruIHA.EditorTools
         static Vector3 RiverOrigin => SwarmRegions.RiverOffset;
         const float RiverHalf = 26f;             // nehir yatağının yarı genişliği (m)
         const float RiverDepth = 6f;             // yatağın ova tabanına göre derinliği (m)
-        const float WaterLevel = -2.4f;          // su yüzeyi: ova tabanının 2,4 m altında
+        const float WaterLevel = SwarmRegions.WaterLevel;
         static readonly Vector2 HamletXZ = new Vector2(-560f, 140f);   // kıyıdaki köy
 
-        // Nehrin orta çizgisi: batıdan doğuya akar, görev alanının ortasından menderes çizerek geçer
-        public static float RiverZ(float x) =>
-            470f + 95f * Mathf.Sin(x * 0.0045f) + 38f * Mathf.Sin(x * 0.011f + 1.3f) + 14f * Mathf.Sin(x * 0.027f + 0.4f);
+        // Nehrin orta çizgisi (ırmak sesiyle ortak: SwarmRegions)
+        public static float RiverZ(float x) => SwarmRegions.RiverZ(x);
 
         // Nehre yatay uzaklık (z yönünde; menderesler yumuşak olduğu için yeterli yaklaşıklık)
         static float RiverDist(float x, float z) => z - RiverZ(x);
@@ -283,7 +282,7 @@ namespace SuruIHA.EditorTools
             var tris = new List<int>();
             float len = 0f, half = RiverHalf + 3f;
             Vector2 prev = Vector2.zero;
-            const float x0 = -3600f, x1 = 3600f, step = 6f;
+            const float x0 = -SwarmRegions.RiverHalfLength, x1 = SwarmRegions.RiverHalfLength, step = 6f;
             for (float x = x0; x <= x1 + 0.01f; x += step)
             {
                 var c = new Vector2(x, RiverZ(x));

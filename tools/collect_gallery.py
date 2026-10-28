@@ -82,6 +82,19 @@ SHOTS = [
     (r"C:\SuruIHA\arayuz_testi\28_kizilirmak_iha_kamerasi.png", "69_kizilirmak_iha_kamerasi.jpg"),
     (r"C:\SuruIHA\arayuz_testi\29_kizilirmak_tepeden.png", "70_kizilirmak_tepeden.jpg"),
     (r"C:\SuruIHA\arayuz_testi\13_gorevde.png", "71_canli_grafikler.jpg"),
+    (r"C:\SuruIHA\preview\17_ulu_cami.png", "72_divrigi_ulu_cami.jpg"),
+    (r"C:\SuruIHA\preview\16_divrigi_genel.png", "73_divrigi_genel.jpg"),
+    (r"C:\SuruIHA\preview\17c_divrigi_kale.png", "74_divrigi_kale.jpg"),
+    (r"C:\SuruIHA\preview\18_gokpinar_golu.png", "75_gokpinar_golu.jpg"),
+    (r"C:\SuruIHA\preview\18b_gokpinar_yakin.png", "76_gokpinar_yakin.jpg"),
+    (r"C:\SuruIHA\preview\19_akdeniz_koy.png", "77_akdeniz_kiyisi.jpg"),
+    (r"C:\SuruIHA\preview\19b_akdeniz_fener.png", "78_akdeniz_fener.jpg"),
+    (r"C:\SuruIHA\preview\19c_akdeniz_liman.png", "79_akdeniz_liman.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\30_divrigi_sinematik.png", "80_divrigi_simulasyon.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\33_gokpinar_sinematik.png", "81_gokpinar_simulasyon.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\36_akdeniz_sinematik.png", "82_akdeniz_simulasyon.jpg"),
+    (r"C:\SuruIHA\arayuz_testi\36_akdeniz_iha_kamerasi.png", "83_akdeniz_iha_kamerasi.jpg"),
+    (r"C:\SuruIHA\preview\17b_ulu_cami_bati.png", "84_ulu_cami_bati.jpg"),
 ]
 
 os.makedirs(OUT, exist_ok=True)

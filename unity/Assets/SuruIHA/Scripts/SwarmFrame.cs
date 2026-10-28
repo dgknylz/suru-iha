@@ -149,7 +149,7 @@ namespace SuruIHA
     {
         public float t;
         public string strategy;
-        public string region;      // harita: "ova" (Orta Anadolu ovası) ya da "kar" (karlı dağlar)
+        public string region;      // harita: ova, kar, nehir, divrigi, gokpinar, deniz (SwarmRegions.Ids)
         public string planner;     // görev paylaşım algoritması: greedy | cbba | ai
         public string phase;       // sürünün çoğunluğunun evresi
         public string formation;   // intikal düzeni

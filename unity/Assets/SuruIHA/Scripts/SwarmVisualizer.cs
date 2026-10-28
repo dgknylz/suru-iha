@@ -496,7 +496,7 @@ namespace SuruIHA
         {
             var o = new Vector3(world.x, 3000f, world.z);
             if (Physics.Raycast(o, Vector3.down, out var hit, 6000f, groundMask, QueryTriggerInteraction.Ignore))
-                return hit.point.y;
+                return Mathf.Max(hit.point.y, SwarmRegions.WaterFloor);
             return transform.position.y;
         }
 

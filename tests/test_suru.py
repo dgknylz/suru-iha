@@ -304,6 +304,25 @@ def test_kizilirmak():
     assert w.frame()["region"] == "nehir"
 
 
+@pytest.mark.parametrize("region", ["divrigi", "gokpinar", "deniz"])
+def test_yeni_bolgeler(region):
+    """Divriği, Gökpınar ve Akdeniz: harita yüklenir, sürü görevi bitirir, İHA'lar yere (denizde suya) çarpmaz."""
+    from suru.terrain import DATA, REGIONS
+    if not os.path.exists(os.path.join(DATA, REGIONS[region])):
+        pytest.skip(f"{region} yükseklik haritası yok (Unity'de sahne kurulmadı)")
+    t = World(make_config("resilient", 20.0, 0.0, 1, region=region)).terrain
+    assert abs(float(t.height(0.0, 0.0))) < 6.0, "üs bölgenin tabanında (y=0 civarı) olmalı"
+    if region == "divrigi":
+        assert t.height(170.0, 250.0) - t.height(170.0, 600.0) > 60.0, "kale tepesi kentin üstünde yükselmeli"
+    if region == "deniz":
+        assert t.height(0.0, 900.0) >= -18.01, "deniz yüzeyinin altı haritada deniz yüzeyi sayılmalı"
+        assert t.height(0.0, 900.0) <= -17.9, "kuzeyde açık deniz olmalı"
+    w = fly(make_config("resilient", 20.0, 0.0, 4, region=region, n_popup=4), until="flight_over")
+    s = w.summary()
+    assert s["completion"] >= 0.9 and s["min_agl"] > 5.0
+    assert w.frame()["region"] == region
+
+
 def test_ucus_raporu():
     """Uçuş raporu iniş bitince gelir; İHA'ların yaptığı hedefler toplamı tamamlanan hedef sayısına eşittir."""
     w = World(make_config("resilient", 20.0, 0.0, 3, n_popup=4, failures=1))

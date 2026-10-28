@@ -34,6 +34,8 @@ New-Item -ItemType Directory -Force $Models | Out-Null
 foreach ($s in "drone", "jammer", "gcs") { & $Blender -b --factory-startup -P (Join-Path $repo "blender\$s.py") -- $Models | Out-Null }
 & $Blender -b --factory-startup -P (Join-Path $repo "blender\nature.py") -- (Join-Path $Models "nature") | Out-Null
 & $Blender -b --factory-startup -P (Join-Path $repo "blender\village.py") -- (Join-Path $Models "village") | Out-Null
+& $Blender -b --factory-startup -P (Join-Path $repo "blender\divrigi.py") -- (Join-Path $Models "divrigi") | Out-Null
+& $Blender -b --factory-startup -P (Join-Path $repo "blender\kiyi.py") -- (Join-Path $Models "kiyi") | Out-Null
 & $py (Join-Path $repo "tools\gen_textures.py") (Join-Path $Models "textures")
 
 & (Join-Path $PSScriptRoot "full_build.ps1")

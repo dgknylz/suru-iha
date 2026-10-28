@@ -28,7 +28,24 @@ namespace SuruIHA.EditorTools
             float ridged = 1f - Mathf.Abs(Fbm(x * 0.0011f - 17f, z * 0.0011f + 5f, 4) * 2f - 1f);
             float mountains = 330f * Mathf.Pow(ridged, 1.7f) + 90f * Fbm(x * 0.002f + 90f, z * 0.002f, 3);
             float edge = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(900f, 1200f, Mathf.Max(Mathf.Abs(x), Mathf.Abs(z)))) * 80f;
-            return floor + rolling * (1f - w) + w * (mountains + edge);
+            float h = floor + rolling * (1f - w) + w * (mountains + edge);
+            // donmuş göl: düz, sığ çanak (buz yüzeyi BuildFrozenLake'te)
+            float lr = FrozenR(x, z);
+            float lake0 = BaseHeight + 3f * (Fbm(FrozenXZ.x * 0.005f + 3f, FrozenXZ.y * 0.005f - 8f, 3) - 0.5f) * 2f;
+            h = Mathf.Lerp(lake0 - 1.4f, h, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.0f, 1.14f, lr)));   // dik kıyı: buzun kenarı toprağın altında kalsın
+            return h;
+        }
+
+        static readonly Vector2 FrozenXZ = new Vector2(-300f, 560f);
+        const float FrozenA = 125f, FrozenB = 62f, FrozenYaw = 15f;
+        static readonly Vector2 SnowVillageXZ = new Vector2(-250f, 150f);
+
+        static float FrozenR(float x, float z)
+        {
+            float a = FrozenYaw * Mathf.Deg2Rad;
+            float dx = x - FrozenXZ.x, dz = z - FrozenXZ.y;
+            float u = dx * Mathf.Cos(a) + dz * Mathf.Sin(a), v = -dx * Mathf.Sin(a) + dz * Mathf.Cos(a);
+            return Mathf.Sqrt(u * u / (FrozenA * FrozenA) + v * v / (FrozenB * FrozenB));
         }
 
         static float FarHeightAtKar(float x, float z)
@@ -149,6 +166,7 @@ namespace SuruIHA.EditorTools
                 if (td.GetSteepness(u, v) > 30f) continue;
                 float hRel = HeightAtKar(x, z) - BaseHeight;
                 if (hRel > 330f || new Vector2(x, z).magnitude < 120f) continue;
+                if (FrozenR(x, z) < 1.25f || (new Vector2(x, z) - SnowVillageXZ).magnitude < 110f) continue;
                 if (RoadDistance(roads, new Vector2(x, z)) < 9f) continue;
                 float forest = Fbm(x * 0.004f + 200f, z * 0.004f - 77f, 4);
                 float p = Mathf.Clamp01((forest - 0.42f) * 3f) * (0.2f + 0.8f * Mathf.InverseLerp(0f, 60f, hRel));
@@ -190,7 +208,102 @@ namespace SuruIHA.EditorTools
             ExportHeightmap(t, SnowOrigin, "_kar");
             BuildSnowFarTiles(t, layers, pines, root);
             BuildSnowVolume(root);
+            BuildFrozenLake(root);
+            BuildSnowVillage(prefabs, root, t);
             Debug.Log($"[SuruIHA] Karlı bölge: {trees.Count} ağaç ve kaya, {layers.Length} katman");
+        }
+
+        // Donmuş göl: vadideki çanağın üstünde parlak, mavimsi buz (gök ve dağlar yansır; ince çatlak dokusu)
+        static void BuildFrozenLake(Transform root)
+        {
+            const int N = 72;
+            var verts = new List<Vector3> { Vector3.zero };
+            var uvs = new List<Vector2> { new Vector2(0.5f, 0.5f) };
+            var tris = new List<int>();
+            float a = FrozenYaw * Mathf.Deg2Rad;
+            for (int i = 0; i <= N; i++)
+            {
+                float t = i * Mathf.PI * 2f / N;
+                float u = Mathf.Cos(t) * FrozenA * 1.02f, v = Mathf.Sin(t) * FrozenB * 1.02f;
+                verts.Add(new Vector3(u * Mathf.Cos(a) - v * Mathf.Sin(a), 0f, u * Mathf.Sin(a) + v * Mathf.Cos(a)));
+                uvs.Add(new Vector2(u / 40f, v / 40f));
+                if (i > 0) tris.AddRange(new[] { 0, i + 1, i });
+            }
+            var mesh = new Mesh { name = "DonmusGol" };
+            mesh.SetVertices(verts);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            if (mesh.normals[1].y < 0f)
+            {
+                for (int i = 0; i < tris.Count; i += 3) (tris[i + 1], tris[i + 2]) = (tris[i + 2], tris[i + 1]);
+                mesh.SetTriangles(tris, 0);
+                mesh.RecalculateNormals();
+            }
+            mesh.RecalculateTangents();
+            string mp = $"{Root}/Terrain/DonmusGol.asset";
+            AssetDatabase.DeleteAsset(mp);
+            AssetDatabase.CreateAsset(mesh, mp);
+            float lake0 = 3f * (Fbm(FrozenXZ.x * 0.005f + 3f, FrozenXZ.y * 0.005f - 8f, 3) - 0.5f) * 2f;
+            var go = new GameObject("DonmusGol");
+            go.transform.SetParent(root, false);
+            go.transform.position = SnowOrigin + new Vector3(FrozenXZ.x, lake0 - 0.95f, FrozenXZ.y);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+            string matPath = $"{Root}/Materials/MAT_Buz.mat";
+            AssetDatabase.DeleteAsset(matPath);
+            var m = new Material(Shader.Find("HDRP/Lit")) { name = "MAT_Buz" };
+            m.SetColor("_BaseColor", new Color(0.66f, 0.78f, 0.86f));
+            m.SetFloat("_Smoothness", 0.86f);
+            m.SetFloat("_CoatMask", 1f);
+            var nm = WaterNormalTexture();
+            if (nm != null) { m.SetTexture("_NormalMap", nm); m.SetFloat("_NormalScale", 0.18f); }
+            HDMaterial.ValidateMaterial(m);
+            AssetDatabase.CreateAsset(m, matPath);
+            mr.sharedMaterial = m;
+        }
+
+        // Dağ köyü: karlı çatılı evler (çatı malzemesi kar), bacalardan duman tüter (SwarmRegions karlı bölgede açar)
+        static void BuildSnowVillage(Prefabs p, Transform root, Terrain t)
+        {
+            if (p.houses.Count == 0) return;
+            var v = new GameObject("KarKoyu").transform;
+            v.SetParent(root, false);
+            string matPath = $"{Root}/Materials/MAT_KarCati.mat";
+            var snowRoof = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (snowRoof == null)
+            {
+                snowRoof = new Material(Shader.Find("HDRP/Lit")) { name = "MAT_KarCati" };
+                AssetDatabase.CreateAsset(snowRoof, matPath);
+            }
+            snowRoof.SetColor("_BaseColor", new Color(0.93f, 0.95f, 0.98f));
+            snowRoof.SetFloat("_Smoothness", 0.4f);
+            HDMaterial.ValidateMaterial(snowRoof);
+            EditorUtility.SetDirty(snowRoof);
+            var rng = new System.Random(1959);
+            var placed = new List<Vector2>();
+            for (int k = 0; k < 400 && placed.Count < 14; k++)
+            {
+                var c = SnowVillageXZ + new Vector2(((float)rng.NextDouble() - 0.5f) * 170f, ((float)rng.NextDouble() - 0.5f) * 140f);
+                bool near = false;
+                foreach (var q in placed) if ((q - c).sqrMagnitude < 18f * 18f) { near = true; break; }
+                if (near) continue;
+                placed.Add(c);
+                var world = SnowOrigin + new Vector3(c.x, 0f, c.y);
+                var h = (GameObject)PrefabUtility.InstantiatePrefab(p.houses[rng.Next(p.houses.Count)], v);
+                h.transform.SetPositionAndRotation(new Vector3(world.x, t.SampleHeight(world) + t.transform.position.y, world.z),
+                    Quaternion.Euler(0f, 20f + 90f * rng.Next(4) + (float)(rng.NextDouble() - 0.5) * 12f, 0f));
+                foreach (var r in h.GetComponentsInChildren<Renderer>())
+                {
+                    var ms = r.sharedMaterials;
+                    bool changed = false;
+                    for (int i = 0; i < ms.Length; i++)
+                        if (ms[i] != null && ms[i].name.StartsWith("MAT_RoofTile")) { ms[i] = snowRoof; changed = true; }
+                    if (changed) r.sharedMaterials = ms;
+                }
+            }
+            GameObjectUtility.SetStaticEditorFlags(v.gameObject, StaticEditorFlags.BatchingStatic);
         }
 
         // Karlı çam prefab'ları: iğne dokusuna kar öbekleri eklenmiş malzemeyle

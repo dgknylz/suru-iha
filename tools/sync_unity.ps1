@@ -28,4 +28,14 @@ if (Test-Path $photo) {
         if (-not (Test-Path $t) -or (Get-Item $t).Length -ne $_.Length) { Copy-Item $_.FullName $t -Force }
     }
 }
+# Sentezlenen sesler (tools/make_sounds.py üretir): Resources/Ses altına, yalnızca içeriği değişenler
+$audio = "C:\SuruIHA\audio"
+if (Test-Path $audio) {
+    $adst = Join-Path $dst "Resources\Ses"
+    New-Item -ItemType Directory -Force $adst | Out-Null
+    Get-ChildItem $audio -Filter *.wav | ForEach-Object {
+        $t = Join-Path $adst $_.Name
+        if (-not (Test-Path $t) -or (Get-FileHash $t).Hash -ne (Get-FileHash $_.FullName).Hash) { Copy-Item $_.FullName $t -Force }
+    }
+}
 Write-Host "Unity projesi güncellendi: $dst"
