@@ -223,6 +223,14 @@ def oak(idx, h):
                 cdir = ((end - center).normalized() + Vector((0, 0, 0.8))).normalized()
                 size = h * 0.25 * (1.5 if lod else 1.0)
                 tb.card(end - cdir * size * 0.3 + Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), 0)) * h * 0.04, cdir, size, rnd.random() * math.pi)
+        # Taç dolgusu: taç yuvarlak ve dolu görünsün (kollar arası boşlukta seyrek şemsiye gibi durmasın)
+        for c in range(22 if lod == 0 else 8):
+            u = rnd.random() ** 0.5
+            a = rnd.uniform(0, math.tau)
+            p = center + Vector((math.cos(a) * h * 0.34 * u, math.sin(a) * h * 0.34 * u, rnd.uniform(-0.1, 0.2) * h))
+            cdir = ((p - center).normalized() * 0.6 + Vector((rnd.uniform(-0.3, 0.3), rnd.uniform(-0.3, 0.3), 0.8))).normalized()
+            size = h * rnd.uniform(0.2, 0.27) * (1.6 if lod else 1.0)
+            tb.card(p - cdir * size * 0.4, cdir, size, rnd.random() * math.pi)
         o = tb.finish(f"Oak{idx}_LOD{lod}", [bark, leaves], center, squash=0.9)
         o.parent = root
 

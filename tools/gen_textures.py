@@ -618,6 +618,289 @@ def surf_carving():
     save("Srf_Oyma_Normal", normal_from_height(h, 9.0))
 
 
+# ---------------------------------------------------------------------- Ulu Camii (UV0 dünya ölçekli, Blender'da)
+def save_mask(name, ao, smooth, metal=0.0):
+    """HDRP maske haritası: R metal, G ortam kapatma, B ayrıntı maskesi (1: ayrıntı atlası tam uygulanır), A pürüzsüzlük."""
+    m = np.zeros(ao.shape + (3,))
+    m[..., 0] = metal
+    m[..., 1] = ao
+    m[..., 2] = 1.0
+    save(name, m, smooth)
+
+
+def blur(h, passes=2):
+    for _ in range(passes):
+        h = (h + np.roll(h, 1, 0) + np.roll(h, -1, 0) + np.roll(h, 1, 1) + np.roll(h, -1, 1)) / 5.0
+    return h
+
+
+def cavity(h, r=6):
+    """Çukur ölçüsü: çevresinden alçak yerler (oyma diplerinde koyuluk ve ortam kapatma için)."""
+    m = h.copy()
+    for _ in range(r):
+        m = (m + np.roll(m, 2, 0) + np.roll(m, -2, 0) + np.roll(m, 2, 1) + np.roll(m, -2, 1)) / 5.0
+    return np.clip((m - h) * 4.0, 0, 1)
+
+
+UC_STONE = np.array([[0.83, 0.74, 0.59],      # krem
+                     [0.85, 0.73, 0.53],      # bal sarısı
+                     [0.83, 0.69, 0.59],      # pembemsi (Divriği kalkerinin kızıl damarı)
+                     [0.77, 0.72, 0.64],      # gri-bej
+                     [0.87, 0.8, 0.67]])      # açık krem
+UC_STONE_P = np.array([0.32, 0.22, 0.2, 0.14, 0.12])
+
+
+def surf_uc_tas():
+    """Ulu Camii kesme taşı (8 x 4 m döşeme, 4096 x 2048 px = 2 mm/piksel; tekrar uzaktan seçilmesin): 9 sıra
+    (30-58 cm), 0,45-1,6 m'lik bloklar; bloktan bloğa krem, bal, pembemsi ve gri-bej kalker, bloğun içinde benek ve
+    damar; 4-6 mm'lik harç derzi, aşınmış ve yer yer kırık kenarlar, ince keski izi, gözenek, kabuklanma ve liken.
+    Renk + normal + HDRP maske."""
+    n, Tu, T = 4096, 8.0, 4.0
+    u, v = grid(n, n // 2)
+    _fbm = globals()["fbm"]
+
+    def fbm(u, v, base, octaves, seed, aniso=(1, 1)):          # yatayda iki kat uzun döşeme: gürültü eşyönlü kalsın
+        return _fbm(u, v, base, octaves, seed, aniso=(2 * aniso[0], aniso[1]))
+    rng = np.random.default_rng(1228)
+    rows = 9
+    hs = rng.uniform(0.68, 1.32, rows)
+    ev = np.concatenate([[0], np.cumsum(hs / hs.sum())])
+    row = np.clip(np.searchsorted(ev, v, side="right") - 1, 0, rows - 1)
+    v0, v1 = ev[row], ev[row + 1]
+    dv = np.minimum(v - v0, v1 - v) * T
+    du = np.zeros_like(u)
+    bid = np.zeros(u.shape, int)
+    for r in range(rows):
+        lens = []
+        while sum(lens) < Tu - 0.5:
+            lens.append(rng.uniform(0.45, 1.6))
+        lens = np.array(lens) / sum(lens)
+        e = np.concatenate([[0], np.cumsum(lens)]) + rng.uniform(0, 1)
+        m = row == r
+        uu = (u[m] - e[0]) % 1.0 + e[0]
+        k = np.clip(np.searchsorted(e, uu, side="right") - 1, 0, len(lens) - 1)
+        du[m] = np.minimum(uu - e[k], e[k + 1] - uu) * Tu
+        bid[m] = r * 40 + k
+    d = np.minimum(du, dv)                                    # blok kenarına uzaklık (m)
+    t1, t2, t3, t4 = (hash01(bid, s) for s in (11, 12, 13, 14))
+    pick = np.searchsorted(np.cumsum(UC_STONE_P), t1 * 0.999)
+    col = UC_STONE[pick] * (0.94 + 0.09 * t2)[..., None]
+    en = fbm(u, v, 64, 3, 401)
+    bevel = np.clip((d - 0.0025 - 0.012 * en) / 0.022, 0, 1)
+    mortar = d < 0.0022 + 0.0022 * en
+    chip = (d < 0.03 + 0.04 * fbm(u, v, 24, 3, 402)) & (fbm(u, v, 40, 3, 403) > 0.68)
+    mott = fbm(u, v, 10, 4, 404)
+    speck = fbm(u, v, 256, 2, 405)
+    vein = np.clip(1 - np.abs(fbm(u, v, 6, 4, 406, aniso=(1, 3)) - 0.5) * 18, 0, 1) * (t3 > 0.6)
+    pores = np.clip((fbm(u, v, 300, 2, 407) - 0.7) * 5, 0, 1)
+    ang = (t3 - 0.5) * 1.2 + 0.6                              # bloğa göre eğik keski izi
+    tool = np.sin((u * Tu * np.cos(ang) + v * T * np.sin(ang)) / 0.011 * 2 * np.pi + 6 * fbm(u, v, 20, 2, 408))
+    crust = np.clip((fbm(u, v, 8, 4, 409) - 0.6) * 3.5, 0, 1) * (0.3 + 0.7 * t4)
+    lichen = np.clip((fbm(u, v, 120, 2, 410) - 0.72) * 6, 0, 1) * np.clip((fbm(u, v, 14, 3, 411) - 0.55) * 3, 0, 1)
+    # yükseklik: hafif şişkin blok yüzü, pahlı aşınmış kenar, derin derz, kırık ve gözenek çukurları
+    pillow = np.clip(d / 0.12, 0, 1) ** 0.5
+    h = 0.25 + 0.75 * bevel * (0.82 + 0.1 * pillow + 0.05 * (mott - 0.5) + 0.012 * tool) - 0.08 * pores
+    h = np.where(chip, h - 0.22 * (1 - np.clip(d / 0.07, 0, 1)), h)
+    h = np.where(mortar, 0.08, h)
+    rgb = col * (0.93 + 0.12 * (mott - 0.5) + 0.05 * (speck - 0.5))[..., None]
+    rgb = lerp(rgb, rgb * np.array([1.04, 0.93, 0.86]), vein * 0.5)
+    rgb = rgb * (0.82 + 0.18 * bevel)[..., None] * (1 - 0.1 * pores)[..., None]
+    rgb = np.where(chip[..., None], rgb * 1.05, rgb)
+    rgb = lerp(rgb, np.array([0.42, 0.4, 0.36]), crust * 0.32)
+    rgb = lerp(rgb, np.array([0.7, 0.68, 0.6]), lichen * 0.45)
+    rgb = np.where(mortar[..., None], np.array([0.62, 0.59, 0.53]) * (0.9 + 0.2 * en)[..., None], rgb)
+    ao = np.clip(0.5 + 0.5 * (h - 0.08) / 0.75, 0.45, 1.0)
+    smooth = np.clip(0.16 + 0.08 * bevel + 0.06 * (speck - 0.5) - 0.06 * crust, 0.05, 0.4)
+    save("UC_Tas", rgb)
+    save("UC_Tas_Normal", normal_from_height(h, 3.0))
+    save_mask("UC_Tas_Mask", ao, smooth)
+
+
+def _carving_finish(name, h, n, grit_seed, strength, depth_tone=0.8):
+    """Oyma dokusu ortak bitirme: renk (kabartmalar açık, dipler koyu ve tozlu), normal, maske, POM yüksekliği."""
+    u, v = grid(n, h.shape[0])
+    h = blur(h, 1)
+    hn = (h - h.min()) / (h.max() - h.min() + 1e-9)
+    cav = cavity(hn, 5)
+    grit = fbm(u, v, 96, 3, grit_seed)
+    mott = fbm(u, v, 6, 3, grit_seed + 1)
+    base = UC_STONE[0] * (0.95 + 0.1 * (mott - 0.5))[..., None] * (0.94 + 0.08 * (grit - 0.5))[..., None]
+    tone = depth_tone + (1 - depth_tone) * hn
+    rgb = base * tone[..., None]
+    rgb = lerp(rgb, np.array([0.55, 0.5, 0.42]), np.clip(cav * 1.2, 0, 1) * 0.2)
+    ao = np.clip(0.5 + 0.5 * hn - 0.25 * cav, 0.3, 1.0)
+    smooth = np.clip(0.18 + 0.06 * hn - 0.05 * cav, 0.05, 0.4)
+    save(name, rgb)
+    save(name + "_Normal", normal_from_height(h, strength))
+    save_mask(name + "_Mask", ao, smooth)
+    save(name + "_Height", np.stack([hn] * 3, -1))
+
+
+def surf_uc_oyma():
+    """Selçuklu yıldız geçme oyması (1 m döşeme, 1024 px): sekiz kollu yıldızlar ve haçlar arasında oluklu çift şerit,
+    yıldızların içinde rumi yapraklı rozet, haçlarda çiçek, zeminde derin oyuk ve matkap delikleri. POM için yükseklik."""
+    n = 1024
+    u, v = grid(n)
+    cells = 4
+    X, Y = u * cells, v * cells
+    fx, fy = X - np.floor(X) - 0.5, Y - np.floor(Y) - 0.5
+    a = 0.46
+    sq1 = np.maximum(np.abs(fx), np.abs(fy)) - a * 0.72
+    rx, ry = (fx + fy) / np.sqrt(2), (fx - fy) / np.sqrt(2)
+    sq2 = np.maximum(np.abs(rx), np.abs(ry)) - a * 0.72
+    star = np.minimum(sq1, sq2)
+    band = np.sqrt(np.clip(1 - (star / 0.045) ** 2, 0, 1))                       # yuvarlak profilli şerit
+    band = band - 0.35 * np.clip(1 - np.abs(star) / 0.008, 0, 1)                # ortasında oluk
+    gx, gy = np.abs(np.abs(fx) - 0.5), np.abs(np.abs(fy) - 0.5)
+    lat = np.minimum(gx, gy)
+    lattice = np.sqrt(np.clip(1 - (lat / 0.028) ** 2, 0, 1)) * (star > 0.02)
+    r = np.hypot(fx, fy) * 2
+    th = np.arctan2(fy, fx)
+    petal = np.clip(1 - r / (0.5 + 0.17 * np.cos(8 * th)), 0, 1) ** 0.45
+    petal = petal * (0.7 + 0.3 * np.cos(16 * th) ** 2) - 0.25 * np.clip(1 - np.abs(np.sin(8 * th)) / 0.12, 0, 1) * (r > 0.15) * (r < 0.55)
+    bud = np.clip(1 - r / 0.12, 0, 1) ** 0.5
+    rosette = np.maximum(petal * 0.72, bud * 0.95) * (star < -0.035)
+    cx_, cy_ = np.abs(fx) - 0.5, np.abs(fy) - 0.5
+    rc = np.hypot(cx_, cy_) * 2
+    tc = np.arctan2(cy_, cx_)
+    flower = np.clip(1 - rc / (0.15 + 0.08 * np.cos(4 * tc)), 0, 1) ** 0.6 * (star > 0.05)
+    holes = np.clip(1 - np.hypot(fx - 0.5 * np.sign(fx) * 0.62, fy - 0.5 * np.sign(fy) * 0.62) / 0.035, 0, 1) * (star > 0.04)
+    grit = fbm(u, v, 128, 3, 421)
+    h = np.maximum(band, lattice * 0.85)
+    h = np.maximum(h, rosette * 0.85)
+    h = np.maximum(h, flower * 0.65)
+    h = h - 0.4 * holes + 0.04 * grit
+    _carving_finish("UC_Oyma", h, n, 422, 7.0)
+
+
+def surf_uc_oyma2():
+    """Dokuma gibi geçme (batı kapısı): iç içe altı kollu yıldızlar (iki eşkenar üçgen), uçları komşu yıldızla
+    birleşen şerit ağı, altıgen gözlerde altı yapraklı rozet, üçgen boşluklarda matkap deliği. Döşeme 1 x √3 m
+    (1024 x 1774 px), altıgen kafes aralığı 20 cm."""
+    a = 0.2
+    nx = 1024
+    ny = int(round(nx * np.sqrt(3)))
+    y, x = np.mgrid[0:ny, 0:nx]
+    X, Y = x / nx * 1.0, y / ny * np.sqrt(3)
+    # en yakın kafes noktası (üçgen kafes, temel vektörler (a,0) ve (a/2, a√3/2))
+    j = np.round(Y / (a * np.sqrt(3) / 2))
+    best = np.full(X.shape, 9.0)
+    dxb = np.zeros_like(X)
+    dyb = np.zeros_like(X)
+    for dj in (-1, 0, 1):
+        jj = j + dj
+        i = np.round(X / a - jj / 2)
+        for di in (-1, 0, 1):
+            ii = i + di
+            cx, cy = (ii + jj / 2) * a, jj * a * np.sqrt(3) / 2
+            dx, dy = X - cx, Y - cy
+            dd = dx * dx + dy * dy
+            m = dd < best
+            best = np.where(m, dd, best)
+            dxb = np.where(m, dx, dxb)
+            dyb = np.where(m, dy, dyb)
+    px, py = dxb / a, dyb / a                         # kafes aralığı biriminde
+    Rt = 0.5                                          # üçgen çevrel yarıçapı: uçlar komşuya değer
+
+    def tri_sd(rot):
+        s = -1e9
+        for k in range(3):
+            ang = rot + np.pi + k * 2 * np.pi / 3     # kenar normalleri (köşelerin tersi yönünde)
+            s = np.maximum(s, px * np.cos(ang) + py * np.sin(ang) - Rt / 2)
+        return s
+    t1, t2 = tri_sd(0.0), tri_sd(np.pi / 3)
+    w = 0.055
+    b1 = np.sqrt(np.clip(1 - (t1 / w) ** 2, 0, 1))
+    b2 = np.sqrt(np.clip(1 - (t2 / w) ** 2, 0, 1))
+    over = (np.sin(np.arctan2(py, px) * 6) > 0)       # geçme: şeritler sırayla üstten ve alttan geçer
+    band = np.where(over, np.maximum(b1, b2 * 0.82), np.maximum(b1 * 0.82, b2))
+    band = band - 0.3 * np.clip(1 - np.minimum(np.abs(t1), np.abs(t2)) / 0.01, 0, 1)
+    r = np.hypot(px, py)
+    th = np.arctan2(py, px)
+    inner = (t1 < -0.06) & (t2 < -0.06)
+    ros = np.clip(1 - r / (0.17 + 0.07 * np.cos(6 * th + np.pi / 6)), 0, 1) ** 0.5 * inner
+    dn = np.minimum(t1, t2)
+    gap = dn > 0.07                                   # yıldızlar arasındaki üçgen boşluklar: derin zemin
+    u, v = x / nx, y / ny
+    grit = fbm(u, v, 96, 3, 431)
+    h = np.maximum(band, ros * 0.8) + 0.04 * grit - 0.15 * gap * np.clip((dn - 0.07) / 0.05, 0, 1)
+    _carving_finish("UC_Oyma2", h, nx, 432, 6.0)
+
+
+def surf_uc_kursun():
+    """Kurşun çatı (4 m döşeme, 1024 px): eğim boyunca 57 cm arayla yuvarlak fitilli (bindirmeli) levhalar, levhaların
+    enine bindirme basamakları, oksit (beyazımsı karbonat) lekeleri ve eğimden akan koyu izler."""
+    n, T = 1024, 4.0
+    u, v = grid(n)
+    seams = 7
+    su = (u * seams) % 1.0
+    ds = np.minimum(su, 1 - su) * T / seams           # fitile uzaklık (m)
+    seam = np.sqrt(np.clip(1 - (ds / 0.018) ** 2, 0, 1))
+    bay = np.floor(u * seams).astype(int)
+    rng = np.random.default_rng(7)
+    offs = rng.uniform(0, 1, seams)
+    lap = ((v + offs[bay]) * 3) % 1.0                 # enine bindirme: her levha ~1,33 m
+    step = np.clip(lap / 0.01, 0, 1) * 0.12 + (1 - lap) * 0.04
+    sheet = hash01(bay * 10 + np.floor((v + offs[bay]) * 3).astype(int) % 3, 31)
+    ox = np.clip((fbm(u, v, 6, 4, 33) - 0.55) * 3, 0, 1)
+    drip = np.clip((fbm(u, v, 3, 3, 34, aniso=(14, 1)) - 0.5) * 3, 0, 1)
+    h = 0.4 + 0.5 * seam + step + 0.03 * fbm(u, v, 64, 3, 35)
+    rgb = np.array([0.5, 0.52, 0.53]) * (0.92 + 0.12 * sheet)[..., None]
+    rgb = lerp(rgb, np.array([0.7, 0.71, 0.69]), ox * 0.55)
+    rgb = lerp(rgb, np.array([0.33, 0.34, 0.35]), drip * 0.35)
+    rgb = rgb * (0.96 + 0.06 * seam)[..., None]
+    ao = np.clip(0.7 + 0.3 * np.clip(ds / 0.05, 0, 1), 0, 1)
+    smooth = np.clip(0.42 - 0.18 * ox + 0.05 * seam, 0.15, 0.6)
+    save("UC_Kursun", rgb)
+    save("UC_Kursun_Normal", normal_from_height(h, 1.6))
+    save_mask("UC_Kursun_Mask", ao, smooth, metal=0.25)
+
+
+def surf_uc_doseme():
+    """Avlu döşemesi (4 m döşeme, 1024 px): 35-60 cm'lik sıralarda 0,4-1,1 m'lik aşınmış kalker plakalar, toprak
+    dolmuş derzler, plaka plaka ton farkı, yer yer çatlak ve ıslak/kirli lekeler."""
+    n, T = 1024, 4.0
+    u, v = grid(n)
+    rng = np.random.default_rng(55)
+    hs = rng.uniform(0.35, 0.6, 9)
+    hs = hs[: np.searchsorted(np.cumsum(hs), T) + 1]
+    ev = np.concatenate([[0], np.cumsum(hs / hs.sum())])
+    nrow = len(hs)
+    row = np.clip(np.searchsorted(ev, v, side="right") - 1, 0, nrow - 1)
+    dv = np.minimum(v - ev[row], ev[row + 1] - v) * T
+    du = np.zeros_like(u)
+    bid = np.zeros(u.shape, int)
+    for r in range(nrow):
+        lens = []
+        while sum(lens) < T - 0.4:
+            lens.append(rng.uniform(0.4, 1.1))
+        lens = np.array(lens) / sum(lens)
+        e = np.concatenate([[0], np.cumsum(lens)]) + rng.uniform(0, 1)
+        m = row == r
+        uu = (u[m] - e[0]) % 1.0 + e[0]
+        k = np.clip(np.searchsorted(e, uu, side="right") - 1, 0, len(lens) - 1)
+        du[m] = np.minimum(uu - e[k], e[k + 1] - uu) * T
+        bid[m] = r * 40 + k
+    d = np.minimum(du, dv)
+    t1, t2 = hash01(bid, 61), hash01(bid, 62)
+    en = fbm(u, v, 48, 3, 63)
+    joint = d < 0.006 + 0.004 * en
+    bevel = np.clip((d - 0.004) / 0.02, 0, 1)
+    crack = np.clip(1 - np.abs(fbm(u, v, 5, 4, 64) - 0.5) * 60, 0, 1) * (t2 > 0.7)
+    wear = fbm(u, v, 8, 4, 65)
+    h = 0.3 + 0.6 * bevel + 0.06 * (wear - 0.5) - 0.2 * crack
+    h = np.where(joint, 0.05, h)
+    rgb = np.array([0.66, 0.62, 0.55]) * (0.86 + 0.2 * t1)[..., None] * (0.92 + 0.12 * (wear - 0.5))[..., None]
+    rgb = lerp(rgb, np.array([0.45, 0.42, 0.37]), np.clip((fbm(u, v, 4, 4, 66) - 0.6) * 2.5, 0, 1) * 0.4)
+    rgb = rgb * (0.85 + 0.15 * bevel)[..., None] * (1 - 0.3 * crack)[..., None]
+    rgb = np.where(joint[..., None], np.array([0.3, 0.27, 0.22]), rgb)
+    ao = np.clip(0.45 + 0.55 * bevel, 0, 1) * (1 - 0.3 * crack)
+    smooth = np.clip(0.22 + 0.12 * (wear - 0.5) + 0.06 * t2, 0.08, 0.45)
+    save("UC_Doseme", rgb)
+    save("UC_Doseme_Normal", normal_from_height(h, 2.0))
+    save_mask("UC_Doseme_Mask", ao, smooth)
+
+
 def turkish_flag():
     """Türk bayrağı (Türk Bayrağı Kanunu oranları: G yükseklik, boy 1.5G)."""
     G, W = 400, 600
@@ -654,7 +937,8 @@ if __name__ == "__main__":
     only = sys.argv[2:]
     funcs = (ter_grass, ter_steppe, ter_plowed, ter_stubble, ter_rock, ter_gravel,
              bark_pine, bark_oak, pine_needles, oak_leaves, turkish_flag, grass_green, grass_dry, surf_composite, surf_carbon, surf_paint_wear,
-             surf_plaster, surf_roof_tile, surf_concrete, surf_ashlar, surf_carving)
+             surf_plaster, surf_roof_tile, surf_concrete, surf_ashlar, surf_carving,
+             surf_uc_tas, surf_uc_oyma, surf_uc_oyma2, surf_uc_kursun, surf_uc_doseme)
     for f in funcs:
         if not only or f.__name__ in only:
             f()

@@ -148,13 +148,25 @@ Simülasyon sırasında ekranda:
   - *Divriği (Sivas)* (`divrigi`, 12 km kuzeyde): Çaltı Çayı vadisine inen yamaçta tarihî kent. Tepede kayalık kale
     (yıkık surlar, yuvarlak ve kare burçlar), yamaçta taraça üstünde **Ulu Camii ve Darüşşifası** (1228-29, UNESCO
     Dünya Mirası), çevresinde cumbalı, taş zeminli Divriği evleri ve bahçeler; vadide kavak sıraları ve meyve bahçeleri,
-    kuzeyde demir yüklü kızıl dağlar. Külliye Blender'da yayımlanmış tasvirlere göre kodla kuruldu (ölçüler yaklaşık):
-    32 x 64 m kesme taş gövde, kuzeyde beş sahınlı cami, güneyde kıble duvarına bitişik iki katlı darüşşifa; duvardan
-    yükselen kuzey taç kapısı (derin sivri kemerli niş, mukarnas kavsara, gömme sütunlar, yüksek kabartma madalyonlar,
-    tepede altıgen motif), dokuma gibi oymalı batı kapısı, doğuda Şah Mahfili kapısı, darüşşifanın iç içe iki kemerli
-    ve hilal çerçeveli madalyonlu taç kapısı; damda mihrap önü kubbesinin sekizgen külahı, türbenin altıgen külahı, iki
-    fener; kuzeybatıda payanda üstünde silindir minare. Taş yüzeyler kodla üretilen kesme taş (sarımsı kalker, harç
-    derzi, aşınmış kenar) ve Selçuklu oyması (sekiz kollu yıldız geçmesi, rozet) dokularıyla kaplı.
+    kuzeyde demir yüklü kızıl dağlar. Külliye Blender'da, yapının yayımlanmış fotoğraflarına (kaleden kuşbakışı, batı
+    cephesi, kapılar, minare) bakılarak kodla kuruldu (ölçüler yaklaşık):
+    - 32 x 64 m kesme taş gövde: kuzeyde 40 m'lik cami, güneyde kıble duvarına dayanan iki katlı darüşşifa; sağır
+      duvarlarda az ve küçük, demir parmaklıklı pencereler, yağmur iniş boruları.
+    - Örtü: alçak eğimli kurşun kaplı kırma çatılar ve ahşap saçaklar, iki ışıklık feneri; mihrap önü kubbesinin ve
+      türbenin kare kaideden "Türk üçgenleri"yle sekizgene geçen kesme taş külahları.
+    - Kuzey taç kapısı: duvardan yükselen, kendi saçaklı örtüsü olan anıtsal kapı; derin sivri kemerli niş, ızgaralı
+      kapı ve üstünde altıgen yıldız, çıkıntılı mukarnaslı saçak, sivri kemer ağızlı hücrelerden mukarnas kavsara,
+      başlıklı sütunlar, Divriği'ye özgü yüksek kabartma bitkisel kitleler, madalyonlar, kitabe.
+    - Pahlı, dokuma gibi oymalı batı kapısı ve iki yanında basamaklı taş sekiler; darüşşifanın üç kademeli iç içe
+      sivri kemerli kapısı (kapı, üstünde pencere, çıkıntılı başlıklar); doğuda Şah kapısı.
+    - Kuzeybatı köşesinde yuvarlak payanda (kurşun külahlı) ve arkasından yükselen kare kürsülü silindir minare
+      (kademeli şerefe, taş korkuluk, petek, taş külah). Batıda avlu ve külliyeyi taşıyan taş döşeli taraça.
+    - Yüzeyler: UV0 dünya ölçekli açılır, taş sıraları her yüzde yatay. Kodla üretilen dokular kullanılır: kesme taş
+      (krem, bal, pembemsi ve gri bloklar; derz, kırık kenar, keski izi), iki Selçuklu oyması (sekiz kollu yıldız
+      geçmesi, dokuma gibi altı kollu yıldız ağı; paralaks kapatmalı derinlik), kurşun ve avlu döşemesi.
+    - Yıpranma: bütün külliye ikinci bir UV atlasında açılır. Blender Cycles ile ekran kartında ortam kapatma,
+      konum ve normal pişirilir; zemin nemi, yağmur akıntısı, leke ve toz bunlardan hesaplanır. Sonuç HDRP ayrıntı
+      haritası olarak taşı koyulaştırır (niş içleri, saçak altları, duvar dipleri).
   - *Gökpınar Gölü (Gürün)* (`gokpinar`, 12 km güneyde): bozkır platosunun ortasında yerden kaynayan turkuaz karstik
     göl; kıyıda sığ ve açık turkuaz, ortada 17 m'ye inen koyu mavi huni, dibe kadar berrak (HDRP su yüzeyi: dalgacık
     ve dipte kostik ışık oyunları, beyaz kalker dibi). Gölden çıkan dere boyunca kavak ve söğütler, alabalık
@@ -173,6 +185,10 @@ Simülasyon sırasında ekranda:
   ![Kızılırmak](gorseller/68_kizilirmak.jpg)
 
   ![Divriği Ulu Camii](gorseller/72_divrigi_ulu_cami.jpg)
+
+  ![Ulu Camii kuzey taç kapısı](gorseller/85_ulu_cami_kuzey_kapisi.jpg)
+
+  ![Darüşşifa kapısı](gorseller/86_darussifa_kapisi.jpg)
 
   ![Gökpınar Gölü](gorseller/75_gokpinar_golu.jpg)
 
@@ -653,9 +669,9 @@ Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly H
 | `blender/gcs.py` | Yer kontrol istasyonu: konteyner, kafes direk, takip anteni, jeneratör, kum torbaları |
 | `blender/village.py` | Orta Anadolu köyü: kiremit kırma çatılı sıvalı evler (güneş enerjili su ısıtıcılı), revaklı kubbeli minareli cami, ahşap elektrik direği |
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
-| `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı |
+| `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı; Ulu Camii için kesme taş, iki Selçuklu oyması (yükseklik haritalı), kurşun çatı, avlu döşemesi (renk + normal + HDRP maske) |
 | `tools/fetch_assets.py` | Poly Haven'dan (CC0) 2K fotoğraf dokuları: havadan çimen, kuru ot (bozkır), kuru toprak (anız), sürülmüş tarla, havadan kaya, çakıl, meşe ve çam kabuğu, taranmış kaya; karlı bölge için taze kar, havadan kar ve tekerlek izli kar; Kızılırmak için kızıl toprak, taşlı kızıl toprak ve nehir çakılı. MD5 ile doğrular, HDRP maske haritasını üretir; `C:\SuruIHA\assets\polyhaven` altına iner, lisans ve yazarlar `manifest.json`'da |
-| `blender/divrigi.py` | Divriği Ulu Camii ve Darüşşifası (taç kapılar, mukarnas, madalyonlar, külahlar, fenerler, minare), kale burçları ve sur parçası, dört Divriği evi (taş zemin kat, ahşap karkaslı üst kat, konsollu cumba) |
+| `blender/divrigi.py` | Divriği Ulu Camii ve Darüşşifası (taç kapılar, mukarnas, kabartmalar, kırma kurşun çatılar, taş külahlar, fenerler, payandalı minare, taraça; dünya ölçekli UV, görünmeyen yüz ayıklama, atlas ve Cycles ile yıpranma pişirme), kale burçları ve sur parçası, dört Divriği evi (taş zemin kat, ahşap karkaslı üst kat, konsollu cumba) |
 | `blender/kiyi.py` | Deniz feneri ve bekçi evi, iki balıkçı teknesi (kesitlerden örülen gövde), üç kıyı evi, ahşap kameriye ve göl iskelesi |
 | `tools/make_portable.py` | Taşınabilir paket: uygulamanın yanına `sim` klasörü (bu bilgisayardaki Python'un yalın kopyası, numpy ve scipy, simülasyon kodu ve arazi haritaları); paketteki Python'la simülasyonu çalıştırıp dener. `full_build.ps1` her derlemede çalıştırır |
 | `tools/make_sounds.py` | Seslerin sentezi (indirme yok): dört pervaneli İHA uğultusu (kanat geçiş frekansı ve harmonikleri, pervaneler arası vuru, devir düzeltmeleri, kanatlardan kopan türbülans), ova ve karlı dağ rüzgârı (esintiyle parlaklaşan gürültü), ırmak (su hışırtısı ve kabarcık çağıltısı), Akdeniz'de kıyıya vuran dalga (yavaş yükselen uğultu, köpüklü çekilme), arayüz tonları. Döngüler dikişsizdir; `C:\SuruIHA\audio` altına yazar, `full_build.ps1` her derlemede çalıştırır |

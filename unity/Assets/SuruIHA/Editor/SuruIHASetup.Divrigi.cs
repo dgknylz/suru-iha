@@ -13,6 +13,11 @@ namespace SuruIHA.EditorTools
         static Vector3 DivrigiOrigin => SwarmRegions.DivrigiOffset;
         static readonly Vector2 KaleXZ = new Vector2(170f, 250f);       // kale tepesi
         static readonly Vector2 UluCamiXZ = new Vector2(-110f, 450f);   // külliyenin merkezi (kuzey taç kapısı +z'ye bakar)
+        // külliyeyi taşıyan taş döşeli taraça (batıda avlu): merkezi ve yarı boyutları (modelle aynı)
+        static readonly Vector2 UluCamiPlaza = UluCamiXZ + new Vector2(-4.5f, 2f);
+        static readonly Vector2 UluCamiPlazaHalf = new Vector2(27f, 40f);
+        static bool NearUluCami(float x, float z, float margin) =>
+            Mathf.Abs(x - UluCamiPlaza.x) < UluCamiPlazaHalf.x + margin && Mathf.Abs(z - UluCamiPlaza.y) < UluCamiPlazaHalf.y + margin;
 
         // Çaltı Çayı: batıdan doğuya, vadinin ortasından
         static float CaltiZ(float x) => 900f + 45f * Mathf.Sin(x * 0.0042f + 1f) + 18f * Mathf.Sin(x * 0.013f + 0.3f);
@@ -42,9 +47,15 @@ namespace SuruIHA.EditorTools
             // Kale tepesi: dik yamaçlı, kayalık
             float dk = (new Vector2(x, z) - KaleXZ).magnitude;
             h += 95f * Mathf.Exp(-Mathf.Pow(dk / 135f, 2.4f)) * (0.92f + 0.16f * Fbm(x * 0.02f, z * 0.02f, 3));
+            // Hafif engebe: kent, külliye, üs ve karıştırıcı dışında
+            float rough = Mathf.Clamp01((new Vector2(x, z).magnitude - 160f) / 120f) * Mathf.Clamp01(((new Vector2(x, z) - JammerXZ).magnitude - 50f) / 60f)
+                        * (InTown(x, z) ? 0f : 1f) * (NearUluCami(x, z, 40f) ? 0f : 1f);
+            // döndürülmüş ve bükülmüş koordinat: Perlin gürültüsünün kafes noktalarındaki izi düzenli ızgara gibi görünmesin
+            float wx = x * 0.8f - z * 0.6f + 40f * Fbm(x * 0.004f + 7f, z * 0.004f, 2), wz = x * 0.6f + z * 0.8f + 40f * Fbm(z * 0.004f, x * 0.004f - 3f, 2);
+            h += rough * 1.3f * (Fbm(wx * 0.0123f + 3.37f, wz * 0.0123f - 8.13f, 3) - 0.5f);   // alçak ve geniş: uzakta gölge haritasıyla ızgara yapmasın
             // Külliyenin taraçası: yamaca oyulmuş düz alan
             float t0 = DivrigiSlope(UluCamiXZ.x, UluCamiXZ.y);
-            h = Terrace(x, z, UluCamiXZ, new Vector2(25f, 40f), 0f, 22f, h, t0);
+            h = Terrace(x, z, UluCamiPlaza, UluCamiPlazaHalf + new Vector2(1.5f, 1.5f), 0f, 22f, h, t0);
             return Mathf.Clamp(h, 1f, TerrainHeight - 5f);
         }
 
@@ -60,17 +71,18 @@ namespace SuruIHA.EditorTools
         // Katmanlar: 0 çayır, 1 bozkır, 2 bahçe/tarla, 3 anız, 4 kızıl (demirli) toprak, 5 kaya, 6 sokak ve yol
         static TerrainLayer[] DivrigiLayers() => new[]
         {
-            Layer("DCayir", "Ter_Cimen", new Color(0.29f, 0.36f, 0.16f), new Color(0.2f, 0.27f, 0.1f), 6f, 0.05f, 41, "aerial_grass_rock", 15f),
-            Layer("DBozkir", "Ter_Bozkir", new Color(0.55f, 0.5f, 0.31f), new Color(0.4f, 0.36f, 0.21f), 7f, 0.04f, 42, "withered_grass", 7f,
-                  new Color(0.78f, 0.72f, 0.6f)),
+            Layer("DCayir", "Ter_Cimen", new Color(0.29f, 0.36f, 0.16f), new Color(0.2f, 0.27f, 0.1f), 6f, 0.05f, 41, "aerial_grass_rock", 19f, Color.white, 0.3f),
+            Layer("DBozkir", "Ter_Bozkir", new Color(0.55f, 0.5f, 0.31f), new Color(0.4f, 0.36f, 0.21f), 7f, 0.04f, 42, "aerial_grass_rock", 37f,
+                  new Color(0.9f, 0.83f, 0.62f), 0.42f),          // taban: iri lekeler 37 m'de bir tekrar eder, karşıtlığı azalt (uzaktan ızgara seçilmesin)
             Layer("DBahce", "Ter_Tarla", new Color(0.42f, 0.34f, 0.24f), new Color(0.3f, 0.24f, 0.17f), 9f, 0.06f, 43, "farm_soil", 5f),
             Layer("DAniz", "Ter_Aniz", new Color(0.7f, 0.6f, 0.4f), new Color(0.55f, 0.46f, 0.3f), 7f, 0.05f, 44, "withered_grass", 4f,
-                  new Color(1f, 0.88f, 0.62f)),
+                  new Color(0.94f, 0.84f, 0.62f)),
             Layer("DKizil", "Ter_Tarla", new Color(0.55f, 0.27f, 0.17f), new Color(0.4f, 0.2f, 0.12f), 8f, 0.05f, 45, "red_laterite_soil_stones", 7f,
                   new Color(0.95f, 0.85f, 0.8f)),
             Layer("DKaya", "Ter_Kaya", new Color(0.5f, 0.45f, 0.4f), new Color(0.4f, 0.36f, 0.3f), 20f, 0.1f, 46, "aerial_rocks_02", 30f,
                   new Color(0.95f, 0.85f, 0.75f)),
-            Layer("DYol", "Ter_Cakil", new Color(0.55f, 0.5f, 0.42f), new Color(0.4f, 0.36f, 0.3f), 5f, 0.08f, 47, "dirt_aerial_02", 5f),
+            Layer("DYol", "Ter_Cakil", new Color(0.55f, 0.5f, 0.42f), new Color(0.4f, 0.36f, 0.3f), 5f, 0.08f, 47, "gravelly_sand", 4f,
+                  new Color(0.92f, 0.9f, 0.86f)),
         };
 
         static List<Vector2[]> DivrigiRoads()
@@ -118,13 +130,25 @@ namespace SuruIHA.EditorTools
                 if (InTown(x, z) && slope < 14f)
                 {
                     float g = Fbm(x * 0.02f + 7f, z * 0.02f, 2);
-                    w[0] += g > 0.55f ? 1.2f : 0f;
-                    w[2] += g < 0.38f ? 0.9f : 0f;
+                    w[0] += g > 0.45f ? 1.4f : 0.3f;
+                    w[2] += g < 0.33f ? 0.9f : 0f;
                 }
+                // külliyenin çevresi: çimenli şevler (fotoğraflardaki gibi taraçanın altı yeşil)
+                if (NearUluCami(x, z, 45f))
+                    w[0] += 1.6f * Mathf.Clamp01(1f - (Mathf.Max(Mathf.Abs(x - UluCamiPlaza.x) - UluCamiPlazaHalf.x,
+                                                                 Mathf.Abs(z - UluCamiPlaza.y) - UluCamiPlazaHalf.y)) / 45f);
                 // kızıl demirli toprak: dağ yamaçlarında; kaya: dik yerler ve kale tepesi
-                float red = Mathf.Clamp01((slope - 12f) / 12f) * (dr > 90f || Mathf.Abs(x) > 700f || z < -200f ? 1f : 0.35f)
+                float red = Mathf.Clamp01((slope - 9f) / 10f) * (dr > 90f || Mathf.Abs(x) > 700f || z < -200f ? 1f : 0.35f)
                           + Mathf.Clamp01((Fbm(x * 0.005f - 11f, z * 0.005f + 4f, 3) - 0.62f) * 3f) * (dr > 120f ? 1f : 0f);
-                float rock = Mathf.Clamp01((slope - 30f) / 8f)
+                // bozkırda kalker çıkıntıları ve yer yer koyu ot lekeleri (düzlük uzaktan kum gibi görünmesin)
+                if (!InTown(x, z) && !NearUluCami(x, z, 60f))
+                {
+                    w[0] += Mathf.Clamp01((Fbm(x * 0.006f + 5f, z * 0.006f - 7f, 3) - 0.5f) * 2.5f) * 0.8f;
+                    w[2] += Mathf.Clamp01((Fbm(x * 0.009f - 3f, z * 0.009f + 1f, 3) - 0.6f) * 3f) * 0.4f;   // çıplak toprak
+                    w[3] += Mathf.Clamp01((Fbm(x * 0.011f + 13f, z * 0.011f - 6f, 3) - 0.52f) * 2.5f) * 0.6f; // sararmış kuru ot (doku tekrarını da kırar)
+                }
+                float outcrop = InTown(x, z) ? 0f : Mathf.Clamp01((Fbm(x * 0.014f + 9f, z * 0.014f + 3f, 3) - 0.64f) * 4f) * 0.75f;
+                float rock = Mathf.Clamp01((slope - 24f) / 10f) * 0.9f + outcrop
                            + Mathf.Clamp01(1f - ((new Vector2(x, z) - KaleXZ).magnitude - 70f) / 40f) * Mathf.Clamp01((slope - 14f) / 10f);
                 red = Mathf.Clamp01(red);
                 rock = Mathf.Clamp01(rock);
@@ -134,7 +158,8 @@ namespace SuruIHA.EditorTools
                 // yollar, sokaklar, külliyenin taş meydanı
                 float rd = RoadDistance(roads, new Vector2(x, z));
                 float road = Mathf.Clamp01(1f - (rd - (InTown(x, z) ? 2.5f : 3f)) / 1.8f);
-                float plaza = Mathf.Clamp01(1f - Mathf.Max(Mathf.Abs(x - UluCamiXZ.x) - 28f, Mathf.Abs(z - UluCamiXZ.y) - 44f) / 5f);
+                float plaza = Mathf.Clamp01(-Mathf.Max(Mathf.Abs(x - UluCamiPlaza.x) - UluCamiPlazaHalf.x,
+                                                       Mathf.Abs(z - UluCamiPlaza.y) - UluCamiPlazaHalf.y) / 2f);   // yalnız taraçanın altı
                 float pad = Mathf.Clamp01(1f - ((new Vector2(x, z) - new Vector2(-30f, -4f)).magnitude - 16f) / 4f)
                           + Mathf.Clamp01(1f - ((new Vector2(x, z) - JammerXZ).magnitude - 12f) / 4f);
                 float gr = Mathf.Clamp01(road + plaza + pad);
@@ -142,7 +167,7 @@ namespace SuruIHA.EditorTools
                 w[6] += gr;
             }
             bool Free(float x, float z) => RoadDistance(roads, new Vector2(x, z)) > 6f && new Vector2(x, z).magnitude > 90f
-                                           && (Mathf.Abs(x - UluCamiXZ.x) > 32f || Mathf.Abs(z - UluCamiXZ.y) > 48f)
+                                           && !NearUluCami(x, z, 7f)
                                            && (new Vector2(x, z) - JammerXZ).magnitude > 30f;
             void Plant(Planter pl, TerrainData td)
             {
@@ -170,12 +195,18 @@ namespace SuruIHA.EditorTools
                         else if (Fbm(x * 0.01f, z * 0.01f + 4f, 2) > 0.58f && pl.R() < 0.6f)
                             pl.Oak(Mathf.Round(x / 8f) * 8f, Mathf.Round(z / 8f) * 8f, 0.55f + 0.15f * pl.R(), 0.5f + 0.12f * pl.R());
                     }
-                    else if (InTown(x, z) && sl < 16f && pl.R() < 0.3f)
-                        pl.Oak(x, z, 0.65f + 0.3f * pl.R(), 0.6f + 0.3f * pl.R());          // bahçelerde ceviz ve dut
-                    else if (sl < 34f && pl.R() < 0.08f)
+                    else if (InTown(x, z) && sl < 16f && pl.R() < 0.34f)
                     {
-                        if (pl.R() < 0.7f) pl.Shrub(x, z, 0.7f + 0.5f * pl.R());
-                        else pl.Rock(x, z, 0.6f + pl.R());
+                        if (pl.R() < 0.35f) pl.Poplar(x, z, 0.8f + 0.35f * pl.R());          // bahçe kenarlarında kavak
+                        else pl.Oak(x, z, 0.75f + 0.35f * pl.R(), 0.7f + 0.35f * pl.R()); // bahçelerde ceviz ve dut
+                    }
+                    else if (sl < 34f && pl.R() < 0.16f)
+                    {
+                        // çalılar kümelenir; kalker çıkıntılarında kaya
+                        float clump = Fbm(x * 0.02f + 1f, z * 0.02f - 2f, 2);
+                        float crop = Fbm(x * 0.014f + 9f, z * 0.014f + 3f, 3);
+                        if (crop > 0.62f && pl.R() < 0.7f) pl.Rock(x, z, 0.7f + 1.4f * pl.R());
+                        else if (clump > 0.5f || pl.R() < 0.25f) pl.Shrub(x, z, 0.6f + 0.6f * pl.R());
                     }
                 }
                 // kale tepesinde kaya
@@ -212,25 +243,26 @@ namespace SuruIHA.EditorTools
         {
             var town = new GameObject("DivrigiKenti").transform;
             town.SetParent(root, false);
-            var cami = PlaceOn(p, "Yapi_UluCami", town, t, DivrigiOrigin + new Vector3(UluCamiXZ.x, 0f, UluCamiXZ.y), 0f);
+            // taraça zeminden 25 cm yüksekte: döşeme araziyle çakışmaz, kenarda istinat duvarı görünür
+            var cami = PlaceOn(p, "Yapi_UluCami", town, t, DivrigiOrigin + new Vector3(UluCamiXZ.x, 0f, UluCamiXZ.y), 0f, -0.25f);
             if (cami != null) cami.name = "UluCamiVeDarussifa";
             var rng = new System.Random(1229);
             float R() => (float)rng.NextDouble();
             var placed = new List<Vector2>();
             int n = 0;
-            for (int k = 0; k < 4000 && n < 58; k++)
+            for (int k = 0; k < 12000 && n < 150; k++)
             {
                 var c = new Vector2(Mathf.Lerp(-460f, 370f, R()), Mathf.Lerp(330f, 800f, R()));
                 if ((c - KaleXZ).magnitude < 150f || RoadDistance(roads, c) < 9f) continue;
-                if (Mathf.Abs(c.x - UluCamiXZ.x) < 38f && Mathf.Abs(c.y - UluCamiXZ.y) < 54f) continue;
+                if (NearUluCami(c.x, c.y, 14f)) continue;
                 if (c.y > CaltiZ(c.x) - 70f) continue;
                 if (t.terrainData.GetSteepness((c.x) / TerrainSize + 0.5f, c.y / TerrainSize + 0.5f) > 15f) continue;
                 bool near = false;
-                foreach (var q in placed) if ((q - c).sqrMagnitude < 17f * 17f) { near = true; break; }
+                foreach (var q in placed) if ((q - c).sqrMagnitude < 14.5f * 14.5f) { near = true; break; }
                 if (near) continue;
                 // evler kümelenir: kentin ortasında sık, kenarlarda seyrek
-                float dense = 1f - Mathf.Clamp01(((c - new Vector2(-60f, 560f)).magnitude - 120f) / 330f);
-                if (R() > 0.25f + 0.75f * dense) continue;
+                float dense = 1f - Mathf.Clamp01(((c - new Vector2(-60f, 540f)).magnitude - 160f) / 300f);
+                if (R() > 0.15f + 0.85f * dense) continue;
                 placed.Add(c);
                 // cumbalı cephe vadiye (kuzeye) bakar
                 PlaceOn(p, $"Yapi_DivrigiEv_{rng.Next(4)}", town, t, DivrigiOrigin + new Vector3(c.x, 0f, c.y), (R() - 0.5f) * 24f, 0.3f);

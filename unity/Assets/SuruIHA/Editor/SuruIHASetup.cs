@@ -176,7 +176,97 @@ namespace SuruIHA.EditorTools
             ["MAT_TekneMavi"] = new MatDef(0.05f, 0.22f, 0.48f, 0.45f),
             ["MAT_AhsapAcik"] = new MatDef(0.48f, 0.34f, 0.2f, 0.7f),
             ["MAT_PanjurMavi"] = new MatDef(0.12f, 0.33f, 0.52f, 0.6f),
+            // Ulu Camii: dokuları UcMap'te (renk tonu dokudan gelir)
+            ["MAT_UC_Tas"] = new MatDef(1f, 1f, 1f, 0.8f),
+            ["MAT_UC_TasMeydan"] = new MatDef(1f, 1f, 1f, 0.8f),
+            ["MAT_UC_Oyma"] = new MatDef(1f, 1f, 1f, 0.82f),
+            ["MAT_UC_Oyma2"] = new MatDef(1f, 1f, 1f, 0.82f),
+            ["MAT_UC_Kursun"] = new MatDef(1f, 1f, 1f, 0.6f),
+            ["MAT_UC_Doseme"] = new MatDef(1f, 1f, 1f, 0.8f),
+            ["MAT_UC_Ahsap"] = new MatDef(0.2f, 0.12f, 0.07f, 0.75f),
+            ["MAT_UC_Demir"] = new MatDef(0.04f, 0.04f, 0.045f, 0.55f, 0.7f),
+            ["MAT_UC_Karanlik"] = new MatDef(0.012f, 0.011f, 0.01f, 0.9f),
+            ["MAT_UC_Kapi"] = new MatDef(0.2f, 0.11f, 0.055f, 0.65f),
         };
+
+        // Ulu Camii yüzeyleri: UV0 Blender'da dünya ölçekli açıldı (1 UV = döşeme ölçüsü, taş sıraları yatay); UV1 bütün
+        // külliyenin tek atlası, Blender'da pişirilen ortam kapatma + yıpranma (HDRP ayrıntı haritası: taşı koyulaştırır).
+        // malzeme -> (doku adı, döşeme [m], POM derinliği [cm], ayrıntı atlası)
+        const string UcAtlas = "Yapi_UluCami_Detay";
+        static readonly Dictionary<string, (string tex, float tile, float pomCm, bool atlas)> UcMap =
+            new Dictionary<string, (string, float, float, bool)>
+            {
+                ["MAT_UC_Tas"] = ("UC_Tas", 8f, 0f, true),
+                ["MAT_UC_Oyma"] = ("UC_Oyma", 2f, 3.5f, true),
+                ["MAT_UC_Oyma2"] = ("UC_Oyma2", 2f, 2.8f, true),
+                ["MAT_UC_Kursun"] = ("UC_Kursun", 4f, 0f, false),
+                ["MAT_UC_Doseme"] = ("UC_Doseme", 4f, 0f, false),
+                ["MAT_UC_TasMeydan"] = ("UC_Tas", 8f, 0f, false),
+            };
+
+        static Texture2D LoadLinear(string name, int maxSize, bool normal = false, bool srgb = false)
+        {
+            string p = $"{GenTex}/{name}.png";
+            var ti = AssetImporter.GetAtPath(p) as TextureImporter;
+            if (ti == null) return null;
+            bool dirty = false;
+            if (normal && ti.textureType != TextureImporterType.NormalMap) { ti.textureType = TextureImporterType.NormalMap; dirty = true; }
+            if (!normal && ti.sRGBTexture != srgb) { ti.sRGBTexture = srgb; dirty = true; }
+            if (ti.maxTextureSize != maxSize) { ti.maxTextureSize = maxSize; dirty = true; }
+            if (ti.anisoLevel != 16) { ti.anisoLevel = 16; dirty = true; }
+            if (ti.textureCompression != TextureImporterCompression.CompressedHQ) { ti.textureCompression = TextureImporterCompression.CompressedHQ; dirty = true; }
+            if (dirty) ti.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(p);
+        }
+
+        static bool ApplyUc(Material m, (string tex, float tile, float pomCm, bool atlas) u)
+        {
+            var albedo = LoadLinear(u.tex, 4096, false, true);
+            if (albedo == null) return false;
+            m.SetColor("_BaseColor", Color.white);
+            m.SetTexture("_BaseColorMap", albedo);
+            m.SetTextureScale("_BaseColorMap", Vector2.one);
+            m.SetFloat("_UVBase", 0f);
+            var normal = LoadLinear(u.tex + "_Normal", 4096, true);
+            if (normal != null) { m.SetTexture("_NormalMap", normal); m.SetFloat("_NormalScale", 1f); }
+            var mask = LoadLinear(u.tex + "_Mask", 4096);
+            if (mask != null)
+            {
+                m.SetTexture("_MaskMap", mask);
+                m.SetFloat("_MetallicRemapMin", 0f); m.SetFloat("_MetallicRemapMax", 1f);
+                m.SetFloat("_SmoothnessRemapMin", 0f); m.SetFloat("_SmoothnessRemapMax", 1f);
+                m.SetFloat("_AORemapMin", 0f); m.SetFloat("_AORemapMax", 1f);
+            }
+            var height = u.pomCm > 0f ? LoadLinear(u.tex + "_Height", 2048) : null;
+            if (height != null)
+            {
+                // Oymalarda paralaks kapatma (POM): oyukların derinliği bakış açısıyla değişir, kabartmalar birbirini örter
+                m.SetTexture("_HeightMap", height);
+                m.SetFloat("_DisplacementMode", 2f);
+                m.SetFloat("_HeightPoMAmplitude", u.pomCm);
+                m.SetFloat("_HeightAmplitude", u.pomCm * 0.01f);
+                m.SetFloat("_HeightCenter", 1f);
+                m.SetFloat("_PPDMinSamples", 6f);
+                m.SetFloat("_PPDMaxSamples", 24f);
+                m.SetFloat("_PPDLodThreshold", 6f);
+                m.SetFloat("_PPDPrimitiveLength", u.tile);
+                m.SetFloat("_PPDPrimitiveWidth", u.tile);
+                m.SetVector("_InvPrimScale", new Vector4(1f / u.tile, 1f / u.tile, 0f, 0f));
+            }
+            var atlas = u.atlas ? LoadLinear(UcAtlas, 4096) : null;
+            if (atlas != null)
+            {
+                m.SetTexture("_DetailMap", atlas);
+                m.SetFloat("_UVDetail", 1f);
+                m.SetVector("_UVDetailsMappingMask", new Vector4(0f, 1f, 0f, 0f));   // GUI'nin yaptığını elle: ayrıntı UV1'den okunur
+                m.SetFloat("_LinkDetailsWithBase", 0f);
+                m.SetTextureScale("_DetailMap", Vector2.one);
+                m.SetFloat("_DetailAlbedoScale", 1f);
+                m.SetFloat("_DetailNormalScale", 0f);
+                m.SetFloat("_DetailSmoothnessScale", 0f);
+            }
+            return true;
+        }
 
         // Malzeme -> (renk dokusu, normal dokusu, alfa kesimli yaprak mı)
         const string GenTex = Root + "/Textures/Gen";
@@ -231,6 +321,7 @@ namespace SuruIHA.EditorTools
                 ["MAT_BarkOak"] = ("bark_brown_02", 0f),
                 ["MAT_Rock"] = ("boulder_01", 0.45f),
                 ["MAT_Stone"] = ("boulder_01", 1.2f),
+                ["MAT_KaleTas"] = ("boulder_01", 0.55f),      // Divriği kalesi ve ev zemin katları: yontulmamış moloz taş
             };
 
         static Texture2D PhotoImport(string path, bool normal, bool srgb)
@@ -349,7 +440,11 @@ namespace SuruIHA.EditorTools
                     m.SetFloat("_EmissiveExposureWeight", 0f);
                     m.SetFloat("_UseEmissiveIntensity", 0f);
                 }
-                if (PhotoMap.TryGetValue(kv.Key, out var ph) && ApplyPhoto(m, ph.id, ph.triplanar))
+                if (UcMap.TryGetValue(kv.Key, out var uc) && ApplyUc(m, uc))
+                {
+                    m.SetFloat("_Metallic", 1f);        // maske haritasının R kanalı belirler
+                }
+                else if (PhotoMap.TryGetValue(kv.Key, out var ph) && ApplyPhoto(m, ph.id, ph.triplanar))
                 {
                     m.enableInstancing = true;
                 }

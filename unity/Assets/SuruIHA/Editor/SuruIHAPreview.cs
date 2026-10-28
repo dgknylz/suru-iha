@@ -90,7 +90,10 @@ namespace SuruIHA.EditorTools
             Shot("16_divrigi_genel", dv0, new Vector2(-330, 930), 120, new Vector2(-20, 400), 20, 55);
             Shot("17_ulu_cami", dv0, new Vector2(-150, 540), 14, new Vector2(-110, 452), 8, 50);
             Shot("17b_ulu_cami_bati", dv0, new Vector2(-185, 430), 10, new Vector2(-126, 440), 8, 55);
-            Shot("17c_divrigi_kale", dv0, new Vector2(-40, 520), 60, new Vector2(170, 250), 20, 50);
+            Shot("17d_kuzey_kapi", dv0, new Vector2(-104, 503), 4.5f, new Vector2(-110, 483), 7f, 50);
+            Shot("17e_ulu_cami_tepeden", dv0, new Vector2(-55, 535), 80, new Vector2(-112, 450), 2, 45);
+            Shot("17f_darussifa_kapi", dv0, new Vector2(-152, 423), 3.5f, new Vector2(-126, 430), 6.5f, 55);
+            Shot("17c_divrigi_kale", dv0, new Vector2(40, -60), 75, new Vector2(170, 250), 25, 50);   // güneyden: kale güneşte, arkasında kent
             var gk = SwarmRegions.GokpinarOffset;
             Region("gokpinar");
             Shot("18_gokpinar_golu", gk, new Vector2(-60, 330), 26, new Vector2(-140, 430), -2, 55);
