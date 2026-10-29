@@ -1,7 +1,8 @@
 # Sürü İHA'larda Otonom Sürü Zekâsı ile Karar Alma ve Elektronik Harp Direnci
 
 TÜBİTAK 2204-A projesi. Bir İHA sürüsünün elektronik harp (haberleşme karıştırma, GPS karıştırma,
-sahte mesaj) altında görevlerini nasıl paylaştığını ve ne kadar dayanıklı olduğunu inceleyen
+sahte mesaj), hava savunma radarı, rüzgâr ve sınırlı batarya altında görevlerini nasıl paylaştığını ve ne kadar
+dayanıklı olduğunu inceleyen
 **Python simülasyonu** ve sonuçları gerçekçi şekilde gösteren **Unity HDRP 3D görselleştirmesi**.
 
 ```
@@ -11,6 +12,8 @@ Python (beyin)                         Unity HDRP (göz)
  suru/swarm.py  ── sürü zekâsı       │
  suru/terrain.py ── Unity arazisi ◄──┼─────────────── yükseklik haritası (sahne kurulumunda)
  suru/radio.py  ── SINR, paket kaybı │  UDP 5065 (JSON, 30 kare/s)
+ suru/threat.py ── radar, Dijkstra   │
+ suru/energy.py ── güç, rüzgâr       │
  run_live.py    ── canlı yayın ──────┴──────────────► SwarmReceiver → SwarmVisualizer
  run_experiments.py → results.csv → analyze.py → grafikler + istatistik
 ```
@@ -67,9 +70,9 @@ Kullanım:
    | **Proje** | Bu proje nedir, problem ve soru, öne çıkan üç sonuç |
    | **Nasıl çalışır?** | Sürü zekâsı (uçuş evreleri), CBBA döngüsü, tehdit → savunma eşleşmesi, simülasyon mimarisi |
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
-   | **Bulgular** | Uygulamanın içinde çizilen beş grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme |
-   | **Simülasyon** | 8 senaryo, mimari, algoritma, tek sürü ya da yan yana, bölge (ova, karlı dağlar, Kızılırmak, Divriği, Gökpınar, Akdeniz), hız; **Başlat** |
-   | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı ve GPS aldatıcı koy; İHA ve hedef sayısı, arıza, saldırgan seç; **Başlat** |
+   | **Bulgular** | Uygulamanın içinde çizilen altı grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme, hava savunma ve enerji |
+   | **Simülasyon** | 10 senaryo (karıştırma, arazi, GPS aldatma, saldırgan, **hava savunma radarı**, **lodos ve yarı dolu bataryalar**), mimari, algoritma, tek sürü ya da yan yana, bölge (ova, karlı dağlar, Kızılırmak, Divriği, Gökpınar, Akdeniz), hız; **Başlat** |
+   | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı, GPS aldatıcı ve hava savunma radarı koy; İHA ve hedef sayısı, arıza, saldırgan, rüzgâr ve batarya seç; **Başlat** |
    | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
 
@@ -138,8 +141,9 @@ Simülasyon sırasında ekranda:
   tepeler sinyali her bölgede kendi arazisine göre gölgeler, İHA'lar araziyi izleyerek uçar.
   - *Orta Anadolu ovası* (`ova`): tarlalar, bozkır tepeler, köy; deneylerin yapıldığı harita.
   - *Karlı dağlar* (`kar`, ana araziden 12 km doğuda): karla kaplı geniş bir vadi, yamaçlarda karlı çam ormanları,
-    çevresi 400-500 m yükselen sarp dağlar. Güneş alçalır, kar yağar, pus artar, renkler soğur; çamların iğnelerine
-    kar öbekleri kurulumda eklenir. Vadide parlak, mavimsi buzu gökyüzünü yansıtan donmuş bir göl ve çatıları karla
+    çevresi 400-500 m yükselen sarp dağlar. Güneş alçalır, yoğun kar yağar (rüzgârla savrulur), pus artar, renkler soğur.
+    Dağlar karla örtülüdür: kaya yalnızca kar tutmayan çok sarp yüzlerde görünür, orada da oluklarda kar şeritleri kalır;
+    çamların iğneleri karla örtülüdür, aralarında koyu yeşil kalır. Vadide parlak, mavimsi buzu gökyüzünü yansıtan donmuş bir göl ve çatıları karla
     örtülü bir dağ köyü var; köyün bacalarından ince duman tüter. Isı haritası bembeyaz karın üstünde daha ince çizilir.
   - *Kızılırmak (Sivas)* (`nehir`, 12 km batıda): Sivas platosunda geniş bir vadi; görev alanının ortasından
     kıvrılarak akan kızıl-kahve, alüvyonlu Kızılırmak (akan, parlak su yüzeyi). Kuzey yakada nehre adını veren kızıl
@@ -193,11 +197,40 @@ Simülasyon sırasında ekranda:
   ![Gökpınar Gölü](gorseller/75_gokpinar_golu.jpg)
 
   ![Akdeniz kıyısı](gorseller/77_akdeniz_kiyisi.jpg)
-- **Kendi senaryon:** haritaya tıklayarak en fazla 3 karıştırıcı ve bir GPS aldatıcı konur (aynı yere tekrar
-  tıklayınca kalkar). Haritada karıştırıcının düz arazide bağlantıyı kopardığı ve GPS'i kestiği alan, aldatıcının
+- **Hava savunma radarı** (senaryo "Hava savunma radarı"): görev alanının batısındaki tepede yeri istihbaratla bilinen
+  bir radar, kuzeydoğuda 80. saniyede açılan bir pusu radarı; ikisinin yanında dört tüplü füze rampası. Radarın anteni
+  döner, kehribar tarama huzmesi görünür; araziye serilen kehribar örtü radarın İHA'yı bir taramada görme olasılığıdır
+  (parlak çizgi: yarı yarıya), tepelerin gölgesi örtüde boşluk olarak görünür. Radar bir İHA'yı izlemeye başlayınca
+  aralarına kızıl bir kilit çizgisi çekilir, iz 4 saniye korunursa füze kalkar (beyaz duman izi); İHA kaçabilirse füze
+  ıskalar, kaçamazsa İHA düşer. Dirençli sürünün planı radarın görmediği yerden kırık çizgilerle geçer; pusu radarı açılınca
+  İHA'ların radar ikaz alıcıları onu duyar, sürü yerini birkaç saniyede bulur (pembe çarpı nişangâh, gerçek radara hata
+  çizgisi). Olay akışı her anı anlatır: "İHA-4: radar kilitlendi!", "Füze ıskaladı", "Sürü pusu radarının yerini buldu".
+
+  ![Hava savunma radarı](gorseller/88_hava_savunma_radari.jpg)
+
+  ![Radar görüş haritası ve dirençli sürünün rotası](gorseller/89_radar_gorus_haritasi.jpg)
+
+  ![Radar ve füze rampası](gorseller/91_radar_ve_fuze_rampasi.jpg)
+
+  ![Yan yana: korumasız sürü radarın şemsiyesine giriyor](gorseller/94_hava_savunma_yan_yana.jpg)
+- **Rüzgâr ve batarya** (senaryo "Lodos ve yarı dolu bataryalar"): 8 m/s lodos esiyor, bataryaların bir kısmı %20-35.
+  Üsteki kırmızı-beyaz rüzgâr tulumu rüzgârın yönünü ve gücünü gösterir, karlı bölgede kar taneleri rüzgârla savrulur.
+  İHA kamerasındaki kartta bataryanın doluluğu ve çekilen güç (W) yazar; beyaz ışıklı İHA bataryası azaldığı için eve
+  dönüyordur. Görev sonu ekranı düşen İHA sayısını (hava savunma / batarya) da verir.
+
+  ![Lodos ve yarı dolu bataryalar](gorseller/95_lodos_ve_batarya.jpg)
+- **Uçuş tekrarı:** araç çubuğundaki **Tekrar** ya da görev sonu ekranındaki **Tekrar izle** uçuşu baştan oynatır. Alttaki
+  zaman çubuğuna tıklayıp sürükleyerek istenen ana gidilir, oynatma durdurulur, 1×, 3×, 6× ya da 12× hızla izlenir
+  (yeşil çizgi görevlerin bittiği an). Tekrar sırasında canlı simülasyon arkada bekler; **Canlıya dön** kaldığı yere döner.
+  Yan yana uçuşta iki sürü aynı saniyede birlikte oynar. Jüriye "şu an ne oldu?" diye geri sarıp göstermek için.
+
+  ![Uçuş tekrarı](gorseller/93_ucus_tekrari.jpg)
+- **Kendi senaryon:** haritaya tıklayarak en fazla 3 karıştırıcı, bir GPS aldatıcı ve en fazla 2 hava savunma radarı
+  konur (aynı yere tekrar tıklayınca kalkar; radarlar baştan açıktır, yerleri sürüce bilinmez). Haritada karıştırıcının düz arazide bağlantıyı kopardığı ve GPS'i kestiği alan, aldatıcının
   250 m'lik alanı görünür. Yanında karıştırıcı gücü (10/20/30 dBm) ve türü (geniş bant / nokta), aldatma hızı,
-  İHA sayısı (6-12), hedef sayısı, görevde beliren yeni hedef, arızalanan İHA, saldırgan İHA (saf / sinsi), karar
-  mimarisi, görev paylaşımı, tek sürü ya da yan yana ve hız seçilir. Seçimler bilgisayarda hatırlanır; jüri
+  İHA sayısı (6-12), hedef sayısı, görevde beliren yeni hedef, arızalanan İHA, saldırgan İHA (saf / sinsi), rüzgâr ve
+  batarya (sakin / lodos / lodos + yarı dolu bataryalar), karar mimarisi, görev paylaşımı, tek sürü ya da yan yana ve
+  hız seçilir. Seçimler bilgisayarda hatırlanır; jüri
   "şunu deneyin" dediğinde yerinde senaryo kurulup gösterilebilir.
 
   ![Kendi senaryon](gorseller/63_kendi_senaryon.jpg)
@@ -246,6 +279,9 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --jammer 20 --jammers=-150,300;200,500` | Kendi senaryon: karıştırıcıları verilen noktalara koy (`--jammer-band nokta` ile nokta karıştırıcı) |
 | `python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400` | GPS aldatıcıyı verilen noktaya koy |
 | `python run_live.py --drones 8 --tasks 10 --failures 1` | İHA, hedef ve arıza sayısı (`run_compare.py` de kabul eder) |
+| `python run_live.py --jammer off --radar iki` | Hava savunma: yeri bilinen radar + 80. saniyede açılan pusu radarı (`bilinen`, `pusu` tek başına) |
+| `python run_live.py --jammer off --radars=-300,650;500,200` | Kendi senaryon: radarları verilen noktalara koy (baştan açık, yerleri bilinmez) |
+| `python run_live.py --jammer off --wind 8 --battery karisik` | 8 m/s lodos, bataryaların bir kısmı %20-35 (`--wind-from` derece, `--battery dusuk`) |
 | `python run_live.py --region kar` | Karlı dağlar bölgesinde uç (`nehir`: Kızılırmak, `divrigi`: Divriği, `gokpinar`: Gökpınar Gölü, `deniz`: Akdeniz kıyısı; varsayılan `ova`: Orta Anadolu ovası; `run_compare.py` de kabul eder) |
 
 ### Yan yana karşılaştırma (sunum için)
@@ -356,8 +392,11 @@ yeri için tahminidir; beyaz çizgi tahmin ile gerçek karıştırıcı arasınd
    - konum belirsizliğinin zaman maliyetini (beklenen arama süresi) tekliflere katma
    - **güven sistemi**: makullük kontrolü + itibar (sinsi saldırgana karşı, aşağıda)
    - **karıştırıcıyı bulma**, **frekans atlama (FHSS)**, **GPS aldatma tespiti** (aşağıda)
+   - **hava savunmaya karşı:** radar ikaz alıcısı, kerteriz kestirimiyle radarı bulma, radarın görmediği rota, kilit
+     ikazında kaçış, şemsiyenin tam altındaki hedefi bırakma (aşağıda)
+   - **enerji farkında karar:** rüzgâra karşı eve dönüş enerjisini hesaplayıp görev seçme ve zamanında dönme (aşağıda)
 
-   Her mekanizma ayrı bir ayarla kapatılabilir (`ew_jam_map`, `ew_trust`...); ablasyon deneyi bunlarla yapılır.
+   Her mekanizma ayrı bir ayarla kapatılabilir (`ew_jam_map`, `ew_trust`, `ew_radar`, `ew_energy`...); ablasyon deneyi bunlarla yapılır.
 
 ### Elektronik harp (`suru/ew.py`, `suru/radio.py`)
 - **Arazi gölgesi:** Tepeler radyo sinyalini keser. Verici ile alıcı arasındaki görüş hattını en çok
@@ -418,6 +457,43 @@ yeri için tahminidir; beyaz çizgi tahmin ile gerçek karıştırıcı arasınd
 - **Öngörülü çarpışma önleme:** Her İHA çifti için en yakın yaklaşma noktası (CPA) hesaplanır. 5 s
   içinde 10 m'den yakına gelecekler varsa biri yükselir, öbürü alçalır ve yana açılırlar. (Kafa kafaya
   24 m/s yaklaşan iki İHA, 10 m kala fark etse ivme sınırı yüzünden kaçamaz.)
+
+### Hava savunma tehdidi (`suru/threat.py`)
+- **Radar:** X bandı (9,4 GHz), anteni 2 s'de bir tur atan arama radarı. Radar denklemine göre yankı mesafenin 4. kuvvetiyle
+  zayıflar: `SNR = SNR50 · (R50 / R)^4 · 10^(−2L/10)`. `R50` küçük bir İHA'nın taramaların yarısında görüldüğü menzildir
+  (bilinen radar 380 m, seyyar pusu radarı 300 m). `L` arazinin görüş hattını kesmesinden doğan kayıptır (ITU-R P.526 bıçak
+  sırtı kırınımı, X bandında; dalga boyu 3,2 cm olduğundan tepenin arkası neredeyse tam gölge). Yankı iki kez yol aldığı
+  için kayıp ikiyle çarpılır. Tek taramada tespit olasılığı Swerling-1 hedef için `Pd = Pfa^(1/(1+SNR))`, `Pfa = 10⁻⁶`.
+  Doppler süzgeci radara göre 3 m/s'den yavaş yaklaşan ya da uzaklaşan hedefi 4 kat zayıflatır (radara dik uçmak izi koparabilir).
+- **İzleme ve angajman:** son 3 taramanın 2'sinde görülen İHA izlenir. İz 4 s korunursa füze atılır (radar başına 6 füze,
+  iki atış arası 6 s). Füze 180 m/s ile hedefin önünü kestirerek güdülür; radar izi koparsa güdümsüz kalır. Yakınlık tapası
+  8 m'de patlar, düşürme olasılığı 0,85.
+- **Radar ikaz alıcısı (RWR):** huzme İHA'nın üstünden geçince sinyal tek yönlü yol aldığı için radarın kendi menzilinin
+  çok ötesinden (1,5 km) duyulur. İHA geliş yönünü (kerteriz, ±3°) ölçer; radarı imzasından tanır, izlenince "kilit ikazı" verir.
+- **Kerteriz kestirimi:** ölçümler dedikoduyla yayılır. Sürü, ölçülen kerterizlerle aday konumdan görülecek kerterizlerin
+  açı farklarının karelerini en küçük yapan noktayı arar (en çok olabilirlik; kaba ve ince ızgara). Hata Fisher bilgisinden
+  hesaplanır: ölçüm noktaları birbirine yakınsa (kerteriz çizgileri neredeyse paralel) uzaklık belirsiz kalır, kestirim
+  reddedilir. Pusu radarı açıldıktan ortalama 4 s sonra ~33 m hatayla bulunur.
+- **Tehdit farkında rota:** bilinen radarların görüşü 20 m'lik ızgaraya çıkarılır (alçak uçuş yüksekliğinde Pd). Izgara
+  bir çizgedir; kenar maliyeti `uzunluk · (1 + 40 · Pd)`. Hedeften geriye Dijkstra en kısa yol ağacı kurulur (aynı hedefe
+  giden İHA'lar paylaşır), İHA rotasını ağaçtan okur ve 40 m ileriyi izler (saf takip). İntikal ve dönüş rotası ile toplanma
+  noktası da radarın görmediği yerden seçilir. Tehdit bölgesinde İHA'lar 25 m'ye alçalır.
+- **Kilit ikazında kaçış:** radarın yeri biliniyorsa radarın görmediği en yakın hücreye, bilinmiyorsa radara dik yöne kaçar
+  ve alçalır; o hedef sürüce "riskli" ilan edilir.
+- **Risk/ödül kararı:** hedef, radarın görmediği yerden en fazla 50 m'lik kısa bir dalışla ulaşılamıyorsa alınmaz. Radar orada
+  İHA'yı izleyip füze atmaya yetecek kadar uzun görür: İHA'yı kaybetme riski hedefin değerinden büyüktür.
+
+### Enerji ve rüzgâr (`suru/energy.py`)
+- **Güç modeli** (Zeng, Xu, Zhang 2019, IEEE Trans. Wireless Commun.): havaya göre V hızında
+  `P(V) = P0(1 + 3V²/U²) + Pi·(√(1 + V⁴/4v0⁴) − V²/2v0²)^½ + ½·d0·ρ·s·A·V³` (kanat profili, taşıma, gövde sürüklemesi),
+  tırmanmada ayrıca ağırlık × dikey hız. Askıda 168 W, ~10 m/s'de en düşük (~125 W). Batarya 4S 3000 mAh (44,4 Wh).
+- **Rüzgâr:** ortalama rüzgâr + esinti (Ornstein-Uhlenbeck süreci, zaman sabiti 8 s). İHA'nın hız sınırı havaya göredir:
+  karşı rüzgârda yere göre yavaşlar (8 m/s lodosta eve dönüş ~4 m/s), güç havaya göre hızla hesaplanır. Düzen uçuşunun
+  sanal lideri rüzgâra karşı tutturulabilecek hızı aşmaz.
+- **Standart emniyet (her mimaride):** batarya %10'a inince eve dön. Mesafeyi ve rüzgârı bilmez.
+- **Enerji farkında karar (dirençli):** İHA her hedef için "gidip rüzgâra karşı eve dönebilir miyim?" diye bakar
+  (%20 pay, %6 iniş yedeği); yetmeyen hedefi almaz, açık hedeflerin hiçbirine yetmiyorsa eve döner, bulunduğu yerden dönüş
+  enerjisi bataryaya yaklaşınca görevini bırakıp döner. Düzene girmeden doğrudan üsse uçar, iner.
 
 ### Otonom karar alma (`suru/decision.py`)
 - **Görev değeri ve aciliyet:** Her hedefin bir önceliği (1-3) vardır, değeri beklendikçe azalır:
@@ -481,7 +557,7 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-37 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+43 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
@@ -490,6 +566,10 @@ Elektronik harp için: bıçak sırtı kırınımı (tepenin arkasında > 20 dB 
 karıştırıcının GPS'e dokunmaması ve frekans atlamanın paket kaybını azaltması, hareketli karıştırıcının
 yol alması, ısı haritasının İHA'ların ölçtüğü karıştırmayla birebir aynı olması, uçuş raporunun tutarlılığı, kendi senaryonun karıştırıcı ve aldatıcıyı doğru yere koyması, karlı bölgenin farklı ve dağlık arazisinde ve Kızılırmak vadisinde (yatak kıyıdan alçak, kuzeyde yar) sürünün görevi bitirip yere sürtmemesi, bir ve iki karıştırıcının 40 m'den iyi bulunması, GPS aldatmanın 20 s içinde tespiti,
 sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
+Hava savunma ve enerji için: radar tespit olasılığının menzille ve arazi gölgesinde düşmesi, radara dik uçmanın
+tespiti zorlaştırması, kerteriz kestiriminin isabeti ve kısa tabanlı ölçümlerin reddedilmesi, rotanın radar görüşünü
+dolanması, radarı bilmeyen sürünün İHA kaybetmesi ve dirençli sürünün pusu radarını bulup kayıpsız kalması, güç eğrisi
+ve karşı rüzgârın dönüş enerjisini katlaması, sabit %10 kuralında bataryası biten İHA olması ve enerji farkında sürüde olmaması.
 
 ---
 
@@ -520,6 +600,9 @@ sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 .venv\Scripts\python.exe run_experiments.py --scaling
 ```
 ```bash
+.venv\Scripts\python.exe run_experiments.py --threats
+```
+```bash
 .venv\Scripts\python.exe analyze.py
 ```
 
@@ -532,6 +615,7 @@ sinsi saldırganların dışlanması ve dürüstlerin dışlanmaması.
 | Ayar (`--tune`) | 4 parametre × 3 değer × 3 senaryo, **ayrı ayar haritaları** (seed 500-519) | 540 |
 | Ablasyon (`--ablation`) | 11 mekanizma tek tek kapalı + tam + korumasız × 6 senaryo × 12 | 936 |
 | Ölçekleme (`--scaling`) | 5 / 10 / 20 İHA × 3 strateji × 3 koşul × 20 | 540 |
+| Yeni tehditler (`--threats`) | hava savunma (bilinen + pusu radarı), lodos 8 m/s + karışık batarya × 3 strateji × 30 | 180 |
 | Yapay zekâ (`tools/train_ai.py`) | eğitim / doğrulama / test haritaları ayrı, ~20 000 görev denemesi | 570 uçuş |
 
 - Aynı tohum (seed) = aynı görev haritası olduğu için stratejiler birebir aynı koşulda
@@ -633,6 +717,26 @@ Elektronik harp senaryoları (her uçuşta 6 yeni hedef, n=30; dirençli diğer 
   bölgesindeki göreve uzman kuralı herkese ceza veriyor. Ağ ise "İHA'nın şu an GPS'i varsa oraya gidip
   başarır" diyor.
 
+### Öne çıkan bulgular: hava savunma ve enerji (n=30, `results/tehdit.csv`)
+
+| Senaryo | Ölçü | Merkezi | Merkeziyetsiz | **Dirençli** |
+|---|---|---|---|---|
+| Hava savunma (bilinen + pusu radarı) | düşürülen İHA (10 İHA'dan) | 5,0 ± 2,0 | 5,0 ± 2,0 | **0,7 ± 0,7** |
+| | görev tamamlama | %100 | %100 | %65,7 ± 11 |
+| Lodos 8 m/s + karışık batarya | bataryası biten İHA | 0,93 ± 0,94 | 1,27 ± 0,91 | **0** |
+| | görev tamamlama | %100 | %100 | %100 |
+
+- Radarı bilmeyen sürüler şemsiyenin altına girip uçuş başına yarısını kaybediyor. Dirençli sürü rotasını radarın görmediği
+  yerden planlayıp pusu radarını açılışından ortalama 4 s sonra (~33 m hata) buluyor ve 0,7 İHA kaybediyor (Wilcoxon
+  p < 0,00001). Bedeli: şemsiyenin tam altındaki hedefleri bilerek bırakıyor (%66). Bu bir risk/ödül kararıdır: o hedefler
+  için İHA kaybetme riski hedefin değerinden büyük. Korumasız sürüler hedeflerin hepsini yapıyor çünkü füze sayısı sınırlı ve
+  kalan İHA'lar görevi bitiriyor; gerçekte sürünün yarısını kaybetmek kabul edilemez.
+- Sabit %10 emniyet kuralı rüzgârı bilmediği için uzakta ve karşı rüzgârda kalan İHA eve varamadan düşüyor (uçuş başına
+  0,9-1,3 İHA). Enerji farkında sürü hiç İHA kaybetmiyor (p < 0,0001); en düşük batarya ortalaması %6,8 (iniş yedeği).
+  Görev puanı biraz düşük (62,6'ya karşı 68-73): düşük bataryalı İHA'lar erken döndüğü için kalanlar daha çok iş yapıyor.
+
+![Bulgular: hava savunma ve enerji](gorseller/99_arayuz_bulgular_tehditler.jpg)
+
 ### Öne çıkan bulgular: bilimsel kanıt (Aşama 4)
 
 - **Ayar ve test ayrımı:** Dirençli stratejinin 4 parametresi ayrı ayar haritalarında tarandı. Hiçbir
@@ -666,6 +770,7 @@ Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly H
 |---|---|
 | `blender/drone.py` | Taktik quadcopter: aerodinamik gövde, katlanır karbon kollar, kanatlı motorlar, bükümlü pervaneler, gimbal kamera, stereo sensörler, GPS, anten, bayrak ve yazı |
 | `blender/jammer.py` | 6x6 elektronik harp aracı, ekipman kabini, teleskopik direk, panel ve LPDA antenler |
+| `blender/radar.py` | Hava savunma sistemi: römork üstünde dönen düzlemsel dizi anten (IFF dizisi, yan lob antenleri, arka kafes), açılmış dengeleme ayakları, jeneratör ve kabin; yanında dört tüplü füze rampası. "Anten" nesnesini Unity döndürür |
 | `blender/gcs.py` | Yer kontrol istasyonu: konteyner, kafes direk, takip anteni, jeneratör, kum torbaları |
 | `blender/village.py` | Orta Anadolu köyü: kiremit kırma çatılı sıvalı evler (güneş enerjili su ısıtıcılı), revaklı kubbeli minareli cami, ahşap elektrik direği |
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
@@ -708,6 +813,10 @@ powershell -File tools/sync_unity.ps1
 ```
 Sonra Unity'de menüden **SürüİHA → Sahneyi Kur**, uygulama için **SürüİHA → Windows Uygulaması Derle**.
 
+C# betiklerinde derleme hatası var mı, Unity'yi açmadan (~30 saniye; uzun derlemeden önce):
+```bash
+bash tools/cs_check.sh
+```
 Hepsini tek komutla (eşitle → sahne → önizleme → uygulama → uçtan uca test):
 ```bash
 powershell -File tools/full_build.ps1
@@ -740,6 +849,14 @@ ve görev durumunu yazar.
 - GPS aldatma modeli basitleştirilmiştir: aldatıcının yarıçapındaki her alıcı aynı yöne sürüklenir;
   gerçek bir aldatıcının sinyal gücü, alıcının ele geçirilme anı ve uydu geometrisi modellenmemiştir.
 - Hareketli karıştırıcının takibi sabit hız varsaymayan basit bir pencereyle yapılır; ortalama hata ~136 m.
+- Radar modeli tek taramalık tespit + M/N izleme yaklaşımıdır: yer yankısı (clutter), çok yollu yayılım, mikro-Doppler,
+  elektronik karşı tedbir ve gerçek bir füzenin uçuş dinamiği modellenmemiştir. Radar parametreleri (menzil, füze sayısı)
+  senaryo için seçilmiştir, gerçek bir sistemin değerleri değildir. Ova düz olduğu için orada arazi maskelemesi zayıftır;
+  dağlık bölgelerde rota tepelerin arkasından daha çok yararlanır.
+- Hava savunma sonuçları bir ödünleşimdir: dirençli sürü İHA kaybetmez ama şemsiyenin altındaki hedefleri yapmaz.
+  Hedef değeri ile İHA değeri arasındaki oran farklı seçilirse karar da değişir (burada sabit bir kuralla verildi).
+- Enerji modeli 2 kg'lık bir quadcopter için yayımlanmış parametrelerle kurulmuştur; batarya yaşlanması, sıcaklık ve
+  gerilim düşümü yoktur. Rüzgâr bütün alanda aynıdır (arazinin rüzgârı yönlendirmesi yok).
 - Yapay zekâ bu simülatörün verisiyle eğitildi. Gerçek İHA'da yeniden eğitilmesi gerekir. Görev puanına
   katkısı küçük; asıl katkısı başarıyı daha doğru tahmin etmesi.
 
@@ -748,7 +865,7 @@ ve görev durumunu yazar.
 ## 6. Klasör yapısı
 
 ```
-suru/                 Python simülasyon paketi (config, radio, world, decision, ew, swarm, terrain, bridge)
+suru/                 Python simülasyon paketi (config, radio, world, decision, ew, threat, energy, swarm, terrain, bridge)
 suru/data/            Unity'den aktarılan arazi yükseklik haritası, eğitilmiş yapay zekâ ağırlıkları
 tests/                Otomatik doğrulama testleri (pytest)
 run_live.py           Unity'ye canlı yayın

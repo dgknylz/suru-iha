@@ -195,7 +195,7 @@ namespace SuruIHA
             var detectLine = new Color32(255, 214, 204, 115);
             float fade = 6f * FieldUp;    // kenarda 6 nokta aralığı boyunca söner (harita dikdörtgen gibi bitmesin)
             // Bembeyaz karın üstünde aynı saydamlık bütün vadiyi pembeye boyar: karlı bölgede örtü daha ince
-            float regionK = SwarmRegions.Current == "kar" ? 0.5f : 1f;
+            float regionK = SwarmRegions.Current == "kar" ? 0.38f : 1f;
             for (int b = 0, k = 0; b < H; b++)
             for (int a = 0; a < W; a++, k++)
             {

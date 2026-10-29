@@ -139,8 +139,19 @@ namespace SuruIHA
             ApplyReport(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
+            ApplyThreats(f);
             ParseLinks(f);
             LateUpdate();
+        }
+
+        // Hava savunma, rüzgâr (SwarmVisualizer.Radar.cs)
+        void ApplyThreats(SwarmFrame f)
+        {
+            ApplyRadars(f);
+            ApplyMissiles(f);
+            ApplyRadarEstimates(f);
+            ApplyRadarField(f);
+            ApplyWind(f);
         }
 
         void Init()
@@ -177,10 +188,11 @@ namespace SuruIHA
             ApplyGcs(f);
             ApplyJamCells(f);
             ApplyHeatMap(f);
-            RecordMetrics(f);
+            if (!SwarmReceiver.Replaying) RecordMetrics(f);     // tekrar izlenirken grafikler canlı uçuşunkini korur
             ApplyReport(f);
             ApplyJamEstimates(f);
             ApplySpoofers(f);
+            ApplyThreats(f);
             ParseLinks(f);
         }
 
@@ -232,6 +244,9 @@ namespace SuruIHA
                 }
             }
             UpdatePlanLines();
+            AnimateRadars();
+            AnimateMissiles();
+            AnimateWindsock();
             if (drones.Count > 0)
             {
                 Vector3 c = Vector3.zero;
@@ -666,13 +681,21 @@ namespace SuruIHA
                         if (t < 0 || t >= tasks.Count || !tasks[t].Visible) { on = false; break; }
                 lr.enabled = on;
                 if (!on) continue;
-                lr.positionCount = plan.Length + 1;
                 Vector3 a = drones[i].transform.position;
+                // Dirençli İHA radardan kaçan bir rota izliyorsa ilk ayak o rotadan (ara noktalar) çizilir
+                int[] route = D[i].route;
+                int r0 = route != null && route.Length >= 4 ? RouteStart(route, transform.InverseTransformPoint(a)) : 0;
+                int mid = route != null && route.Length >= 4 ? route.Length / 2 - 1 - r0 : 0;
+                if (mid < 0) mid = 0;
+                lr.positionCount = plan.Length + 1 + mid;
                 lr.SetPosition(0, a);
-                for (int k = 0; k < plan.Length; k++) lr.SetPosition(k + 1, tasks[plan[k]].Top);
+                float ry = transform.InverseTransformPoint(a).y;
+                for (int k = 0; k < mid; k++) lr.SetPosition(k + 1, RoutePoint(route, r0 + k, ry));
+                for (int k = 0; k < plan.Length; k++) lr.SetPosition(k + 1 + mid, tasks[plan[k]].Top);
                 // Önce gidilecek hedefe giden kısım kalın, sonraki hedefler incelerek
-                var curve = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f / lr.positionCount, 1f),
-                                               new Keyframe(Mathf.Min(1f, 1.5f / lr.positionCount), 0.45f), new Keyframe(1f, 0.3f));
+                float first = (1f + mid) / (lr.positionCount - 1);
+                var curve = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(Mathf.Min(first, 0.999f), 1f),
+                                               new Keyframe(Mathf.Min(1f, first + 0.5f / lr.positionCount), 0.45f), new Keyframe(1f, 0.3f));
                 lr.widthCurve = curve;
                 float near = cam != null ? Vector3.Distance(cam.transform.position, a) : 200f;
                 lr.widthMultiplier = 0.3f * Mathf.Clamp(near / 180f, 0.12f, 2.2f);

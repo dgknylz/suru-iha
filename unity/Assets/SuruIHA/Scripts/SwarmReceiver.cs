@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -85,11 +87,60 @@ namespace SuruIHA
             }
         }
 
+        // ------------------------------------------------------------------ uçuş tekrarı (SwarmMenu.Replay.cs)
+        // Canlı kareler simülasyon zamanında 0,2 s'de bir saklanır (yeni uçuş başlayınca, yani zaman geri gidince sıfırlanır).
+        // Tekrar sırasında (Replaying) gelen canlı kareler kaydedilir ama ekrana uygulanmaz.
+        public static bool Replaying;
+        readonly List<string> rec = new List<string>();
+        readonly List<float> recT = new List<float>();
+        public int RecCount => rec.Count;
+        public float RecStart => rec.Count > 0 ? recT[0] : 0f;
+        public float RecEnd => rec.Count > 0 ? recT[rec.Count - 1] : 0f;
+        const int RecMax = 6000;                 // ~20 dakikalık uçuş
+
+        void Record(string json)
+        {
+            // Kare {"t": 12.3, ...} diye başlar: zamanı bütün JSON'u çözmeden oku
+            int a = json.IndexOf("\"t\":", StringComparison.Ordinal);
+            if (a < 0 || a > 8) return;
+            int b = json.IndexOf(',', a);
+            if (b < 0 || !float.TryParse(json.Substring(a + 4, b - a - 4), NumberStyles.Float, CultureInfo.InvariantCulture, out float t)) return;
+            int n = recT.Count;
+            if (n > 0 && t < recT[n - 1] - 0.5f) { rec.Clear(); recT.Clear(); n = 0; }
+            if (n > 0 && t < recT[n - 1] + 0.2f) return;
+            if (n >= RecMax) return;
+            rec.Add(json);
+            recT.Add(t);
+        }
+
+        // Zamanı t'yi geçmeyen son kaydın sırası
+        public int RecIndexAt(float t)
+        {
+            int lo = 0, hi = recT.Count - 1;
+            if (hi < 0) return -1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (recT[mid] <= t) lo = mid; else hi = mid - 1;
+            }
+            return lo;
+        }
+
+        public float RecTime(int k) => recT[k];
+
+        public SwarmFrame RecFrame(int k)
+        {
+            try { return JsonUtility.FromJson<SwarmFrame>(rec[k]); }
+            catch (Exception) { return null; }
+        }
+
         void Update()
         {
             string json;
             lock (locker) { json = pending; pending = null; }
             if (json == null) return;
+            Record(json);
+            if (Replaying) return;
             try
             {
                 Latest = JsonUtility.FromJson<SwarmFrame>(json);

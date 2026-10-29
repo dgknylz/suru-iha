@@ -48,6 +48,7 @@ namespace SuruIHA
             B = go.AddComponent<SwarmVisualizer>();
             B.droneModel = A.droneModel;
             B.jammerModel = A.jammerModel;
+            B.radarModel = A.radarModel;
             B.gcsModel = A.gcsModel;
             B.gcsModelOffset = A.gcsModelOffset;
             B.droneScale = A.droneScale;

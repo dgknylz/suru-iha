@@ -55,6 +55,32 @@ namespace SuruIHA
                 if (o.gameObject.activeSelf != (o.region == id)) o.gameObject.SetActive(o.region == id);
         }
 
+        static Vector2 wind;
+
+        // Simülasyondaki rüzgâr (doğu, kuzey m/s): kar taneleri ve baca dumanı onunla savrulur
+        public static void SetWind(Vector2 w)
+        {
+            if ((w - wind).sqrMagnitude < 0.04f) return;
+            wind = w;
+            if (snow != null) WindSnow(snow);
+            foreach (var ps in smoke)
+            {
+                if (ps == null) continue;
+                var vel = ps.velocityOverLifetime;
+                vel.x = new ParticleSystem.MinMaxCurve(0.5f + 0.6f * w.x, 1.1f + 0.8f * w.x);
+                vel.z = new ParticleSystem.MinMaxCurve(0.6f * w.y - 0.2f, 0.8f * w.y + 0.2f);
+            }
+        }
+
+        static void WindSnow(ParticleSystem ps)
+        {
+            var vel = ps.velocityOverLifetime;
+            vel.x = new ParticleSystem.MinMaxCurve(0.4f + 0.85f * wind.x, 1.2f + 1.05f * wind.x);
+            vel.z = new ParticleSystem.MinMaxCurve(-0.3f + 0.85f * wind.y, 0.3f + 1.05f * wind.y);
+            var noise = ps.noise;
+            noise.strength = 0.5f + 0.12f * wind.magnitude;    // esinti: rüzgâr güçlendikçe taneler daha çok savrulur
+        }
+
         static Light sun;
         static Quaternion sunRot;
         static float sunTemp, sunIntensity;
@@ -86,7 +112,7 @@ namespace SuruIHA
             ApplyRegionObjects(id);
             if (id == "kar")
             {
-                if (snow == null) snow = MakeSnow(vis.Mats.Snow);
+                if (snow == null) { snow = MakeSnow(vis.Mats.Snow); WindSnow(snow); }
                 if (!snow.isPlaying) snow.Play();
             }
             else if (snow != null) snow.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -196,7 +222,7 @@ namespace SuruIHA
             }
             bool kar = id == "kar", deniz = id == "deniz";
             // Akdeniz: daha yüksek, sıcak ve parlak güneş (denizde parıltı için güneye bakan kıyı)
-            sun.transform.rotation = kar ? Quaternion.Euler(22f, -58f, 0f) : deniz ? Quaternion.Euler(38f, -24f, 0f) : sunRot;
+            sun.transform.rotation = kar ? Quaternion.Euler(30f, -58f, 0f) : deniz ? Quaternion.Euler(38f, -24f, 0f) : sunRot;
             sun.colorTemperature = kar ? 6600f : deniz ? 5600f : sunTemp;
             sun.intensity = kar ? sunIntensity * 0.8f : deniz ? sunIntensity * 1.08f : sunIntensity;
         }
@@ -213,14 +239,14 @@ namespace SuruIHA
             main.playOnAwake = false;
             main.startLifetime = 14f;
             main.startSpeed = 0f;
-            main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.28f);
-            main.maxParticles = 5000;
+            main.startSize = new ParticleSystem.MinMaxCurve(0.14f, 0.34f);
+            main.maxParticles = 16000;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             var em = ps.emission;
-            em.rateOverTime = 350f;
+            em.rateOverTime = 1000f;                    // yoğun kar yağışı
             var sh = ps.shape;
             sh.shapeType = ParticleSystemShapeType.Box;
-            sh.scale = new Vector3(110f, 1f, 110f);     // kameranın yakınında (uzaktakiler zaten seçilmez)
+            sh.scale = new Vector3(150f, 1f, 150f);     // kameranın yakınında (uzaktakiler zaten seçilmez)
             var vel = ps.velocityOverLifetime;
             vel.enabled = true;
             vel.space = ParticleSystemSimulationSpace.World;

@@ -23,6 +23,17 @@ namespace SuruIHA
 
         public void SetFollow(int index) => FollowIndex = Mathf.Max(0, index);
 
+        // Serbest kamerayı bir noktaya çevir (otomatik test ve sunum: ör. radara yakın plan)
+        public void LookAt(Vector3 worldPivot, float distance, float yawDeg, float pitchDeg)
+        {
+            freePivot = true;
+            pivot = worldPivot;
+            orbitDistance = distance;
+            yaw = yawDeg;
+            pitch = pitchDeg;
+            mode = Mode.Orbit;
+        }
+
         // Üçüncü şahıs (TPP) İHA kamerası: açı ve uzaklık fareyle değişir, R ile sıfırlanır.
         // Yan yana ekranda sağdaki sürü RigB ile aynı açıdan izlenir.
         public const float DefaultTppPitch = 12f, DefaultTppDistance = 11f;

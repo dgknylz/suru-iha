@@ -45,12 +45,13 @@ namespace SuruIHA
         }
 
         // İz durumları (suru/world.py _status): renkler simülasyondaki İHA ışıklarıyla aynı
-        const string StatusOrder = "njgsrpyaf";
+        const string StatusOrder = "njgsrpyatkbf";
 
         static Color StatusCol(char c) => c switch
         {
             'j' => DroneView.ColJammed, 'g' => DroneView.ColNoGps, 's' => DroneView.ColSearch, 'r' => DroneView.ColRelay,
             'a' => DroneView.ColSpoof, 'p' => DroneView.ColGpsSpoofed, 'y' => DroneView.ColSpoofSeen,
+            't' => DroneView.ColRadar, 'k' => DroneView.ColRadar, 'b' => DroneView.ColBattery,
             'f' => new Color(0.45f, 0.45f, 0.45f), _ => DroneView.ColNormal,
         };
 
@@ -58,7 +59,8 @@ namespace SuruIHA
         static string StatusText(char c, bool spoofing) => c switch
         {
             'j' => "karıştırılıyor", 'g' => "GPS yok", 's' => "spiral arama", 'r' => "röle", 'a' => "saldırgan",
-            'p' => "GPS'i aldatılıyor", 'y' => spoofing ? "aldatmayı fark etti" : "GPS'e güvenmiyor", 'f' => "arızalı", _ => "normal",
+            'p' => "GPS'i aldatılıyor", 'y' => spoofing ? "aldatmayı fark etti" : "GPS'e güvenmiyor", 'f' => "düştü",
+            't' => "radar izliyor", 'k' => "radardan kaçıyor", 'b' => "batarya dönüşü", _ => "normal",
         };
 
         static bool Spoofing(SwarmFrame f) => f.spoofers != null && f.spoofers.Length > 0;

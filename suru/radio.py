@@ -49,19 +49,20 @@ def knife_edge_db(v):
     return out
 
 
-def terrain_loss_db(tx, rx, terrain):
-    """Vericiler (A,3) -> alıcılar (B,3) için arazinin görüş hattını kesmesinden doğan ek kayıp (A,B) dB."""
+def terrain_loss_db(tx, rx, terrain, lam=LAMBDA, samples=SHADOW_SAMPLES):
+    """Vericiler (A,3) -> alıcılar (B,3) için arazinin görüş hattını kesmesinden doğan ek kayıp (A,B) dB.
+    lam: dalga boyu (m; radar için X bandı), samples: görüş hattı boyunca arazi örneği."""
     tx, rx = np.atleast_2d(tx), np.atleast_2d(rx)
     if terrain is None or terrain.flat:
         return np.zeros((len(tx), len(rx)))
-    t = np.linspace(0.0, 1.0, SHADOW_SAMPLES + 2)[1:-1]                # uç noktalar hariç
+    t = np.linspace(0.0, 1.0, samples + 2)[1:-1]                       # uç noktalar hariç
     a, b = tx[:, None, None, :], rx[None, :, None, :]
     pts = a + (b - a) * t[None, None, :, None]                         # (A, B, K, 3)
     ground = terrain.height(pts[..., 0], pts[..., 1])
     h = ground - pts[..., 2]                                            # tepenin görüş hattından yüksekliği
     D = np.maximum(np.linalg.norm((b - a)[..., :2], axis=-1), 1.0)     # (A, B, 1) yatay mesafe
     d1, d2 = D * t, D * (1 - t)
-    v = h * np.sqrt(2.0 * D / (LAMBDA * d1 * d2))
+    v = h * np.sqrt(2.0 * D / (lam * d1 * d2))
     return knife_edge_db(v.max(axis=2))
 
 

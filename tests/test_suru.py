@@ -384,3 +384,70 @@ def test_yapay_zeka_agi():
     assert ((rho > 0) & (rho < 1)).all()
     w = fly(make_config("resilient", 20.0, 0.0, 12, planner="ai"))
     assert w.done.mean() >= 0.9
+
+
+# ------------------------------------------------------------------ hava savunma tehdidi ve enerji
+def test_radar_menzil_ve_arazi_golgesi():
+    from suru import threat
+    from suru.terrain import Terrain
+    pd = threat.detect_prob(np.array([200.0, threat.R50, 900.0]), np.zeros(3))
+    assert pd[0] > 0.9 and abs(pd[1] - 0.5) < 1e-6 and pd[2] < 0.02, "Pd menzille (4. kuvvet) düşmeli"
+    assert threat.detect_prob(300.0, 15.0) < 0.05, "tepenin arkasındaki İHA (iki yönlü kayıp) görülmemeli"
+    beam = threat.detect_prob(300.0, 0.0, radial=np.array([0.5]))[0]
+    assert beam < threat.detect_prob(300.0, 0.0, radial=np.array([10.0]))[0], "radara dik uçan (beaming) İHA daha zor görülmeli"
+    T = Terrain(region="ova")
+    tm = threat.ThreatMap([(-450.0, 520.0)], T, 25.0)
+    assert tm.pd_at((-300.0, 500.0))[0] > 0.8 and tm.pd_at((400.0, 0.0))[0] < 0.01
+
+
+def test_kerteriz_kestirimi():
+    from suru import threat
+    rng = np.random.default_rng(3)
+    R = np.array([500.0, 650.0])
+    P = np.c_[rng.uniform(-300, 300, 30), rng.uniform(100, 600, 30)]
+    B = threat.compass(R[0] - P[:, 0], R[1] - P[:, 1]) + rng.normal(0, threat.BEARING_SIGMA, 30)
+    q, err = threat.bearing_fix(P, B)
+    assert np.linalg.norm(q - R) < 2.5 * err + 20.0 and err < 80.0, "kestirim, kendi hata payıyla tutarlı olmalı"
+    # Birbirine yakın noktalardan ölçülen (neredeyse paralel) kerterizlerle uzaklık bilinemez: kestirim reddedilmeli
+    P2 = np.array([100.0, 300.0]) + np.c_[np.linspace(0, 60, 8), np.zeros(8)]
+    B2 = threat.compass(R[0] - P2[:, 0], R[1] - P2[:, 1]) + rng.normal(0, threat.BEARING_SIGMA, 8)
+    assert threat.bearing_fix(P2, B2) is None
+
+
+def test_tehdit_farkinda_rota_radari_dolanir():
+    from suru import threat
+    from suru.terrain import Terrain
+    tm = threat.ThreatMap([(0.0, 400.0)], Terrain(flat=True), 25.0)
+    a, b = np.array([-500.0, 400.0]), np.array([500.0, 400.0])
+    assert tm.line_pd(a, b) > 0.9
+    route = tm.route(a, b)
+    worst = max(tm.line_pd(p, q) for p, q in zip(route.p[:-1], route.p[1:]))
+    assert worst < 0.3, "rota radarın görüşüne girmemeli"
+
+
+def test_hava_savunma_dirençli_sure_kayip_vermez():
+    korumasiz = fly(make_config("decentralized", None, 0.0, 1, radar_mode="iki", n_popup=4)).summary()
+    direncli = fly(make_config("resilient", None, 0.0, 1, radar_mode="iki", n_popup=4)).summary()
+    assert korumasiz["shot_down"] >= 3, "radarı bilmeyen sürü şemsiyenin altında İHA kaybetmeli"
+    assert direncli["shot_down"] <= 1 and direncli["t_radar_fix"] < 100.0, "pusu radarı kerterizle bulunmalı"
+    assert direncli["completion"] >= 0.5
+
+
+def test_enerji_modeli_ve_ruzgar():
+    from suru import energy
+    hover, cruise, fast = energy.power_w(np.array([0.0, 10.0, 20.0]))
+    assert abs(hover - 168.5) < 0.5 and cruise < hover < fast, "döner kanat güç eğrisi: askıda yüksek, ~10 m/s'de en düşük"
+    w = np.array([0.0, 8.0])                          # kuzeye esen rüzgâr
+    up, down = energy.ground_speed(np.array([[0.0, -1.0], [0.0, 1.0]]), w, 12.0)
+    assert up < 5.0 < 12.0 < down
+    e_up = energy.leg_energy_wh(np.array([[0.0, 500.0]]), np.array([[0.0, 0.0]]), w, 12.0)[0]
+    e_down = energy.leg_energy_wh(np.array([[0.0, 0.0]]), np.array([[0.0, 500.0]]), w, 12.0)[0]
+    assert e_up > 3 * e_down, "karşı rüzgârda eve dönüş çok daha pahalı"
+
+
+def test_enerji_farkinda_sure_eve_doner():
+    kw = dict(n_popup=4, wind_speed=8.0, wind_from=210.0, gust=2.0, battery="karisik")
+    korumasiz = fly(make_config("decentralized", None, 0.0, 2, **kw), until="flight").summary()
+    direncli = fly(make_config("resilient", None, 0.0, 2, **kw), until="flight").summary()
+    assert korumasiz["depleted"] >= 1, "sabit %10 kuralı rüzgârı bilmez: bataryası biten İHA olmalı"
+    assert direncli["depleted"] == 0 and direncli["rtb"] >= 1 and direncli["completion"] >= 0.9

@@ -10,8 +10,9 @@ karşılaştırılır (eşleştirilmiş deney tasarımı).
     python run_experiments.py --tune       # ayar: parametre duyarlılığı (AYRI ayar haritalarında, seed 500+)
     python run_experiments.py --ablation   # ablasyon: dirençli mekanizmaları tek tek kapatıp katkısını ölçmek
     python run_experiments.py --scaling    # ölçekleme: 5 / 10 / 20 İHA
+    python run_experiments.py --threats    # yeni tehditler: hava savunma radarı, lodos ve yarı dolu bataryalar
     python run_experiments.py --quick      # hızlı deneme (5 tekrar)
-Sonuç: results/results.csv, swarm.csv, decision.csv, ew.csv, tune.csv, ablation.csv, scaling.csv
+Sonuç: results/results.csv, swarm.csv, decision.csv, ew.csv, tune.csv, ablation.csv, scaling.csv, tehdit.csv
 """
 import argparse
 import csv
@@ -44,15 +45,23 @@ MECHANISMS = ("jam_map", "long_ttl", "avoid", "coop_loc", "search", "recover", "
               "spoof_detect", "valuation")
 ABLATION_CONDS = ("sabit 20 dBm", "hareketli 20 dBm", "nokta 25 dBm", "GPS aldatma hızlı", "sinsi saldırgan %20")
 TUNE_SEEDS = range(500, 520)  # ayar haritaları: test haritalarından (0-29) ayrı
+# Yeni tehditler: ad -> ek ayarlar. Enerji senaryosunda uçuş inişe kadar izlenir (batarya dönüşte de biter).
+THREAT_SCENARIOS = {
+    "hava savunma (bilinen + pusu radarı)": {"radar_mode": "iki"},
+    "lodos 8 m/s + karışık batarya": {"wind_speed": 8.0, "wind_from": 210.0, "gust": 2.0, "battery": "karisik",
+                                      "_until": "flight"},
+}
 
 
 def run_one(job):
     exp, strategy, power, spoof, seed, extra = job
     extra = dict(extra)
     tag = extra.pop("_tag", "")
+    until = extra.pop("_until", "mission")
     t0 = time.time()
     world = World(make_config(strategy, power, spoof, seed, **extra))
-    while not world.finished():
+    stop = world.flight_over if until == "flight" else world.finished
+    while not stop():
         world.step()
     c = world.cfg
     row = dict(experiment=exp, tag=tag, strategy=strategy, planner=c.planner,
@@ -106,6 +115,11 @@ def jobs_ablation(seeds):
             jobs.append(("ablasyon", "resilient", p, sp, seed, dict(base, **{"ew_" + mech: False},
                                                                     _tag=f"{name}|-{mech}")))
     return jobs
+
+
+def jobs_threats(seeds):
+    return [("tehdit", s, None, 0.0, seed, dict(kw, n_popup=4, _tag=name))
+            for (name, kw), s, seed in itertools.product(THREAT_SCENARIOS.items(), STRATEGIES, seeds)]
 
 
 def jobs_scaling(seeds):
@@ -174,7 +188,8 @@ def run(jobs, out, workers=8, merge=False):
     rows.sort(key=lambda r: (r["experiment"], str(r.get("tag", "")), r["strategy"], r["planner"], r["jammer_dbm"],
                              r["spoof"], r["n_drones"], r["failures_cfg"], r["relay"], r["bundle_size"], r["seed"]))
     with open(out, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        keys = list(dict.fromkeys(k for r in rows for k in r))   # senaryoya özgü sütunlar (radar, enerji) dahil
+        w = csv.DictWriter(f, fieldnames=keys, restval="")
         w.writeheader()
         w.writerows(rows)
     print(f"Kaydedildi: {out}")
@@ -199,6 +214,7 @@ def main():
     p.add_argument("--tune", action="store_true", help="parametre duyarlılığı (ayar haritaları)")
     p.add_argument("--ablation", action="store_true", help="dirençli mekanizmaların ablasyonu")
     p.add_argument("--scaling", action="store_true", help="5 / 10 / 20 İHA")
+    p.add_argument("--threats", action="store_true", help="hava savunma radarı, rüzgâr ve batarya")
     p.add_argument("--out", default=None, help="sonuç dosyası (varsayılanın yerine)")
     p.add_argument("--seeds", type=int, default=30)
     p.add_argument("--workers", type=int, default=8, help="paralel işlem sayısı")
@@ -206,6 +222,8 @@ def main():
     seeds = range(5 if a.quick else a.seeds)
     if a.ew:
         run(jobs_ew(seeds), a.out or "results/ew.csv", a.workers)
+    elif a.threats:
+        run(jobs_threats(seeds), a.out or "results/tehdit.csv", a.workers)
     elif a.tune:
         run(jobs_tune(TUNE_SEEDS[:5] if a.quick else TUNE_SEEDS), a.out or "results/tune.csv", a.workers)
     elif a.ablation:

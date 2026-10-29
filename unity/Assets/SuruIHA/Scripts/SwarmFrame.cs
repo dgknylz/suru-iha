@@ -17,11 +17,58 @@ namespace SuruIHA
         public int gps;        // 1 = GPS var
         public int task;       // hedef görev (-1 = yok)
         public int mode;       // 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma,
-                               // 6 GPS'i aldatılıyor (henüz fark etmedi), 7 aldatmayı fark etti (GPS'e güvenmiyor)
+                               // 6 GPS'i aldatılıyor (henüz fark etmedi), 7 aldatmayı fark etti (GPS'e güvenmiyor),
+                               // 8 bataryası azaldı, eve dönüyor, 9 radar kilitlendi, kaçıyor
         public int phase;      // 0 kalkış, 1 intikal, 2 görev, 3 toplanma, 4 dönüş, 5 iniş, 6 indi
         public int relay;      // röle ise bağlantısını koruduğu İHA (-1: değil)
         public float sigma;    // konum belirsizliği (m)
         public int[] plan;     // planlanan rota: görev numaraları uçuş sırasıyla (ilki şimdiki hedef)
+        public float bat = 1f; // batarya doluluğu (0-1)
+        public int pw;         // çekilen güç (W)
+        public int trk;        // 1 = bir radar bu İHA'yı izliyor
+        public int rw;         // radar ikaz alıcısı: 0 sessiz, 1 huzme geçti, 2 kilit ikazı (yalnız dirençli sürü)
+        public int[] route;    // radardan kaçan rota: [x, y, x, y, ...] (dirençli sürü, yoksa boş)
+    }
+
+    [Serializable]
+    public class RadarState    // hava savunma radarı
+    {
+        public float[] p;
+        public float az;       // anten yönü (pusula derecesi: 0 kuzey, saat yönünde)
+        public int on;         // 1 = açık (pusu radarı görevin ortasında açılır)
+        public float r;        // küçük İHA'nın taramaların yarısında görüldüğü menzil (m)
+        public int known;      // 1 = yeri istihbaratla biliniyordu
+        public int n;          // kalan füze
+        public int[] trk;      // izlenen İHA'lar
+    }
+
+    [Serializable]
+    public class MissileState
+    {
+        public int id;
+        public int r;          // atan radar
+        public float[] p, v;
+        public int st;         // 0 uçuyor, 1 vurdu, 2 ıskaladı
+        public int tgt;        // hedef İHA
+    }
+
+    [Serializable]
+    public class RadarEstState // sürünün bildiği radar (kerteriz kestirimi ya da istihbarat)
+    {
+        public float[] p;
+        public float e;        // hata yarıçapı (m)
+        public int id;
+        public int intel;      // 1 = henüz yalnızca istihbarat bilgisi
+    }
+
+    [Serializable]
+    public class RadarFieldState   // radar görüş haritası: taramada tespit olasılığı (bayt 0-255 = 0-1)
+    {
+        public int rev;
+        public float x0, y0, step;
+        public int nx, ny;
+        public float agl;
+        public string q;
     }
 
     [Serializable]
@@ -82,7 +129,12 @@ namespace SuruIHA
         public int liar;           // 1 = saldırgan (ele geçirilmiş) İHA
         public float fail;         // arızalandığı an (s), -1: arızalanmadı
         public int[] xy;           // iz: [x, y, x, y, ...] (3 s'de bir)
-        public string st;          // her iz noktasının durumu: n j g s r a p y f (bkz. suru/world.py _status)
+        public string st;          // her iz noktasının durumu: n j g s r a p y f b k t (bkz. suru/world.py _status)
+        public string cause;       // düşme sebebi: ariza, radar (hava savunma), batarya ("" düşmedi)
+        public float wh;           // harcadığı enerji (Wh)
+        public float bat0, bat;    // kalkışta ve sonda batarya (0-1)
+        public float radar;        // radar tarafından izlendiği süre (s)
+        public float rtb = -1f;    // bataryası azaldığı için eve döndüğü an (s), -1: dönmedi
     }
 
     [Serializable]
@@ -130,6 +182,11 @@ namespace SuruIHA
         public int spoofed;    // GPS'i şu an aldatılan İHA
         public int spoofSeen;  // aldatmayı fark edip GPS'e güvenmeyen İHA
         public float liars;    // dürüst İHA'ların saldırganları dışlama oranı (-1: saldırgan yok)
+        public float bat = 1f; // canlı İHA'ların ortalama bataryası (0-1)
+        public int shot;       // hava savunmanın düşürdüğü İHA
+        public int depleted;   // bataryası biten İHA
+        public int rtb;        // bataryası azaldığı için eve dönen İHA
+        public float radarErr = -1f;   // sürünün radar konum kestiriminin hatası (m), -1: kestirim yok
     }
 
     [Serializable]
@@ -164,6 +221,11 @@ namespace SuruIHA
         public float cell;
         public float[] jamCells;   // [x, y, x, y, ...] sürünün ortak karıştırma haritası
         public JamFieldState jamField;   // gerçek karıştırma gücü haritası (çoğu karede boş)
+        public float[] wind;             // rüzgâr (doğu, kuzey) m/s
+        public RadarState[] radars;
+        public MissileState[] missiles;
+        public RadarEstState[] radarEst;
+        public RadarFieldState radarField;  // radar görüş haritası (ara ara gelir)
         public FlightReport report;      // uçuş raporu (iniş bitince ara ara gelir)
         public FrameMetrics m;
         public ControlState ctl;

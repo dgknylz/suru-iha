@@ -16,6 +16,8 @@ namespace SuruIHA
             ("İHA IŞIĞI", new Color(1f, 0.92f, 0.25f), "aldatmayı fark etti"),
             ("İHA IŞIĞI", new Color(0.8f, 0.25f, 1f), "saldırgan"),
             ("İHA IŞIĞI", new Color(0.1f, 0.95f, 1f), "röle"),
+            ("İHA IŞIĞI", new Color(1f, 0.08f, 0.3f), "radar izliyor / kilitten kaçıyor"),
+            ("İHA IŞIĞI", new Color(0.92f, 0.95f, 1f), "bataryası azaldı, eve dönüyor"),
             ("İHA IŞIĞI", new Color(0.35f, 0.35f, 0.35f), "arızalı"),
             ("HEDEF HALKASI", new Color(0.85f, 0.88f, 0.95f), "açık"),
             ("HEDEF HALKASI", new Color(1f, 0.78f, 0.2f), "bir İHA yolda"),
@@ -26,6 +28,9 @@ namespace SuruIHA
             ("ELEKTRONİK HARP", new Color(1f, 0.7f, 0.1f), "nokta karıştırıcı"),
             ("ELEKTRONİK HARP", new Color(0.2f, 0.85f, 1f), "GPS aldatıcı"),
             ("ELEKTRONİK HARP", new Color(1f, 0.55f, 0.1f), "sürünün karıştırıcı tahmini (nişangâh)"),
+            ("HAVA SAVUNMA", new Color(1f, 0.78f, 0.2f), "radarın görüşü ve tarama huzmesi"),
+            ("HAVA SAVUNMA", new Color(1f, 0.08f, 0.3f), "kilit çizgisi: radar bu İHA'yı izliyor"),
+            ("HAVA SAVUNMA", new Color(1f, 0.35f, 0.75f), "sürünün radar tahmini (çarpı nişangâh)"),
             ("ÇİZGİLER", new Color(0.15f, 1f, 0.55f), "haberleşme bağlantısı sağlam"),
             ("ÇİZGİLER", new Color(1f, 0.12f, 0.08f), "bağlantı karıştırılmış"),
             ("ÇİZGİLER", new Color(0.55f, 0.75f, 1f), "renkli çizgi: İHA'nın planladığı rota"),
@@ -163,14 +168,15 @@ namespace SuruIHA
 
             // 3. sütun: EH direnci — tehdit → savunma
             x = x0 + 2 * (colW + gap);
-            y = Card(x, y0, colW, ch, "3 · ELEKTRONİK HARP DİRENCİ", "Üç tehdit, birbirini tamamlayan 11 savunma", Ui.Bad);
+            y = Card(x, y0, colW, ch, "3 · ELEKTRONİK HARP DİRENCİ", "Beş tehdit, birbirini tamamlayan 13 savunma", Ui.Bad);
             (string threat, Color c, string defense)[] map =
             {
                 ("Karıştırma", Ui.Bad, "Ortak karıştırma haritası · hedefi görmeden \"bitti\" dememe (spiral arama) · ölçümlerden karıştırıcıyı bulma · " +
                                        "komşulardan konum düzeltme · GPS'i geri alma · frekans atlama"),
                 ("GPS aldatma", Ui.Cyan, "IMU ile tutarlılık testi · komşu menzil testi · \"hedef yok\" çıkarımı → İHA GPS'e güvenmeyi bırakır"),
                 ("Saldırgan İHA", Ui.Violet, "Beta itibar sistemi (menzil, hız, ilerleme kanıtı) · iki bağımsız tanık kuralı · \"tamamlandı\" bilgisi kaynağıyla yayılır"),
-                ("Görev değerlendirme", Ui.Warn, "Karıştırma riski ve konum belirsizliği teklife katılır (uzman kuralı ya da yapay zekâ)"),
+                ("Hava savunma", Ui.Pink, "Radar ikaz alıcısı + kerteriz kestirimi · radarın görmediği rota · kilit ikazında kaçış · şemsiye altındaki hedefi bırakma"),
+                ("Rüzgâr ve batarya", Ui.Warn, "Rüzgâra karşı eve dönüş enerjisi hesaplanır; gücü yetmeyen hedef alınmaz, İHA zamanında döner"),
             };
             py = y + 4f;
             foreach (var (threat, c, defense) in map)
@@ -233,6 +239,8 @@ namespace SuruIHA
                 ("Karar alma", "CBBA (Choi vd. 2009) · merkezi SGA · zamanla azalan görev değeri · dinamik yeniden planlama"),
                 ("Radyo", "Log-mesafe yol kaybı · SINR'den paket kaybı · ITU-R P.526 bıçak sırtı kırınımı (arazi gölgesi)"),
                 ("Elektronik harp", "Kısıtlı en küçük kareler + k-ortalamalar (karıştırıcı bulma) · IMU tutarlılık testi · Beta itibar sistemi"),
+                ("Hava savunma", "Radar denklemi ve Swerling-1 tespit olasılığı · kerteriz kestirimi (en çok olabilirlik) · Dijkstra ile en az görülen rota"),
+                ("Enerji", "Döner kanatlı İHA güç modeli (Zeng vd. 2019) · rüzgâra karşı dönüş enerjisi · Ornstein-Uhlenbeck esintisi"),
                 ("Yapay zekâ", "8-8-1 yapay sinir ağı · geri yayılım · Adam · erken durdurma (denetimli öğrenme)"),
                 ("İstatistik", "Eşleştirilmiş deney (aynı 30 harita) · Wilcoxon işaretli sıralar · Kruskal-Wallis · ablasyon"),
             };
@@ -249,8 +257,8 @@ namespace SuruIHA
             (string big, string cap)[] stats =
             {
                 ("17 000+", "satır kod (Python ~7 800, C# ~10 100)"), ("5976", "deney uçuşu"),
-                ("37", "otomatik test"), ("11", "EH savunma mekanizması"),
-                ("9", "EH senaryosu (+ ana deney)"), ("10", "İHA, 20 hedef + beliren yeni hedefler"),
+                ("43", "otomatik test"), ("13", "savunma mekanizması"),
+                ("11", "tehdit senaryosu (+ ana deney)"), ("10", "İHA, 20 hedef + beliren yeni hedefler"),
                 ("~11 000", "ağaç ve çalı (3D sahne)"), ("17", "sürüm (v1 → v17)"),
             };
             float sw = (colW - 44f - 12f) / 2f, sh = 124f;

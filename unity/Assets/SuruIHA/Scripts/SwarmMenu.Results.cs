@@ -6,7 +6,8 @@ namespace SuruIHA
     // Sayılar results/istatistik.txt'den (30 uçuşun ortalaması; ablasyon n=12, ölçekleme n=20).
     public partial class SwarmMenu
     {
-        static readonly string[] Findings = { "Elektronik harp", "Karar alma (CBBA)", "Yapay zekâ", "Savunmaların katkısı", "Ölçekleme" };
+        static readonly string[] Findings = { "Elektronik harp", "Karar alma (CBBA)", "Yapay zekâ", "Savunmaların katkısı", "Ölçekleme",
+                                              "Hava savunma · enerji" };
         int finding;
 
         static readonly Color CMerkezi = new Color(1f, 0.6f, 0.35f);
@@ -76,8 +77,63 @@ namespace SuruIHA
                 case 1: ChartKarar(cx, cy, cwi, chi); SideKarar(sx, sy, swi); break;
                 case 2: ChartYz(cx, cy, cwi, chi); SideYz(sx, sy, swi); break;
                 case 3: ChartAblasyon(cx, cy, cwi, chi); SideAblasyon(sx, sy, swi); break;
-                default: ChartOlcek(cx, cy, cwi, chi); SideOlcek(sx, sy, swi); break;
+                case 4: ChartOlcek(cx, cy, cwi, chi); SideOlcek(sx, sy, swi); break;
+                default: ChartTehdit(cx, cy, cwi, chi); SideTehdit(sx, sy, swi); break;
             }
+        }
+
+        // ------------------------------------------------------------ 6. hava savunma ve enerji (results/tehdit.csv, n=30)
+        void ChartTehdit(float x, float y, float w, float h)
+        {
+            float yEnd = y + h;
+            y = ChartTitle(x, y, w, "Dirençli sürü hava savunmada ve lodosta neredeyse hiç İHA kaybetmedi",
+                           "Uçuş başına düşen İHA (10 İHA'lık sürü) · 30 uçuşun ortalaması · sağda tamamlanan hedef oranı");
+            float lx = x + 230f;
+            lx += LegendItem(lx, y, "Merkezi", CMerkezi);
+            lx += LegendItem(lx, y, "Merkeziyetsiz (korumasız)", CMerkeziyetsiz);
+            LegendItem(lx, y, "EH dirençli", CDirencli);
+            y += 46f;
+            (string group, string unit, (string name, float lost, float done, Color col)[] rows)[] data =
+            {
+                ("HAVA SAVUNMA · yeri bilinen radar + 80. saniyede açılan pusu radarı", "düşürülen",
+                 new[] { ("Merkezi", 5.0f, 100f, CMerkezi), ("Merkeziyetsiz", 5.0f, 100f, CMerkeziyetsiz), ("EH dirençli", 0.7f, 65.7f, CDirencli) }),
+                ("LODOS 8 m/s · bataryaların bir kısmı %20-35", "bataryası biten",
+                 new[] { ("Merkezi", 0.93f, 100f, CMerkezi), ("Merkeziyetsiz", 1.27f, 100f, CMerkeziyetsiz), ("EH dirençli", 0f, 100f, CDirencli) }),
+            };
+            float labelW = 200f, doneW = 130f, px = x + labelW, pw = w - labelW - doneW - 120f;
+            float rowH = Mathf.Clamp((yEnd - y - 2 * 34f - 30f - 50f) / 6f, 50f, 78f);
+            float top = y, bottom = y + 2 * 34f + 6 * rowH + 24f;
+            Grid(px, pw, top, bottom, 0, 6, new float[] { 0, 1, 2, 3, 4, 5, 6 }, "{0} İHA");
+            Ui.Label(Ui.R(px + pw + 120f, top - 30f, doneW, 22), "hedef", 13, Ui.Ink3, true, TextAnchor.UpperRight);
+            float ry = top;
+            foreach (var (group, unit, rows) in data)
+            {
+                Ui.Label(Ui.R(x, ry + 6, w, 22), group, 12.5f, Ui.Ink3, true);
+                ry += 34f;
+                foreach (var (name, lost, done, col) in rows)
+                {
+                    float my = ry + rowH / 2f, bx = Map(lost, 0, 6, px, pw);
+                    Ui.Label(Ui.R(x, ry, labelW - 20, rowH), name, 16.5f, Ui.Ink, false, TextAnchor.MiddleRight);
+                    Ui.Fill(Ui.R(px, my - 11f, Mathf.Max(bx - px, 3f), 22f), new Color(col.r, col.g, col.b, 0.85f), 4f);
+                    Ui.Label(Ui.R(bx + 12, ry, 220, rowH), $"{F1(lost)} İHA {unit}", 16, Ui.Ink, true, TextAnchor.MiddleLeft);
+                    Ui.Label(Ui.R(px + pw + 120f, ry, doneW, rowH), $"%{F1(done)}", 16, done < 99f ? Ui.Warn : Ui.Ink2, true, TextAnchor.MiddleRight);
+                    ry += rowH;
+                }
+                ry += 24f;
+            }
+        }
+
+        void SideTehdit(float x, float y, float w)
+        {
+            y = SideText(x, y, w, "HAVA SAVUNMA",
+                "Korumasız sürüler radarı bilmeden şemsiyesine girdi ve uçuş başına 5 İHA kaybetti. Dirençli sürü rotasını radarın görmediği " +
+                "yerden planladı, pusu radarını kerteriz ölçümleriyle 4 saniyede 33 m hatayla buldu ve 0,7 İHA kaybetti. Bedeli: şemsiyenin tam " +
+                "altındaki hedefleri bilerek bıraktı (%66). Kayıp riski hedefin değerinden büyük.");
+            y = SideText(x, y, w, "ENERJİ",
+                "Sabit %10 emniyeti rüzgârı bilmez: uzakta, karşı rüzgârda kalan İHA eve varamadan düştü. Enerji farkında sürü dönüş " +
+                "enerjisini hesaplayıp zamanında döndü, hiç İHA kaybetmeden hedeflerin hepsini yaptı.");
+            SideText(x, y, w, "NASIL ÖLÇÜLDÜ?",
+                "Üç mimari aynı 30 haritada uçtu (results/tehdit.csv). Kayıplardaki fark Wilcoxon testiyle anlamlı (p < 0,0001).");
         }
 
         static float ChartTitle(float x, float y, float w, string title, string sub)

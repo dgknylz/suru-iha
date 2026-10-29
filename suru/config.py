@@ -133,6 +133,22 @@ class SimConfig:
     ew_localize: bool = True        # karıştırıcının yerini bulma ve karıştırma alanını önceden kestirme
     ew_fhss: bool = True            # frekans atlamalı haberleşme (nokta karıştırmaya karşı)
     ew_spoof_detect: bool = True    # GPS aldatma tespiti (IMU tutarlılığı + komşu menzil ölçümü)
+    ew_radar: bool = True           # radar ikaz alıcısı, kerteriz kestirimi, radar görüşünden kaçan rota, kilit ikazında kaçış
+    ew_energy: bool = True          # enerji farkında görev seçimi ve dönüş kararı (rüzgâra karşı eve dönüş enerjisi)
+
+    # --- hava savunma tehdidi (suru/threat.py) ---
+    # Radar: pos = (x, y), known = yeri istihbaratla biliniyor mu, on_at = pusu radarının açıldığı an (s),
+    # missiles = füze sayısı, r50 = küçük İHA'nın taramaların yarısında görüldüğü menzil (m)
+    radars: list = field(default_factory=list)
+    radar_mode: str = ""            # (kayıt için) radar senaryosu: "" | bilinen | pusu | iki | ozel
+    agl_low: float = 25.0           # (dirençli) radar tehdidi bölgesinde alçak uçuş yüksekliği (m)
+    intel_err: float = 40.0         # istihbaratla bilinen radarın konum hatası (m)
+
+    # --- enerji ve rüzgâr (suru/energy.py) ---
+    wind_speed: float = 0.0         # ortalama rüzgâr (m/s)
+    wind_from: float = 210.0        # rüzgârın estiği yön (derece, meteoroloji: 180 güneyden, 225 güneybatıdan = lodos)
+    gust: float = 0.0               # esinti şiddeti (m/s, standart sapma)
+    battery: str = "tam"            # kalkıştaki batarya doluluğu: tam | karisik | dusuk (energy.BATTERY_MODES)
 
     def relay_enabled(self):
         return bool(self.relay) and self.strategy != "centralized"
@@ -157,6 +173,22 @@ def jammer_scenario(mode, P):
     raise ValueError(f"bilinmeyen karıştırıcı senaryosu: {mode}")
 
 
+# Radar senaryoları: görev alanının iki yanındaki tepelerde. "bilinen" radarın yeri istihbaratla bilinir;
+# "pusu" radarı görevin ortasında (80. saniyede) açılır, sürü onu radar ikaz alıcısıyla bulmak zorundadır.
+RADAR_KNOWN = {"pos": (-500.0, 330.0), "known": True, "missiles": 6, "r50": 380.0}
+RADAR_AMBUSH = {"pos": (450.0, 720.0), "known": False, "on_at": 80.0, "missiles": 6, "r50": 300.0}
+RADAR_MODES = {"": [], "bilinen": [RADAR_KNOWN], "pusu": [RADAR_AMBUSH], "iki": [RADAR_KNOWN, RADAR_AMBUSH]}
+
+
+def radar_scenario(mode, xy=None):
+    """Radar senaryosu. xy verilirse ("Kendi senaryon") radarlar oraya konur, baştan açık ve yerleri bilinmez."""
+    if xy:
+        return [{"pos": (float(x), float(y)), "known": False, "missiles": 6} for x, y in xy]
+    if mode not in RADAR_MODES:
+        raise ValueError(f"bilinmeyen radar senaryosu: {mode}")
+    return [dict(d) for d in RADAR_MODES[mode]]
+
+
 # GPS aldatıcı senaryoları: yerdeki verici 250 m içindeki İHA'ların GPS'ini ele geçirip konumlarını doğuya sürükler
 GPS_SPOOF_MODES = {
     "hizli": [{"pos": (-150.0, 420.0), "radius": 250.0, "drag": 2.0, "dir_deg": 0.0}],
@@ -165,10 +197,13 @@ GPS_SPOOF_MODES = {
 
 
 def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jammer_mode="sabit", gps_spoof="",
-                jammer_xy=None, jammer_band="genis", spoofer_xy=None, **kw):
+                jammer_xy=None, jammer_band="genis", spoofer_xy=None, radar_mode="", radar_xy=None, **kw):
     """Deney betikleri için kısayol. jammer_power=None -> karıştırıcı yok.
     jammer_xy: [(x, y), ...] verilirse karıştırıcılar bu noktalara konur (Unity'de "Kendi senaryon");
-    spoofer_xy: (x, y) verilirse GPS aldatıcı oraya taşınır."""
+    spoofer_xy: (x, y) verilirse GPS aldatıcı oraya taşınır; radar_mode / radar_xy: hava savunma radarları."""
+    radars = radar_scenario(radar_mode, radar_xy)
+    if radar_xy:
+        radar_mode = "ozel"
     if jammer_power is None:
         jammers = []
     elif jammer_xy:
@@ -181,7 +216,7 @@ def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jamm
     if spoofers and spoofer_xy is not None:
         spoofers = [dict(s, pos=(float(spoofer_xy[0]), float(spoofer_xy[1]))) for s in spoofers]
     return SimConfig(strategy=strategy, jammers=jammers, spoof_fraction=spoof, seed=seed, jammer_mode=jammer_mode,
-                     gps_spoof=gps_spoof, gps_spoofers=spoofers, **kw)
+                     gps_spoof=gps_spoof, gps_spoofers=spoofers, radars=radars, radar_mode=radar_mode, **kw)
 
 
 def parse_points(spec):

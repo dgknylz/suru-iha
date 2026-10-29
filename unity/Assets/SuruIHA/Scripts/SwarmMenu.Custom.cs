@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace SuruIHA
 {
-    // "Kendi senaryon" sekmesi: kullanıcı haritaya tıklayarak karıştırıcı (en fazla 3) ve GPS aldatıcı koyar,
+    // "Kendi senaryon" sekmesi: kullanıcı haritaya tıklayarak karıştırıcı (en fazla 3), GPS aldatıcı ve hava savunma
+    // radarı (en fazla 2) koyar,
     // İHA ve hedef sayısı, arıza, saldırgan gibi ayarları seçip başlatır. Seçimler bilgisayarda hatırlanır.
     // Python'a run_live.py / run_compare.py seçenekleri olarak gider (--jammers, --spoofer, --drones...).
     public partial class SwarmMenu
@@ -25,6 +26,8 @@ namespace SuruIHA
             public int popups = 1;      // PopupSteps
             public int failures;        // 0, 1, 2
             public int liars;           // 0 yok, 1 saf, 2 sinsi
+            public List<Vector2> radars = new List<Vector2>();   // hava savunma radarları (baştan açık, yerleri bilinmez)
+            public int weather;         // 0 sakin, 1 lodos 8 m/s, 2 lodos + yarı dolu bataryalar
         }
 
         static readonly int[] PowerSteps = { 10, 20, 30 };
@@ -32,6 +35,8 @@ namespace SuruIHA
         static readonly int[] TaskSteps = { 10, 20, 30 };
         static readonly int[] PopupSteps = { 0, 4, 8 };
         const int MaxJammers = 3;
+        const int MaxRadars = 2;
+        const float RadarR50 = 420f, RadarR20 = 528f;    // düz arazide yarı yarıya / %20 görülme menzili (suru/threat.py)
         const string CustomKey = "ozel_senaryo";
 
         // Haritanın kapsadığı alan (m) ve görev alanı (suru/config.py: area_center (0, 380), area_half 330)
@@ -42,7 +47,7 @@ namespace SuruIHA
 
         CustomSetup custom = new CustomSetup();
         bool useCustom;             // son başlatma kendi senaryon ile mi
-        int placeTool;              // 0 karıştırıcı, 1 GPS aldatıcı
+        int placeTool;              // 0 karıştırıcı, 1 GPS aldatıcı, 2 radar
         Texture2D customMap;
         int customMapRegion = -1;
 
@@ -55,6 +60,7 @@ namespace SuruIHA
             }
             catch (Exception) { custom = new CustomSetup(); }
             custom.jammers ??= new List<Vector2>();
+            custom.radars ??= new List<Vector2>();
         }
 
         void SaveCustom()
@@ -81,6 +87,8 @@ namespace SuruIHA
             parts.Add($"{TaskSteps[c.tasks]} hedef" + (PopupSteps[c.popups] > 0 ? $" + {PopupSteps[c.popups]} yeni" : ""));
             if (c.failures > 0) parts.Add($"{c.failures} arıza");
             if (c.liars > 0) parts.Add(c.liars == 2 ? "%20 sinsi saldırgan" : "%20 saf saldırgan");
+            if (c.radars.Count > 0) parts.Add($"{c.radars.Count} hava savunma radarı");
+            if (c.weather > 0) parts.Add(c.weather == 2 ? "lodos 8 m/s, yarı dolu bataryalar" : "lodos 8 m/s");
             return string.Join(" · ", parts);
         }
 
@@ -104,6 +112,8 @@ namespace SuruIHA
             a.Add($"--drones {DroneSteps[c.drones]} --tasks {TaskSteps[c.tasks]} --popups {PopupSteps[c.popups]}");
             if (c.failures > 0) a.Add($"--failures {c.failures}");
             if (c.liars > 0) a.Add($"--spoof 0.2 --spoof-mode {(c.liars == 2 ? "sneaky" : "naive")}");
+            if (c.radars.Count > 0) a.Add("--radars=" + string.Join(";", c.radars.Select(p => $"{Num(p.x)},{Num(p.y)}")));
+            if (c.weather > 0) a.Add("--wind 8" + (c.weather == 2 ? " --battery karisik" : ""));
             string sum = CustomSummary();
             return new Scenario
             {
@@ -127,7 +137,7 @@ namespace SuruIHA
             float W = Ui.W, H = Ui.H, x0 = 60f, top = BarH + 24f;
             Ui.Chip(x0, top, "KENDİ SENARYON", Ui.Accent, 11.5f);
             Ui.Label(Ui.R(x0, top + 26, 1200, 36), "Kendi senaryonu kur", 28, Ui.Ink, true);
-            Ui.Label(Ui.R(x0, top + 64, 1400, 22), "Haritaya tıklayarak karıştırıcı ve GPS aldatıcı koy (aynı yere tekrar tıklayınca kalkar), " +
+            Ui.Label(Ui.R(x0, top + 64, 1400, 22), "Haritaya tıklayarak karıştırıcı, GPS aldatıcı ya da hava savunma radarı koy (aynı yere tekrar tıklayınca kalkar), " +
                                                   "sağdan ayarları seç ve başlat. Seçimlerin bu bilgisayarda hatırlanır.", 15, Ui.Ink3);
 
             float my = top + 156f;
@@ -143,15 +153,19 @@ namespace SuruIHA
         void DrawPlacementTools(float x, float y, float w)
         {
             const float bh = 40f;
-            float b1 = 230f, b2 = 200f;
-            if (Ui.Button(Ui.R(x, y, b1, bh), $"Karıştırıcı koy ({custom.jammers.Count}/{MaxJammers})", Ui.Kind.Normal, placeTool == 0, 15))
+            // Dört düğme haritanın genişliğine sığar (harita ekran yüksekliğine göre küçülebilir)
+            float g = 8f, u = (w - 3 * g) / 100f;
+            float b1 = 31f * u, b2 = 25f * u, b3 = 24f * u, b4 = 20f * u;
+            if (Ui.Button(Ui.R(x, y, b1, bh), $"Karıştırıcı ({custom.jammers.Count}/{MaxJammers})", Ui.Kind.Normal, placeTool == 0, 14.5f))
                 placeTool = 0;
-            if (Ui.Button(Ui.R(x + b1 + 8, y, b2, bh), custom.spoofer ? "GPS aldatıcıyı taşı" : "GPS aldatıcı koy", Ui.Kind.Normal,
-                          placeTool == 1, 15))
+            if (Ui.Button(Ui.R(x + b1 + g, y, b2, bh), "GPS aldatıcı", Ui.Kind.Normal, placeTool == 1, 14.5f))
                 placeTool = 1;
-            if (Ui.Button(Ui.R(x + w - 120f, y, 120f, bh), "Temizle", Ui.Kind.Ghost, size: 15))
+            if (Ui.Button(Ui.R(x + b1 + b2 + 2 * g, y, b3, bh), $"Radar ({custom.radars.Count}/{MaxRadars})", Ui.Kind.Normal, placeTool == 2, 14.5f))
+                placeTool = 2;
+            if (Ui.Button(Ui.R(x + w - b4, y, b4, bh), "Temizle", Ui.Kind.Ghost, size: 14.5f))
             {
                 custom.jammers.Clear();
+                custom.radars.Clear();
                 custom.spoofer = false;
             }
         }
@@ -239,6 +253,15 @@ namespace SuruIHA
                 Circle(sp, SpooferRadius, new Color(cyan.r, cyan.g, cyan.b, 0.12f), cyan, 2f);
                 Ui.Dot(sp, 5f, cyan);
             }
+            // Hava savunma radarları: düz arazide yarı yarıya ve %20 görme menzili
+            var amber = new Color(1f, 0.78f, 0.2f);
+            for (int i = 0; i < custom.radars.Count; i++)
+            {
+                var rp = P(custom.radars[i]);
+                Circle(rp, RadarR20, new Color(amber.r, amber.g, amber.b, 0.06f), new Color(amber.r, amber.g, amber.b, 0.55f), 1.5f);
+                Circle(rp, RadarR50, new Color(amber.r, amber.g, amber.b, 0.12f), amber, 2f);
+                Ui.Fill(new Rect(rp.x - 6 * Ui.S, rp.y - 6 * Ui.S, 12 * Ui.S, 12 * Ui.S), amber, 2);
+            }
             // Karıştırıcılar: düz arazide GPS'in kesildiği alan (geniş bant) ve bağlantının koptuğu alan
             float comm = PowerSteps[custom.power] + (custom.band == 1 ? 6.2f : 0f);
             for (int i = 0; i < custom.jammers.Count; i++)
@@ -263,6 +286,12 @@ namespace SuruIHA
                     if (hit >= 0) custom.jammers.RemoveAt(hit);
                     else if (custom.jammers.Count < MaxJammers) custom.jammers.Add(new Vector2(Mathf.Round(w.x), Mathf.Round(w.y)));
                 }
+                else if (placeTool == 2)
+                {
+                    int hit = custom.radars.FindIndex(j => (j - w).magnitude < near);
+                    if (hit >= 0) custom.radars.RemoveAt(hit);
+                    else if (custom.radars.Count < MaxRadars) custom.radars.Add(new Vector2(Mathf.Round(w.x), Mathf.Round(w.y)));
+                }
                 else
                 {
                     if (custom.spoofer && (custom.spooferPos - w).magnitude < near) custom.spoofer = false;
@@ -273,7 +302,9 @@ namespace SuruIHA
             if (mr.Contains(e.mousePosition))
                 tip = placeTool == 0 ? (custom.jammers.Count < MaxJammers ? "Tıkla: karıştırıcı koy · üstüne tıkla: kaldır"
                                                                         : "En fazla 3 karıştırıcı · üstüne tıklayıp birini kaldır")
-                                     : "Tıkla: GPS aldatıcıyı buraya koy · üstüne tıkla: kaldır";
+                    : placeTool == 2 ? (custom.radars.Count < MaxRadars ? "Tıkla: hava savunma radarı koy · üstüne tıkla: kaldır"
+                                                                       : "En fazla 2 radar · üstüne tıklayıp birini kaldır")
+                    : "Tıkla: GPS aldatıcıyı buraya koy · üstüne tıkla: kaldır";
             GUI.EndClip();
             Ui.Outline(Ui.R(x, y, M, M), Ui.Line, 1f);
             if (tip != null && Ui.R(x, y, M, M).Contains(Event.current.mousePosition))
@@ -294,12 +325,13 @@ namespace SuruIHA
             Item(new Color(1f, 0.2f, 0.12f, 0.35f), new Color(1f, 0.92f, 0.88f), "bağlantı kopar");
             if (custom.band == 0) Item(new Color(1f, 0.3f, 0.2f, 0.15f), new Color(1f, 0.45f, 0.35f), "GPS kesilir");
             Item(new Color(0.1f, 0.75f, 1f, 0.2f), new Color(0.1f, 0.75f, 1f), "GPS aldatıcı (250 m)");
+            if (custom.radars.Count > 0) Item(new Color(1f, 0.78f, 0.2f, 0.25f), new Color(1f, 0.78f, 0.2f), "radar yarı yarıya görür");
             Ui.Label(Ui.R(x, y + 24, w, 20), "Daireler düz arazi içindir; tepelerin gölgesi uçuşta ısı haritasında görünür.", 12.5f, Ui.Ink3);
         }
 
         void DrawCustomSettings(float x, float y, float w, float H)
         {
-            const float labelW = 210f, rowH = 46f;
+            const float labelW = 210f, rowH = 44f;
             float sx = x + labelW, segW = Mathf.Min(150f, (w - labelW - 18f) / 4f);
             int Row(string label, string[] items, int sel, Func<int, bool> enabled = null)
             {
@@ -317,6 +349,7 @@ namespace SuruIHA
             custom.popups = Row("Görevde yeni hedef", new[] { "Yok", "4", "8" }, custom.popups);
             custom.failures = Row("Arızalanan İHA", new[] { "Yok", "1", "2" }, custom.failures);
             custom.liars = Row("Saldırgan İHA", new[] { "Yok", "Saf", "Sinsi" }, custom.liars);
+            custom.weather = Row("Rüzgâr · batarya", new[] { "Sakin", "Lodos", "Lodos + pil" }, custom.weather);
             y += 8f;
             // Bölge: altı harita iki sıra halinde
             Ui.Label(Ui.R(x, y + 11, labelW, 24), "Bölge", 16, Ui.Ink2, true);

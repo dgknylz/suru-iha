@@ -39,13 +39,14 @@ namespace SuruIHA
             if (feedOpen) below = DrawFeed(feedTop, cardRight || (chartsOpen && !legendOpen) ? 3 : legendOpen ? 4 : 6) + 12f;
             if (tpp) DrawDroneCards(top + 50f);
             float tbTop = DrawToolbar();
+            if (replayOn) tbTop = DrawReplayBar(tbTop);
             float above = tbTop;
             if (tpp) above = DrawDroneSelector(tbTop);
             DrawHeatScale(above);
             if (chartsOpen && !legendOpen) DrawLiveCharts(Ui.W - 450f, below, 430f, above - 16f - below);   // akışın altında
             if (legendOpen) DrawLegendPanel(above);
             if (layersOpen) DrawLayersPanel(above);
-            DrawResults();
+            if (!replayOn) DrawResults();
             if (tip != null) DrawTip(above);
         }
 
@@ -86,6 +87,7 @@ namespace SuruIHA
                 ("Konum belirsizliği", $"{s.sigma:0} m", s.sigma > 15f ? Ui.Warn : Ui.Ink),
                 ("Karıştırma", $"%{s.jam * 100f:0}", s.jam > 0.35f ? Ui.Warn : Ui.Ink),
                 ("Şimdiki hedef", s.task >= 0 ? $"#{s.task + 1}" : "yok", Ui.Ink),
+                ($"Batarya · {s.pw} W", $"%{s.bat * 100f:0}", s.bat < 0.15f ? Ui.Bad : s.bat < 0.3f ? Ui.Warn : Ui.Ink),
             };
             float fw = (w - 44f) / fields.Length;
             for (int k = 0; k < fields.Length; k++)
@@ -349,19 +351,28 @@ namespace SuruIHA
                 }),
                 ("", new[]
                 {
+                    new Tool("Tekrar", "Uçuşu baştan tekrar izle: zaman çubuğuyla ileri geri sar, yavaşlat ya da hızlandır. " +
+                                       "Canlı simülasyon arkada bekler.", replayOn, ToggleReplay),
                     new Tool("Ses", "Sesi aç ya da kapat: pervane uğultusu, rüzgâr, ırmak ve olaylarda yumuşak bir ton. " +
                                     "Seviye Simülasyon sekmesinde (Kısık / Normal).", SwarmAudio.On, SwarmAudio.Toggle),
                     new Tool("Menü", "Menü [Esc]: senaryo değiştir, proje bilgisi, ana ekran.", false, () => Go(Page.Pause)),
                 }),
             };
 
-            const float bh = 42f, gapB = 6f, gapG = 18f, fs = 15f;
+            const float bh = 42f;
+            float gapB = 6f, gapG = 18f, fs = 15f;
             float total = -gapG;
             foreach (var g in groups)
             {
                 total += gapG - gapB;
                 foreach (var t in g.tools) total += ToolW(t.label) + gapB;
             }
+            // Ekrana sığmazsa düğmeler orantılı daralır
+            float k = Mathf.Min(1f, (Ui.W - 72f) / total);
+            gapB *= k;
+            gapG *= k;
+            fs *= Mathf.Max(k, 0.9f);
+            total *= k;
             float x = (Ui.W - total) / 2f, y = Ui.H - 20f - 14f - bh;
             float panelTop = y - 34f;
             Ui.Panel(Ui.R(x - 16, panelTop, total + 32, bh + 48), 16, 0.9f);
@@ -370,7 +381,7 @@ namespace SuruIHA
                 if (g.name.Length > 0) Ui.Label(Ui.R(x, y - 24, 200, 18), g.name, 11, Ui.Ink3, true);
                 foreach (var t in g.tools)
                 {
-                    float bw = ToolW(t.label);
+                    float bw = ToolW(t.label) * k;
                     var r = Ui.R(x, y, bw, bh);
                     if (r.Contains(Event.current.mousePosition)) tip = t.tip;
                     if (Ui.Button(r, t.label, t.label == "Menü" ? Ui.Kind.Ghost : Ui.Kind.Normal, t.sel, fs)) t.act();
@@ -392,13 +403,13 @@ namespace SuruIHA
 
         void DrawLegendPanel(float tbTop)
         {
-            float w = 760f, colW = 340f, h = 452f;
+            float w = 760f, colW = 340f, h = 520f;
             float x = Ui.W - w - 20f, y = tbTop - 16f - h;
             Ui.Panel(Ui.R(x, y, w, h), 14, 0.92f);
             Ui.Label(Ui.R(x + 22, y + 14, 300, 20), "RENKLERİN ANLAMI", 11.5f, Ui.Accent, true);
             if (Ui.Button(Ui.R(x + w - 48, y + 10, 32, 32), "×", Ui.Kind.Ghost, size: 18)) legendOpen = false;
-            DrawLegend(x + 22, y + 44, colW, 14.5f, 0, 14, false);
-            DrawLegend(x + 22 + colW + 30, y + 44, colW, 14.5f, 14, Legend.Length, true);
+            DrawLegend(x + 22, y + 44, colW, 14.5f, 0, 15, false);
+            DrawLegend(x + 22 + colW + 30, y + 44, colW, 14.5f, 15, Legend.Length, true);
         }
 
         // ------------------------------------------------------------ görev sonu
@@ -412,7 +423,7 @@ namespace SuruIHA
             int key = f.ctl.seed * 100000 + Mathf.RoundToInt(f.t * 10f);
             if (resultsClosedFor == key) return;
 
-            float w = 1060f, h = cmpOn ? 470f : 500f;
+            float w = 1180f, h = cmpOn ? 470f : 500f;
             float x = (Ui.W - w) / 2f, y = (Ui.H - h) / 2f - 40f;
             Ui.Panel(Ui.R(x, y, w, h), 18, 0.97f);
             float px = x + 30f, pw = w - 60f;
@@ -430,8 +441,13 @@ namespace SuruIHA
                 Ui.Stat(Ui.R(px, sy, sw, 112), $"%{100f * f.m.done / Mathf.Max(1, f.m.total):0}", $"tamamlanan hedef ({f.m.done}/{f.m.total})", all ? Ui.Good : Ui.Warn);
                 Ui.Stat(Ui.R(px + (sw + 12), sy, sw, 112), $"{f.m.score * 100f:0}", "görev puanı (100 üzerinden; geç yapılan hedef daha az değerli)", Ui.Accent);
                 Ui.Stat(Ui.R(px + 2 * (sw + 12), sy, sw, 112), $"{doneAt:0} s", all ? "kalkıştan son hedefe kadar süre" : "uçuş süresi", Ui.Ink);
-                Ui.Stat(Ui.R(px + 3 * (sw + 12), sy, sw, 112), $"{f.m.falseDone}", "yanlış \"bitti\": İHA hedefi bulduğunu sandı ama bulamadı",
-                        f.m.falseDone == 0 ? Ui.Good : Ui.Bad);
+                bool threats = (f.radars != null && f.radars.Length > 0) || f.m.depleted > 0 || f.m.rtb > 0;
+                if (threats)
+                    Ui.Stat(Ui.R(px + 3 * (sw + 12), sy, sw, 112), $"{f.m.shot + f.m.depleted}",
+                            $"düşen İHA (hava savunma {f.m.shot}, batarya {f.m.depleted})", f.m.shot + f.m.depleted == 0 ? Ui.Good : Ui.Bad);
+                else
+                    Ui.Stat(Ui.R(px + 3 * (sw + 12), sy, sw, 112), $"{f.m.falseDone}", "yanlış \"bitti\": İHA hedefi bulduğunu sandı ama bulamadı",
+                            f.m.falseDone == 0 ? Ui.Good : Ui.Bad);
                 sy += 128f;
                 string detail = Detail(f);
                 if (detail.Length > 0)
@@ -447,7 +463,8 @@ namespace SuruIHA
                     string R(int s, float v, string name) => s == runStrategy ? $"<b><color=#ffffff>{name} %{Pct(v)}</color></b>" : $"{name} %{Pct(v)}";
                     Ui.Label(Ui.R(px + 16, sy + 36, pw - 32, 28),
                              R(2, running.RefResilient, "EH dirençli") + "   ·   " + R(1, running.RefDecentral, "merkeziyetsiz") + "   ·   " +
-                             R(0, running.RefCentral, "merkezi"), 17, Ui.Ink2);
+                             R(0, running.RefCentral, "merkezi") + (running.RefText != null ? "   ·   " + running.RefText.Replace("Deneyde ", "") : ""),
+                             17, Ui.Ink2);
                 }
             }
             else
@@ -464,13 +481,18 @@ namespace SuruIHA
                 reportSide = 0;
                 OpenMenu(Tab.Rapor);
             }
-            if (Ui.Button(Ui.R(px + 224, by, 230, 54), "Yeni haritada tekrar", size: 17))
+            if (Ui.Button(Ui.R(px + 224, by, 170, 54), "Tekrar izle", size: 17, enabled: SwarmVisualizer.Main.Receiver.RecCount > 20))
+            {
+                resultsClosedFor = key;
+                StartReplay();
+            }
+            if (Ui.Button(Ui.R(px + 408, by, 170, 54), "Yeni harita", size: 17))
             {
                 resultsClosedFor = key;
                 Send("{\"cmd\":\"restart\"}");
             }
-            if (Ui.Button(Ui.R(px + 468, by, 180, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
-            if (!cmpOn && running != null && Ui.Button(Ui.R(px + 662, by, 170, 54), "Yan yana izle", size: 17))
+            if (Ui.Button(Ui.R(px + 592, by, 180, 54), "Başka senaryo", size: 17)) { resultsClosedFor = key; OpenMenu(Tab.Simulasyon); }
+            if (!cmpOn && running != null && Ui.Button(Ui.R(px + 786, by, 170, 54), "Yan yana izle", size: 17))
             {
                 useCustom = running.Custom;
                 if (!useCustom) scenario = Array.IndexOf(SwarmScenarios.All, running);
@@ -553,7 +575,8 @@ namespace SuruIHA
                 yield return Shot(tabShots[k]);
             }
             OpenMenu(Tab.Bulgular);
-            string[] findShots = { "04_bulgu_eh", "05_bulgu_karar", "06_bulgu_yapay_zeka", "07_bulgu_ablasyon", "08_bulgu_olcekleme" };
+            string[] findShots = { "04_bulgu_eh", "05_bulgu_karar", "06_bulgu_yapay_zeka", "07_bulgu_ablasyon", "08_bulgu_olcekleme",
+                                   "08b_bulgu_tehditler" };
             for (int k = 0; k < findShots.Length; k++)
             {
                 finding = k;
@@ -712,9 +735,9 @@ namespace SuruIHA
             cam.topHeight = th2;
             custom = saved;
 
-            // Karlı bölge: aynı senaryo karla kaplı dağlarda
+            // Karlı bölge: temel görev (karıştırıcısız: kar örtüsü ısı haritasının altında kalmasın)
             region = 1;
-            scenario = 1;
+            scenario = 0;
             strategy = 2;
             compare = false;
             useCustom = false;
@@ -739,8 +762,9 @@ namespace SuruIHA
             yield return Shot("26_karli_bolge_tepeden");
             cam.topHeight = th2;
 
-            // Kızılırmak (Sivas): aynı senaryo nehir vadisinde
+            // Kızılırmak (Sivas): karıştırıcılı senaryo nehir vadisinde
             region = 2;
+            scenario = 1;
             Launch();
             yield return Until(() => SwarmVisualizer.Main.Frame?.region == "nehir" && SwarmVisualizer.Main.Frame.t > 70f, 60f);
             var nf = SwarmVisualizer.Main.Frame;
@@ -791,6 +815,99 @@ namespace SuruIHA
                 yield return Shot(shot + "_tepeden");
                 cam.topHeight = th2;
             }
+            // Yeni tehditler (ova): hava savunma radarı, yan yana karşılaştırma, lodos ve yarı dolu bataryalar, uçuş tekrarı
+            region = 0;
+            scenario = Array.FindIndex(SwarmScenarios.All, s => s.Id == "radar");
+            strategy = 2;
+            compare = false;
+            useCustom = false;
+            Launch();
+            yield return Until(() => SwarmVisualizer.Main.Frame?.region == "ova" && SwarmVisualizer.Main.Frame?.radars?.Length > 0 &&
+                                     SwarmVisualizer.Main.Frame.t > 55f, 60f);
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(4f);
+            yield return Shot("40_hava_savunma_sinematik");
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1500f;
+            yield return Wait(4f);
+            yield return Shot("41_hava_savunma_tepeden");
+            yield return Until(() => SwarmVisualizer.Main.Frame?.t > 92f, 40f);   // pusu radarı 80. saniyede açıldı
+            yield return Wait(1f);
+            yield return Shot("42_pusu_radari_bulundu");
+            cam.topHeight = th2;
+            var radarGo = GameObject.Find("Radar_0");
+            if (radarGo != null)
+            {
+                cam.LookAt(radarGo.transform.position + new Vector3(3f, 3f, 1f), 24f, 205f, 12f);
+                yield return Wait(3f);
+                yield return Shot("43_radar_yakin");
+            }
+            var rf0 = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"hava savunma: radar {rf0?.radars?.Length} (açık {rf0?.radars?.Count(r => r.on == 1)}) · düşen {rf0?.m?.shot} · " +
+                           $"radar kestirimi hatası {rf0?.m?.radarErr:0} m · görüş haritası {(SwarmVisualizer.Main.RadarField != null ? "var" : "YOK")} · " +
+                           $"görev {rf0?.m?.done}/{rf0?.m?.total}");
+            yield return Until(() => SwarmVisualizer.Main.Frame?.ctl?.finished == 1, 150f);
+            var rf1 = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"hava savunma (dirençli) uçuş sonu: düşen {rf1?.m?.shot} · görev {rf1?.m?.done}/{rf1?.m?.total} · t={rf1?.t:0}");
+            yield return Wait(1.5f);
+            yield return Shot("44_hava_savunma_sonuc");
+            // Uçuş tekrarı: baştan oynat, ortasına sar
+            StartReplay();
+            var rrx = SwarmVisualizer.Main.Receiver;
+            log.AppendLine($"uçuş tekrarı: {rrx.RecCount} kare, {rrx.RecStart:0}-{rrx.RecEnd:0} s");
+            replayT = rrx.RecStart + 0.45f * (rrx.RecEnd - rrx.RecStart);
+            replayPlaying = true;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(3f);
+            yield return Shot("45_ucus_tekrari");
+            StopReplay();
+
+            strategy = 1;                          // yan yana: korumasız sürü radarı bilmeden şemsiyeye girer
+            compare = true;
+            Launch();
+            yield return Until(() => SimConnected && CompareOn, 45f);
+            yield return Until(() => SwarmVisualizer.Main.Frame?.t > 100f, 60f);
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1500f;
+            yield return Wait(3f);
+            yield return Shot("46_hava_savunma_yan_yana");
+            cam.topHeight = th2;
+            var cl = SwarmVisualizer.Main.Frame;
+            var cr = SwarmCompare.Instance != null && SwarmCompare.Instance.B != null ? SwarmCompare.Instance.B.Frame : null;
+            log.AppendLine($"hava savunma yan yana: solda düşen {cl?.m?.shot}, sağda düşen {cr?.m?.shot}");
+            log.AppendLine("olay akışı (hava savunma, sağdaki sürü):");
+            foreach (var e in SwarmEvents.Instance.Items) log.AppendLine($"  t={e.sim:0} {e.text}");
+
+            scenario = Array.FindIndex(SwarmScenarios.All, s => s.Id == "batarya");
+            strategy = 1;
+            compare = true;
+            Launch();
+            yield return Until(() => SimConnected && CompareOn && SwarmVisualizer.Main.Frame?.wind?.Length == 2 && SwarmVisualizer.Main.Frame.t > 60f, 60f);
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Cinematic;
+            yield return Wait(3f);
+            yield return Shot("47_lodos_batarya_yan_yana");
+            var bf = SwarmVisualizer.Main.Frame;
+            int low = 0;
+            if (bf?.drones != null)
+                for (int k = 1; k < bf.drones.Length; k++) if (bf.drones[k].bat < bf.drones[low].bat) low = k;
+            cam.SetFollow(low);
+            cam.mode = SwarmCamera.Mode.Follow;
+            yield return Wait(3f);
+            yield return Shot("48_batarya_iha_kamerasi");
+            yield return Until(() => SwarmVisualizer.Main.Frame?.ctl?.finished == 1 &&
+                                     (SwarmCompare.Instance?.B?.Frame?.ctl?.finished ?? 1) == 1, 150f);
+            yield return Wait(1.5f);
+            yield return Shot("49_lodos_batarya_sonuc");
+            var bl = SwarmVisualizer.Main.Frame;
+            var br = SwarmCompare.Instance != null && SwarmCompare.Instance.B != null ? SwarmCompare.Instance.B.Frame : null;
+            log.AppendLine($"lodos ve batarya: solda bataryası biten {bl?.m?.depleted} · eve dönen {bl?.m?.rtb}; sağda biten {br?.m?.depleted} · eve dönen {br?.m?.rtb}");
+            compare = false;
+            strategy = 2;
+            scenario = 1;
+
             region = 0;
             launcher.Stop();
             File.WriteAllText(Path.Combine(dir, "rapor.txt"), log.ToString());

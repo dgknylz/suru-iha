@@ -57,15 +57,26 @@ namespace SuruIHA.EditorTools
 
         // Katmanlar: 0-1 taze kar (aynı doku iki ölçekte, iri lekelerle karışır: tekrar deseni seçilmesin),
         // 2 yer yer bitkisi görünen kar (vadide), 3 kaya (yalnızca sarp yüz), 4 tekerlek izli karlı yol
-        static readonly Color SnowTint = new Color(1.25f, 1.26f, 1.3f);   // kar parlak (gerçek kar ışığın %80'inden fazlasını yansıtır)
-        static TerrainLayer[] SnowLayers() => new[]
+        static readonly Color SnowTint = new Color(1.36f, 1.37f, 1.42f);  // kar parlak (gerçek kar ışığın %80'inden fazlasını yansıtır)
+        static TerrainLayer[] SnowLayers()
         {
-            Layer("Kar", "Ter_Aniz", Color.white, new Color(0.92f, 0.93f, 0.95f), 6f, 0.35f, 11, "snow_02", 9f, SnowTint, 0.5f),
-            Layer("KarIri", "Ter_Aniz", Color.white, new Color(0.92f, 0.93f, 0.95f), 6f, 0.35f, 16, "snow_02", 23f, SnowTint, 0.5f),
+            var L = SnowLayerList();
+            // Taze kar pürüzsüzdür: fotoğraftaki iz ve tümsekler yumuşatılır (havadan bakınca damga gibi tekrar etmesin)
+            L[0].normalScale = 0.35f;
+            L[1].normalScale = 0.35f;
+            L[2].normalScale = 0.5f;
+            foreach (var l in L) EditorUtility.SetDirty(l);
+            return L;
+        }
+
+        static TerrainLayer[] SnowLayerList() => new[]
+        {
+            Layer("Kar", "Ter_Aniz", Color.white, new Color(0.92f, 0.93f, 0.95f), 6f, 0.35f, 11, "snow_02", 9f, SnowTint, 0.72f),
+            Layer("KarIri", "Ter_Aniz", Color.white, new Color(0.92f, 0.93f, 0.95f), 6f, 0.35f, 16, "snow_02", 23f, SnowTint, 0.72f),
             Layer("KarDoga", "Ter_Aniz", Color.white, new Color(0.9f, 0.9f, 0.92f), 7f, 0.3f, 12, "snow_field_aerial", 60f,
                   new Color(1.1f, 1.1f, 1.14f)),
             Layer("KarKaya", "Ter_Kaya", new Color(0.47f, 0.46f, 0.44f), new Color(0.3f, 0.3f, 0.29f), 22f, 0.12f, 14, "aerial_rocks_02", 40f,
-                  new Color(0.46f, 0.48f, 0.53f)),     // koyu soğuk gri: yosun yeşili ve kahve bastırılsın
+                  new Color(0.62f, 0.65f, 0.72f)),     // soğuk, kar tozlu gri: yosun yeşili ve kahve bastırılsın
             Layer("KarYol", "Ter_Cakil", new Color(0.8f, 0.8f, 0.8f), new Color(0.6f, 0.6f, 0.6f), 5f, 0.2f, 15, "snow_04", 6f),
         };
 
@@ -134,10 +145,12 @@ namespace SuruIHA.EditorTools
                 float mix = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((Fbm(x * 0.006f - 7f, z * 0.006f + 31f, 3) - 0.35f) * 3.3f));
                 w[0] = 1f - mix;
                 w[1] = mix;
-                // Vadide yer yer karın altından bitki çıkar (yükseldikçe kar kesintisiz)
-                w[2] = Mathf.Clamp01((Fbm(x * 0.0035f + 5f, z * 0.0035f - 2f, 4) - 0.55f) * 2.5f) * 0.6f
-                     * (1f - Mathf.InverseLerp(40f, 200f, hRel));
-                float rock = Mathf.Clamp01((slope - 44f) / 10f);      // yalnızca çok sarp yüzlerde kaya görünür
+                // Vadide seyrek, karın altından çıkan bitki (yükseldikçe kar kesintisiz)
+                w[2] = Mathf.Clamp01((Fbm(x * 0.0035f + 5f, z * 0.0035f - 2f, 4) - 0.6f) * 2.5f) * 0.3f
+                     * (1f - Mathf.InverseLerp(30f, 150f, hRel));
+                // Kaya yalnızca kar tutmayan çok sarp yüzlerde; orada da oluklarda kar şeritleri kalır
+                float streak = Mathf.Clamp01((Fbm(x * 0.03f + 9f, z * 0.012f - 4f, 3) - 0.4f) * 2.5f);
+                float rock = Mathf.Clamp01((slope - 50f) / 12f) * (1f - 0.6f * streak);
                 for (int k = 0; k < 3; k++) w[k] *= 1f - rock;
                 w[3] += rock;
                 float rd = RoadDistance(roads, new Vector2(x, z));
@@ -314,7 +327,7 @@ namespace SuruIHA.EditorTools
             string mp = $"{Root}/Materials/MAT_NeedlesKar.mat";
             AssetDatabase.DeleteAsset(mp);
             var snowMat = new Material(src) { name = "MAT_NeedlesKar" };
-            snowMat.SetColor("_BaseColor", new Color(0.82f, 0.86f, 0.84f));   // karın arasındaki iğneler koyu kalsın
+            snowMat.SetColor("_BaseColor", new Color(0.9f, 0.93f, 0.95f));    // karın arasındaki iğneler biraz koyu kalsın
             var tex = SnowyNeedleTexture(src.GetTexture("_BaseColorMap") as Texture2D);
             if (tex != null) snowMat.SetTexture("_BaseColorMap", tex);
             HDMaterial.ValidateMaterial(snowMat);
@@ -356,9 +369,10 @@ namespace SuruIHA.EditorTools
                 int k = j * n + i;
                 if (px[k].a < 8) continue;
                 float u = i / (float)n, v = j / (float)m;
-                float s = Mathf.SmoothStep(0.38f, 0.56f, Mathf.PerlinNoise(u * 7f + 3.1f, v * 7f - 1.7f) * 0.8f + v * 0.3f);
+                // Dalların üstü kar yükü: iğnelerin çoğu karla örtülü, arada koyu yeşil kalır
+                float s = Mathf.SmoothStep(0.2f, 0.46f, Mathf.PerlinNoise(u * 7f + 3.1f, v * 7f - 1.7f) * 0.8f + v * 0.35f);
                 Color c = px[k];
-                Color o = Color.Lerp(c, snow, s * 0.9f);
+                Color o = Color.Lerp(c, snow, s * 0.97f);
                 o.a = c.a;
                 px[k] = o;
             }
@@ -410,7 +424,9 @@ namespace SuruIHA.EditorTools
                 for (int i = 0; i < ar; i++)
                 {
                     float slope = td.GetSteepness(i / (float)(ar - 1), j / (float)(ar - 1));
-                    float r = Mathf.Clamp01((slope - 42f) / 12f);
+                    float fx = ox + i / (float)(ar - 1) * TerrainSize, fz = oz + j / (float)(ar - 1) * TerrainSize;
+                    float streak = Mathf.Clamp01((Fbm(fx * 0.03f + 9f, fz * 0.012f - 4f, 3) - 0.4f) * 2.5f);
+                    float r = Mathf.Clamp01((slope - 50f) / 14f) * (1f - 0.6f * streak);
                     am[j, i, 1] = 1f - r;
                     am[j, i, 3] = r;
                 }

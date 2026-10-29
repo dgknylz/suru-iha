@@ -69,7 +69,7 @@ namespace SuruIHA.EditorTools
             Layer("AAniz", "Ter_Aniz", new Color(0.7f, 0.6f, 0.4f), new Color(0.55f, 0.46f, 0.3f), 7f, 0.05f, 64, "withered_grass", 4f,
                   new Color(1f, 0.88f, 0.62f)),
             Layer("AKaya", "Ter_Kaya", new Color(0.66f, 0.63f, 0.58f), new Color(0.5f, 0.48f, 0.44f), 20f, 0.1f, 65, "aerial_rocks_02", 26f,
-                  new Color(1.25f, 1.2f, 1.1f)),
+                  new Color(1.12f, 1.12f, 1.1f)),     // gri kalker (Toroslar): kumlu kahve görünmesin
             Layer("AKum", "Ter_Cakil", new Color(0.85f, 0.78f, 0.62f), new Color(0.7f, 0.64f, 0.5f), 4f, 0.08f, 66, "gravelly_sand", 4f,
                   new Color(1.3f, 1.18f, 0.98f), 0.3f),
             Layer("AYol", "Ter_Cakil", new Color(0.55f, 0.5f, 0.42f), new Color(0.4f, 0.36f, 0.3f), 5f, 0.08f, 67, "dirt_aerial_02", 5f),
@@ -99,11 +99,15 @@ namespace SuruIHA.EditorTools
                 float d = CoastZ(x) - z, y = H(x, z);
                 // kara: kızılçam ormanı toprağı ve maki, açıklıklarda kuru ot
                 float forest = Mathf.Clamp01((Fbm(x * 0.004f + 5f, z * 0.004f - 8f, 4) - 0.38f) * 3f) * Mathf.InverseLerp(60f, 160f, d);
-                w[2] = forest;
-                w[0] = (1f - forest) * (0.6f + 0.6f * Fbm(x * 0.012f, z * 0.012f + 3f, 3));
+                // Sarp yamaçta çam azalır, toprağı maki (yeşil çalı) örter: dağ çıplak kum tepesi gibi durmasın
+                float steep = Mathf.Clamp01((slope - 16f) / 12f);
+                w[2] = forest * (1f - 0.8f * steep);
+                w[0] = (1f - forest) * (0.6f + 0.6f * Fbm(x * 0.012f, z * 0.012f + 3f, 3)) + forest * 0.8f * steep * 1.3f;
                 w[1] = (1f - forest) * 0.5f;
                 if ((new Vector2(x, z) - SeaVillageXZ).magnitude < 200f && slope < 12f) w[3] += 0.6f * Fbm(x * 0.02f, z * 0.02f, 2);
-                float rock = Mathf.Clamp01((slope - 24f) / 10f) + Mathf.Clamp01((Fbm(x * 0.008f, z * 0.008f - 2f, 3) - 0.65f) * 4f) * 0.6f;
+                // Kalker kaya yalnızca çok sarp yerde ve yer yer çıkıntılarda; sarp yamacın gerisini maki örter
+                float rock = Mathf.Clamp01((slope - 36f) / 12f) * (0.6f + 0.4f * Fbm(x * 0.02f + 4f, z * 0.02f, 3))
+                           + Mathf.Clamp01((Fbm(x * 0.008f, z * 0.008f - 2f, 3) - 0.68f) * 4f) * 0.5f;
                 rock = Mathf.Clamp01(rock);
                 for (int k = 0; k < w.Length; k++) w[k] *= 1f - rock;
                 w[4] += rock;
@@ -186,7 +190,7 @@ namespace SuruIHA.EditorTools
                 (x, z, sl, w) => Paint(x, z, sl, w),
                 (pl, x, z, sl) =>
                 {
-                    if (CoastZ(x) - z > 60f && sl < 32f && pl.R() < 0.5f) pl.Pine(x, z, 1.1f);
+                    if (CoastZ(x) - z > 60f && sl < 40f && pl.R() < 0.65f) pl.Pine(x, z, 1.1f);   // kızılçam sarp yamaçta da tutunur
                 }, prefabs, 1454, 1400, SeaBase);
         }
 

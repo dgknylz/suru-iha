@@ -49,6 +49,18 @@ Tek paragraf. İçinde şunlar olsun:
    - **Karıştırıcıyı bulma:** alınan güç ölçümlerinden kısıtlı en küçük kareler (güç ≤ 2 W); tek kaynak şüpheliyse k-ortalamalar başlangıçlı iki kaynak modeli. Bulunan karıştırıcıdan karıştırma alanı önceden kestirilir.
    - **GPS aldatma:** 250 m yarıçapta alıcıyı ele geçirip konumu 2 m/s (hızlı) ya da 0,5 m/s (yavaş) sürükleyen aldatıcı (Tippenhauer vd. 2011). Tespit: IMU tutarlılığı (10 s pencere, 5σ eşik), komşu menzil ölçümü ve "hedef yok" çıkarımı.
    - **Saldırgan İHA'lar (%20):** saf (her görevi ister) ya da sinsi (2 görevi makul tekliflerle kilitler, sahte "tamamlandı" yayar ve konum yalanı söyler). Savunma: Beta itibar sistemi (Jøsang ve Ismail 2002), menzil/hız/ilerleme kanıtı, iki bağımsız tanık kuralı, "tamamlandı" bilgisinin kaynağıyla yayılması ve geri alınması.
+6b. **Hava savunma ve enerji (yeni tehditler):** Ayrı bir alt bölüm yap:
+   - **Radar:** X bandı arama radarı, radar denklemi (`SNR ∝ R⁻⁴`), Swerling-1 tespit olasılığı `Pd = Pfa^(1/(1+SNR))`
+     (Skolnik 2008), arazi gölgesi iki yönlü bıçak sırtı kırınımı, Doppler süzgeci. Son 3 taramanın 2'sinde görülen İHA
+     izlenir, iz 4 s korunursa füze atılır (komut güdümlü: iz koparsa ıskalar).
+   - **Radar ikaz alıcısı ve kerteriz kestirimi:** İHA radarın yönünü ölçer (±3°), ölçümler dedikoduyla yayılır; radarın yeri
+     açı hatalarının karelerini en küçük yapan nokta olarak bulunur (en çok olabilirlik). Hata Fisher bilgisinden; kısa
+     tabanlı (paralel) ölçümler reddedilir. Bir şekille anlat: farklı İHA'lardan çizilen kerteriz çizgileri radarda kesişir.
+   - **Tehdit farkında rota:** radar görüşü 20 m'lik ızgarada çizgeye çevrilir, kenar maliyeti `uzunluk · (1 + 40·Pd)`;
+     hedeften geriye Dijkstra en kısa yol ağacı (Dijkstra 1959). Risk/ödül kuralı: radarın görmediği yerden 50 m'den derine
+     dalış gerektiren hedef alınmaz.
+   - **Enerji:** döner kanatlı İHA güç modeli (Zeng vd. 2019), rüzgâr (ortalama + Ornstein-Uhlenbeck esintisi), hız sınırı
+     havaya göre. Standart emniyet (%10'da eve dön) ile enerji farkında karar (rüzgâra karşı dönüş enerjisi) karşılaştırıldı.
 7. **Karşılaştırılan üç mimari:** Her birini bir paragrafla anlat. Dirençli mimarinin mekanizmalarını madde madde yaz (README §2): karıştırma haritası, uzun TTL, bölgeden kaçınma, işbirlikçi konum, spiral arama, GPS kurtarma, güven sistemi, karıştırıcı bulma, FHSS, aldatma tespiti, görev değerlendirme. Ayrıca öngörülü çarpışma önlemeyi (CPA) sürü zekâsı bölümüne ekle.
 8. **Deney tasarımı:**
    - Ana deney: 3 strateji × 4 güç × 2 saldırgan oranı × 30 tekrar = 720 koşu.
@@ -60,6 +72,8 @@ Tek paragraf. İçinde şunlar olsun:
    - **Parametre ayarı (Aşama 4):** dirençli stratejinin 4 parametresi (karıştırmada bekleme, GPS kurtarma eşiği, karıştırma cezası, harita unutma süresi) teker teker 3 değerde, 3 senaryoda, **ayrı ayar haritalarında** (seed 500-519) denendi = 540 koşu. Test haritaları (seed 0-29) ayar sırasında hiç kullanılmadı.
    - **Ablasyon (Aşama 4):** tam dirençli sistemden her mekanizma tek tek çıkarıldı (11 mekanizma + tam + korumasız) × 6 senaryo × 12 tekrar = 936 koşu.
    - **Ölçekleme (Aşama 4):** 5 / 10 / 20 İHA (görev = 2 × İHA) × 3 strateji × 3 koşul × 20 tekrar = 540 koşu; hesap yükü de ölçüldü.
+   - **Yeni tehditler:** hava savunma (yeri bilinen radar + 80. saniyede açılan pusu radarı) ve 8 m/s lodos + karışık
+     batarya × 3 strateji × 30 tekrar = 180 koşu (`run_experiments.py --threats`).
    - Aynı tohumda aynı görev haritası kullanıldı (eşleştirilmiş tasarım).
 9. **Ölçütler:** Görev tamamlama oranı, **görev puanı** (yapılan görevlerin zamanla azalan değerlerinin toplamı / tüm değerler, 0-100), yeni hedefe tepki süresi, görev alanında katedilen yol, yeniden planlama sayısı, görev süresi (kalkış ve intikal dahil), yanlış tamamlama, tekrar ziyaret, paket iletim oranı, konum hatası, sürü bağlantılılığı (en büyük bağlı grubun oranı), düzen yuva hatası, en düşük yerden yükseklik, yakın geçiş sayısı.
 10. **Doğrulama:** `tests/test_suru.py` içinde 23 otomatik test var (radyo fiziği, düzen geometrisi, tam uçuş, arazi takibi, arıza; karar alma için en iyi ekleme hesabının kaba kuvvetle karşılaştırılması, Choi uzlaşma kuralları, CBBA'nın çakışmasız plana yakınsaması, yeni hedeflerin yapılması, yapay zekâ ağı). Yapay zekânın geri yayılım türevleri sayısal türevle karşılaştırıldı (göreli hata 10⁻⁹). Raporda "simülatörün doğru çalıştığını nasıl kontrol ettin?" sorusunun cevabı bu.
@@ -186,6 +200,16 @@ Yorumlaman gereken noktalar:
 - **Ablasyon:** her tehdide karşı farklı mekanizmalar önemli; tek bir "sihirli" mekanizma yok, dayanıklılık birbirini tamamlayan mekanizmalardan geliyor. "Bölgeden kaçınma"nın zararlı çıkması dürüst bir bulgu: fazla temkinli kural yolu uzatıyor.
 - **Ölçekleme:** dirençli sürü İHA sayısı arttıkça daha iyi; korumasız sürü 20 İHA'da karıştırma altında kötüleşiyor (kalabalık ağda karıştırılan bağlantı sayısı artıyor).
 - İlk yapay zekâ denemesinin (evrim stratejileri) başarısızlığını ve yöntemi neden değiştirdiğini anlat; jüri araştırma sürecini görmek ister.
+- **Hava savunma:** korumasız sürüler radarın şemsiyesine girip uçuş başına 5 İHA kaybetti (10 İHA'dan); dirençli sürü 0,7
+  (Wilcoxon p < 0,00001). Pusu radarı açılışından ortalama 4 s sonra ~33 m hatayla bulundu. Bedeli: dirençli sürü şemsiyenin
+  tam altındaki hedefleri bilerek bıraktı (%65,7 tamamlama). Bunu bir risk/ödül kararı olarak tartış: hedefin değeri ile
+  İHA'nın değeri arasındaki oran değişirse doğru karar da değişir.
+- **Enerji:** sabit %10 emniyeti rüzgârı bilmediği için korumasız sürülerde uçuş başına 0,9-1,3 İHA eve varamadan düştü;
+  enerji farkında sürüde hiç düşmedi, hedeflerin hepsi yapıldı. Görev puanı biraz düştü (düşük bataryalı İHA erken döndü).
+- **Tasarım süreci (dürüstçe anlat):** radar riskini görev değerine katmak İHA'ların biraz farklı tehdit haritaları yüzünden
+  uzlaşmayı (CBBA) salındırdı; kesin bir kurala (kısa dalış) geçildi. Kerteriz kestiriminde ilk yöntem (çizgilere dik uzaklık,
+  ağırlıklı en küçük kareler) birbirine yakın ölçümlerde radarı yüzlerce metre yanlış yere koyup "eminim" diyordu; en çok
+  olabilirlik ızgarası ve Fisher bilgisiyle hata payı doğru hesaplanınca bu kestirimler reddedildi.
 
 ## Sonuç ve Tartışma
 - Hipotez 1 desteklendi mi? (Evet: 20 dBm, 30 dBm, hareketli/iki/tepede karıştırıcı, GPS aldatma ve saldırgan koşullarında dirençli sürü anlamlı üstün, p < 10⁻⁶.)
@@ -200,6 +224,8 @@ Yorumlaman gereken noktalar:
 - Pekiştirmeli öğrenmeyi daha fazla hesaplama gücüyle davranış kararlarına (ne zaman aramayı bırakmalı, ne zaman konum düzeltmeye dönmeli) uygulamak; ablasyon bu kararların puana etkisinin büyük olduğunu gösteriyor
 - "Bölgeden kaçınma" kuralını kazanç-maliyet hesabıyla akıllandırmak
 - Küçük kara robotlarıyla (ESP32) fiziksel deney; paket kaybı yazılımla verilir
+- Hava savunmada hedef değeri ile İHA değerini aynı ölçüde tartan bir karar (beklenen kayıp); radarı bastırma görevi (SEAD)
+- Enerjide batarya değişimi / şarj istasyonu ve rüzgârın araziyle değişmesi
 
 ## Kaynaklar
 - Reynolds, C. W. (1987). Flocks, herds and schools: A distributed behavioral model. *ACM SIGGRAPH Computer Graphics*, 21(4), 25–34.
@@ -222,5 +248,10 @@ Yorumlaman gereken noktalar:
 - Tippenhauer, N. O., Pöpper, C., Rasmussen, K. B., & Čapkun, S. (2011). On the requirements for successful GPS spoofing attacks. *ACM Conference on Computer and Communications Security (CCS)*, 75–86.
 - Jøsang, A., & Ismail, R. (2002). The Beta reputation system. *15th Bled Electronic Commerce Conference*.
 - Poisel, R. A. (2011). *Modern Communications Jamming Principles and Techniques* (2nd ed.). Artech House.
+- Skolnik, M. I. (2008). *Radar Handbook* (3rd ed.). McGraw-Hill. (radar denklemi, Swerling hedef modelleri)
+- Dijkstra, E. W. (1959). A note on two problems in connexion with graphs. *Numerische Mathematik*, 1, 269–271.
+- Zeng, Y., Xu, J., & Zhang, R. (2019). Energy minimization for wireless communication with rotary-wing UAV.
+  *IEEE Transactions on Wireless Communications*, 18(4), 2329–2345.
+- Uhlenbeck, G. E., & Ornstein, L. S. (1930). On the theory of the Brownian motion. *Physical Review*, 36(5), 823–841.
 
 > Kaynakları rapora koymadan önce en az özetlerini oku. Jüri "bu makalede ne anlatılıyor?" diye sorabilir.

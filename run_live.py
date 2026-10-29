@@ -16,6 +16,10 @@ Unity'den klavyeyle senaryo değiştirilebilir (UDP 5066 komut kanalı):
 Kendi senaryon (Unity'deki "Kendi senaryon" sekmesi; negatif sayılar için = ile yazılır):
     python run_live.py --jammer 20 --jammers=-150,300;200,500 --jammer-band nokta
     python run_live.py --jammer off --gps-spoof hizli --spoofer=100,400 --drones 8 --tasks 15 --failures 1
+Hava savunma ve rüzgâr:
+    python run_live.py --jammer off --radar iki                 # bilinen radar + görevde açılan pusu radarı
+    python run_live.py --jammer off --radars=-300,650;500,200   # radarları verilen noktalara koy
+    python run_live.py --jammer off --wind 9 --battery karisik  # lodos ve yarı dolu bataryalar
 Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
 İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
 Çıkmak için Ctrl+C.
@@ -26,7 +30,8 @@ import socket
 import time
 
 from suru import World, make_config, PLANNERS, PLANNER_NAMES, STRATEGY_NAMES
-from suru.config import parse_points
+from suru.config import RADAR_MODES, parse_points
+from suru.energy import BATTERY_MODES
 from suru.bridge import UnityBridge
 
 POWER_STEPS = [None, 10.0, 20.0, 30.0]   # karıştırıcı kademeleri (None = kapalı)
@@ -67,17 +72,28 @@ def add_custom_args(p):
     p.add_argument("--spoofer", default="", help="GPS aldatıcının yeri 'x,y' (m); --gps-spoof ile birlikte")
     p.add_argument("--region", default="ova", choices=["ova", "kar", "nehir", "divrigi", "gokpinar", "deniz"],
                    help="harita: Orta Anadolu ovası, karlı dağlar, Kızılırmak (Sivas), Divriği (Sivas), Gökpınar Gölü (Gürün), Akdeniz kıyısı")
+    p.add_argument("--radar", default="", choices=list(RADAR_MODES),
+                   help="hava savunma radarı: bilinen (yeri biliniyor), pusu (görevde açılır), iki (ikisi birden)")
+    p.add_argument("--radars", default="", help="radarların yeri 'x,y;x,y' (m); verilirse --radar yok sayılır")
+    p.add_argument("--wind", type=float, default=0.0, help="ortalama rüzgâr hızı (m/s)")
+    p.add_argument("--wind-from", type=float, default=210.0, help="rüzgârın estiği yön (derece; 180 güney, 225 güneybatı = lodos)")
+    p.add_argument("--battery", default="tam", choices=list(BATTERY_MODES), help="kalkıştaki batarya doluluğu")
 
 
 def custom_state(a):
     sp = parse_points(a.spoofer)
     return {"jammer_xy": parse_points(a.jammers), "jammer_band": a.jammer_band, "spoofer_xy": sp[0] if sp else None,
-            "region": a.region}
+            "region": a.region, "radar_mode": a.radar, "radar_xy": parse_points(a.radars), "wind": a.wind,
+            "wind_from": a.wind_from, "battery": a.battery}
 
 
 def custom_kw(st):
+    wind = float(st.get("wind", 0.0))
     return {"jammer_xy": st.get("jammer_xy"), "jammer_band": st.get("jammer_band", "genis"),
-            "spoofer_xy": st.get("spoofer_xy"), "region": st.get("region", "ova")}
+            "spoofer_xy": st.get("spoofer_xy"), "region": st.get("region", "ova"),
+            "radar_mode": st.get("radar_mode", ""), "radar_xy": st.get("radar_xy"),
+            "wind_speed": wind, "wind_from": float(st.get("wind_from", 210.0)), "gust": 0.25 * wind,
+            "battery": st.get("battery", "tam")}
 
 
 class Controls:

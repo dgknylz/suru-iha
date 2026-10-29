@@ -9,6 +9,7 @@ namespace SuruIHA
         public string Id, Tag, Title, Short, Watch, Args;
         public Color TagColor;
         public float RefCentral, RefDecentral, RefResilient;
+        public string RefText;  // deney özeti tamamlama yerine başka bir ölçüyle verilecekse (ör. düşen İHA)
         public bool Custom;     // "Kendi senaryon" sekmesinde kurulan senaryo (deney ortalaması yok)
     }
 
@@ -80,6 +81,27 @@ namespace SuruIHA
                 Watch = "Mor İHA'lar saldırgan: sahte \"tamamlandı\" yayar, konumu hakkında yalan söyler. Güven sistemi menzil, hız ve " +
                         "ilerleme kanıtı toplayıp onları dışlar; tek bir yalancı dürüst bir İHA'yı karalayamaz (iki tanık kuralı).",
                 Args = "--jammer off --spoof 0.2 --spoof-mode sneaky", RefCentral = 32.4f, RefDecentral = 86.8f, RefResilient = 100f,
+            },
+            new Scenario
+            {
+                Id = "radar", Tag = "HAVA SAVUNMA", TagColor = Ui.Pink, Title = "Hava savunma radarı",
+                Short = "Yeri bilinen bir radar ve 80. saniyede açılan pusu radarı; ikisinde de füze var.",
+                Watch = "Kehribar örtü, radarın İHA'yı bir taramada görme olasılığıdır (parlak çizgi: yarı yarıya). Kızıl çizgi radarın " +
+                        "kilitlendiği İHA'dır; iz 4 saniye korunursa füze atılır. Dirençli sürü rotasını radarın görmediği yerden " +
+                        "planlar (kırık çizgiler), şemsiyenin tam altındaki hedefleri bilerek bırakır. Pusu radarı açılınca İHA'ların " +
+                        "radar ikaz alıcıları yönünü ölçer; sürü kerteriz çizgilerinin kesişiminden radarı birkaç saniyede bulur (pembe nişangâh).",
+                Args = "--jammer off --radar iki", RefCentral = 100f, RefDecentral = 100f, RefResilient = 65.7f,
+                RefText = "Deneyde düşen İHA: dirençli 0,7 · diğerleri 5",
+            },
+            new Scenario
+            {
+                Id = "batarya", Tag = "ENERJİ", TagColor = Ui.Warn, Title = "Lodos ve yarı dolu bataryalar",
+                Short = "8 m/s lodos esiyor, bataryaların bir kısmı %20-35. Eve dönüş karşı rüzgârla.",
+                Watch = "Beyaz İHA bataryası azaldığı için eve dönüyor. Korumasız sürü sabit kuralla (%10) döner: uzakta, karşı " +
+                        "rüzgârda kalan İHA eve varamadan düşer. Enerji farkında sürü her an rüzgâra karşı eve dönüşün enerjisini " +
+                        "hesaplar (Zeng 2019 güç modeli), gücü yetmeyen hedefi almaz ve zamanında döner. Üsteki tulum rüzgârı gösterir.",
+                Args = "--jammer off --wind 8 --battery karisik", RefCentral = 100f, RefDecentral = 100f, RefResilient = 100f,
+                RefText = "Deneyde bataryası biten: dirençli 0 · diğerleri 0,9-1,3",
             },
         };
 

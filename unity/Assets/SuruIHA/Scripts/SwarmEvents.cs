@@ -106,6 +106,7 @@ namespace SuruIHA
 
         void Update()
         {
+            if (SwarmReceiver.Replaying) return;            // tekrar izlenirken olay akışı donar
             var vis = Source != null ? Source : SwarmVisualizer.Main;
             var f = vis != null ? vis.Frame : null;
             if (f == null || f == prev || f.drones == null) return;
@@ -131,6 +132,9 @@ namespace SuruIHA
                 pendingDone = 0;
                 MissionDoneAt = -1f;
                 foreach (var b in buckets.Values) b.ids.Clear();
+                missileSt.Clear();
+                radarFound.Clear();
+                intelSaid = windSaid = false;
                 Add(f, (first ? "Simülasyon bağlandı: " : "Yeni uçuş: ") +
                        $"{SwarmScenarios.StrategyTitle(f.strategy)}, {SwarmScenarios.PlannerTitle(f.planner, f.strategy)}.", Ui.Accent);
                 return;
@@ -165,6 +169,12 @@ namespace SuruIHA
             var seen = new List<int>();
             var failed = new List<int>();
             var relay = new List<int>();
+            var shot = new List<int>();
+            var empty = new List<int>();
+            var rtb = new List<int>();
+            var rwr = new List<int>();
+            var locked = new List<int>();
+            var evade = new List<int>();
             for (int i = 0; i < n; i++)
             {
                 var a = p.drones[i];
@@ -180,8 +190,20 @@ namespace SuruIHA
                     else if (b.mode == 5) recover.Add(i);
                     else if (b.mode == 6) spoofed.Add(i);
                     else if (b.mode == 7) seen.Add(i);
-                    else if (b.mode == 4) failed.Add(i);
+                    else if (b.mode == 4)
+                    {
+                        if (f.missiles != null && f.missiles.Any(m => m.st == 1 && m.tgt == i)) shot.Add(i);
+                        else if (b.bat <= 0.005f) empty.Add(i);
+                        else failed.Add(i);
+                    }
                     else if (b.mode == 3) relay.Add(i);
+                    else if (b.mode == 8) rtb.Add(i);
+                    else if (b.mode == 9) evade.Add(i);
+                }
+                if (b.mode != 4)
+                {
+                    if (b.rw >= 1 && a.rw == 0) rwr.Add(i);
+                    if (b.trk == 1 && a.trk == 0) locked.Add(i);
                 }
             }
             bool jammed = f.jammers != null && f.jammers.Length > 0;
@@ -194,7 +216,16 @@ namespace SuruIHA
             Collect("seen", seen, "{0}: aldatmayı fark etti (IMU ile tutmuyor), GPS'e güvenmeyi bıraktı.", Ui.Warn);
             Collect("failed", failed, "{0}: arızalandı. Görevleri diğer İHA'lara geçiyor, düzen yeniden kuruluyor.", Ui.Bad);
             Collect("relay", relay, "{0}: röle oldu, kopan arkadaşıyla bağlantıyı koruyor.", Ui.Cyan);
+            Collect("shot", shot, "{0}: hava savunma füzesiyle vuruldu.", Ui.Bad);
+            Collect("empty", empty, "{0}: bataryası bitti, eve varamadan düştü.", Ui.Bad);
+            Collect("rtb", rtb, f.strategy == "resilient"
+                ? "{0}: rüzgâra karşı eve dönüş enerjisini hesapladı, bataryası yetmeden önce eve dönüyor."
+                : "{0}: bataryası %10'a indi, eve dönüyor (standart emniyet).", Ui.Ink);
+            Collect("rwr", rwr, "{0}: radar ikaz alıcısı huzmeyi duydu, radarın yönünü (kerteriz) ölçüyor.", Ui.Warn);
+            Collect("locked", locked, "{0}: radar kilitlendi, izleniyor!", Ui.Bad);
+            Collect("evade", evade, "{0}: kilit ikazı aldı, alçalıp radarın görmediği yere kaçıyor.", Ui.Warn);
             Flush(f, false);
+            ThreatEvents(f, p);
 
             if (f.tasks != null && p.tasks != null)
             {
@@ -241,9 +272,62 @@ namespace SuruIHA
             if (f.ctl != null && p.ctl != null && f.ctl.missionDone == 1 && p.ctl.missionDone == 0)
             {
                 MissionDoneAt = f.t;
-                Add(f, $"Bütün hedefler tamam: görev puanı {f.m.score * 100:0}/100. Sürü üsse dönüyor.", Ui.Good);
+                // Sürü kalan hedefleri yapamadığı ya da bilerek bıraktığı için de görev bitebilir (boşta kalma)
+                if (f.m.done >= f.m.total)
+                    Add(f, $"Bütün hedefler tamam: görev puanı {f.m.score * 100:0}/100. Sürü üsse dönüyor.", Ui.Good);
+                else
+                    Add(f, $"Görev bitti: {f.m.done}/{f.m.total} hedef yapıldı, kalanlar bırakıldı (puan {f.m.score * 100:0}/100). Sürü üsse dönüyor.", Ui.Warn);
             }
             prev = f;
+        }
+
+        // Hava savunma ve rüzgâr olayları: radar açıldı, istihbarat, füze atıldı / ıskaladı, radar bulundu
+        readonly Dictionary<int, int> missileSt = new Dictionary<int, int>();
+        readonly HashSet<int> radarFound = new HashSet<int>();
+        bool intelSaid, windSaid;
+
+        void ThreatEvents(SwarmFrame f, SwarmFrame p)
+        {
+            bool res = f.strategy == "resilient";
+            if (!windSaid && f.wind != null && f.wind.Length >= 2)
+            {
+                float s = new Vector2(f.wind[0], f.wind[1]).magnitude;
+                if (s > 1.5f)
+                {
+                    windSaid = true;
+                    Add(f, $"Rüzgâr {s:0} m/s, {SwarmHud.WindFrom(f.wind)} esiyor: üsse dönüş karşı rüzgârla, yavaş ve pahalı olacak.", Ui.Ink);
+                }
+            }
+            if (f.radars == null) return;
+            if (!intelSaid && f.radars.Any(r => r.known == 1))
+            {
+                intelSaid = true;
+                Add(f, res ? "İstihbarat: hava savunma radarının yeri biliniyor. Sürü rotasını ve toplanma yerini radarın görmediği yerden planladı."
+                           : "Bölgede hava savunma radarı var. Bu sürü radarı hesaba katmadan düz uçacak.", Ui.Warn);
+            }
+            if (p.radars != null)
+                for (int k = 0; k < Mathf.Min(f.radars.Length, p.radars.Length); k++)
+                    if (f.radars[k].on == 1 && p.radars[k].on == 0 && f.radars[k].known == 0)
+                        Add(f, "Pusu! Görev alanının yakınında gizli bir hava savunma radarı açıldı.", Ui.Bad);
+            if (f.missiles != null)
+                foreach (var m in f.missiles)
+                {
+                    bool had = missileSt.TryGetValue(m.id, out int old);
+                    if (!had) Add(f, $"Hava savunma füze attı: hedef İHA-{m.tgt + 1}.", Ui.Bad);
+                    else if (m.st == 2 && old == 0) Add(f, $"Füze ıskaladı: İHA-{m.tgt + 1} radarın izini kopardı.", Ui.Good);
+                    missileSt[m.id] = m.st;
+                }
+            if (res && f.radarEst != null)
+                foreach (var e in f.radarEst)
+                {
+                    if (e.intel == 1 || radarFound.Contains(e.id) || e.id < 0 || e.id >= f.radars.Length) continue;
+                    radarFound.Add(e.id);
+                    var q = f.radars[e.id].p;
+                    float err = new Vector2(e.p[0] - q[0], e.p[1] - q[1]).magnitude;
+                    Add(f, f.radars[e.id].known == 1
+                        ? $"Kerteriz ölçümleri bilinen radarın yerini düzeltti (hata {err:0} m)."
+                        : $"Sürü pusu radarının yerini kerterizlerin kesişiminden buldu (hata {err:0} m). Rotalar yeniden planlanıyor.", Ui.Good);
+                }
         }
     }
 }

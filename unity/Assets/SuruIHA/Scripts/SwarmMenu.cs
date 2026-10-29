@@ -105,6 +105,7 @@ namespace SuruIHA
                 if (SwarmInput.Down(SwarmInput.K.Left) || SwarmInput.Down(SwarmInput.K.PageUp)) CurrentTab = (Tab)(((int)CurrentTab + n - 1) % n);
             }
             if (Current == Page.Sim && SwarmInput.Down(SwarmInput.K.I)) legendOpen = !legendOpen;
+            UpdateReplay();
             SaveLayersIfChanged();
             NoteReport();
             // Simülasyonun bildirdiği bölge (terminalden başlatılsa da) sahneye uygulanır
@@ -352,31 +353,33 @@ namespace SuruIHA
             float W = Ui.W, H = Ui.H;
             float x0 = 80f, cw = W - 160f;
             float y = BarH + Mathf.Max(24f, (H - BarH - 860f) / 2f);
-            Ui.Label(Ui.R(x0, y, cw - 300, 28), "Bir senaryo seç, ayarları belirle ve başlat. Her senaryo aynı 10 İHA'lık sürüyü farklı bir " +
-                                               "elektronik harp tehdidiyle sınar.", 17, Ui.Ink2);
+            Ui.Label(Ui.R(x0, y, cw - 300, 28), "Bir senaryo seç, ayarları belirle ve başlat. Her senaryo aynı 10 İHA'lık sürüyü farklı bir tehditle " +
+                                               "(elektronik harp, hava savunma, rüzgâr) sınar.", 17, Ui.Ink2);
             if (Ui.Button(Ui.R(x0 + cw - 280, y - 8, 280, 42), "Kendi senaryonu kur", Ui.Kind.Ghost, size: 15))
                 CurrentTab = Tab.Ozel;
             y += 42;
 
-            const float gap = 16f, ch = 160f;
-            float cwd = (cw - 3 * gap) / 4f;
+            const float gap = 14f, ch = 170f;
+            const int cols = 5;
+            int nRows = (SwarmScenarios.All.Length + cols - 1) / cols;
+            float cwd = (cw - (cols - 1) * gap) / cols;
             for (int i = 0; i < SwarmScenarios.All.Length; i++)
             {
                 var sc = SwarmScenarios.All[i];
-                var r = Ui.R(x0 + (i % 4) * (cwd + gap), y + (i / 4) * (ch + gap), cwd, ch);
+                var r = Ui.R(x0 + (i % cols) * (cwd + gap), y + (i / cols) * (ch + gap), cwd, ch);
                 bool sel = i == scenario, hover = r.Contains(Event.current.mousePosition);
                 Ui.Fill(r, sel ? new Color(0.33f, 0.78f, 1f, 0.13f) : hover ? new Color(0.12f, 0.16f, 0.2f, 0.95f) : new Color(0.06f, 0.08f, 0.11f, 0.95f), 14);
                 Ui.Outline(r, sel ? Ui.Accent : Ui.Line, sel ? 2f : 1f, 14);
                 float rx = r.x / Ui.S, ry = r.y / Ui.S;
                 Ui.Chip(rx + 16, ry + 14, sc.Tag, sc.TagColor, 11.5f);
                 Ui.Label(Ui.R(rx + 16, ry + 42, cwd - 32, 30), sc.Title, 20, Ui.Ink, true);
-                Ui.Label(Ui.R(rx + 16, ry + 72, cwd - 32, 50), sc.Short, 15, Ui.Ink2);
+                Ui.Label(Ui.R(rx + 16, ry + 72, cwd - 32, 64), sc.Short, 14.5f, Ui.Ink2);
                 float other = Mathf.Max(sc.RefCentral, sc.RefDecentral), low = Mathf.Min(sc.RefCentral, sc.RefDecentral);
-                string refText = $"Deneyde dirençli %{Pct(sc.RefResilient)} · diğerleri %{Pct(low)}" + (other - low > 0.6f ? $"-{Pct(other)}" : "");
+                string refText = sc.RefText ?? $"Deneyde dirençli %{Pct(sc.RefResilient)} · diğerleri %{Pct(low)}" + (other - low > 0.6f ? $"-{Pct(other)}" : "");
                 Ui.Label(Ui.R(rx + 16, ry + ch - 32, cwd - 32, 22), refText, 13.5f, Ui.Ink3);
                 if (Ui.Click(r)) scenario = i;
             }
-            y += 2 * ch + gap + 24;
+            y += nRows * ch + (nRows - 1) * gap + 24;
 
             float lx = x0, sx = x0 + 220f, segW = 196f, ix = sx + 3 * (segW + 6) + 24, iw = W - 80f - ix;
             Ui.Label(Ui.R(lx, y + 11, 210, 24), compare ? "Soldaki sürü" : "Karar mimarisi", 16, Ui.Ink2, true);

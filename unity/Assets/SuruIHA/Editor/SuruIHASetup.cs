@@ -494,7 +494,7 @@ namespace SuruIHA.EditorTools
         // ------------------------------------------------------------------ prefab'lar
         class Prefabs
         {
-            public GameObject drone, jammer, gcs;
+            public GameObject drone, jammer, gcs, radar;
             public List<GameObject> pines = new List<GameObject>(), oaks = new List<GameObject>(),
                 rocks = new List<GameObject>(), shrubs = new List<GameObject>(), grass = new List<GameObject>(),
                 houses = new List<GameObject>();
@@ -537,7 +537,7 @@ namespace SuruIHA.EditorTools
                         inst.transform.localRotation = Quaternion.Euler(0, 180, 0);
                     wrapper = r;
                 }
-                else if (name == "Jammer" || name == "GCS")
+                else if (name == "Jammer" || name == "GCS" || name == "Radar")
                 {
                     var r = new GameObject(name);
                     inst.transform.SetParent(r.transform, false);
@@ -576,6 +576,7 @@ namespace SuruIHA.EditorTools
                 if (name == "Drone") p.drone = prefab;
                 else if (name == "Jammer") p.jammer = prefab;
                 else if (name == "GCS") p.gcs = prefab;
+                else if (name == "Radar") p.radar = prefab;
                 else if (name.StartsWith("Tree_Pine")) p.pines.Add(prefab);
                 else if (name.StartsWith("Tree_Oak")) p.oaks.Add(prefab);
                 else if (name.StartsWith("Rock")) p.rocks.Add(prefab);
@@ -688,6 +689,7 @@ namespace SuruIHA.EditorTools
             var vis = sys.AddComponent<SwarmVisualizer>();
             vis.droneModel = prefabs.drone;
             vis.jammerModel = prefabs.jammer;
+            vis.radarModel = prefabs.radar;
             vis.gcsModel = prefabs.gcs;
             vis.droneScale = 3f;
             vis.autoGroundSnap = false;   // arazi zaten y=0'da
@@ -999,7 +1001,7 @@ namespace SuruIHA.EditorTools
                 // Fotoğraf dokusu varsa o kullanılır (döşeme boyu gerçek boyuna yakın; havadan bakınca tekrar seçilmesin)
                 Layer("Cimen", "Ter_Cimen", new Color(0.29f, 0.36f, 0.16f), new Color(0.2f, 0.27f, 0.1f), 6f, 0.05f, 1, "aerial_grass_rock", 15f),
                 Layer("Bozkir", "Ter_Bozkir", new Color(0.55f, 0.5f, 0.31f), new Color(0.4f, 0.36f, 0.21f), 7f, 0.04f, 2, "withered_grass", 7f,
-                      new Color(0.74f, 0.71f, 0.6f)),     // kuru ot: zeytinimsi gri, kum gibi açık durmasın
+                      new Color(0.68f, 0.68f, 0.53f)),    // kuru ot: zeytinimsi gri yeşil, kum gibi açık durmasın
                 Layer("Tarla", "Ter_Tarla", new Color(0.42f, 0.34f, 0.24f), new Color(0.3f, 0.24f, 0.17f), 9f, 0.06f, 3, "farm_soil", 5f),
                 Layer("Aniz", "Ter_Aniz", new Color(0.7f, 0.6f, 0.4f), new Color(0.55f, 0.46f, 0.3f), 7f, 0.05f, 5, "withered_grass", 4f,
                       new Color(1f, 0.88f, 0.62f)),       // biçilmiş ekin: altın sarısı saman
@@ -1030,6 +1032,11 @@ namespace SuruIHA.EditorTools
                 float forest = Fbm(x * 0.0035f + 100f, z * 0.0035f - 50f, 4);
                 w[1] = 1f;
                 w[0] = Mathf.Clamp01((moist - 0.52f) * 4f) + Mathf.Clamp01((forest - 0.55f) * 4f) * 0.8f;
+                // Kuzeye bakan yamaçlar daha az güneş alır, nemli kalır: yeşil (Anadolu bozkırında belirgin)
+                var nrm = td.GetInterpolatedNormal(u, v);
+                w[0] += Mathf.Clamp01(nrm.z * 3f) * Mathf.Clamp01((slope - 5f) / 10f) * (0.6f + 0.6f * moist);
+                // Bahar bozkırı: tepelerde kuru otun arasında geniş yeşil çayır lekeleri (tek renk kum tepesi gibi durmasın)
+                w[0] += 0.35f + 0.9f * Mathf.Clamp01((Fbm(x * 0.0075f - 51f, z * 0.0075f + 17f, 4) - 0.42f) * 2.5f);
                 // Tepelerde iri toprak lekeleri (aşınmış yamaçlar): uzaktan tek renk kum tepesi gibi görünmesin
                 if (w.Length > 6) w[6] = Mathf.Clamp01((Fbm(x * 0.006f - 33f, z * 0.006f + 21f, 4) - 0.52f) * 3f) * 0.9f;
 
@@ -1156,8 +1163,8 @@ namespace SuruIHA.EditorTools
                     float x = ox + u * TerrainSize, z = oz + v * TerrainSize;
                     float slope = td.GetSteepness(u, v);
                     float moist = Fbm(x * 0.003f + 11f, z * 0.003f - 7f, 4);
-                    float g = Mathf.Clamp01((moist - 0.5f) * 3f);
-                    float r = Mathf.Clamp01((slope - 24f) / 12f);
+                    float g = Mathf.Clamp01((moist - 0.36f) * 2.2f);       // uzak tepeler de yeşil-haki karışık
+                    float r = Mathf.Clamp01((slope - 30f) / 12f);
                     am[j, i, 0] = g * (1 - r);
                     am[j, i, 1] = (1 - g) * (1 - r);
                     am[j, i, 4] = r;

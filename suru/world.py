@@ -20,6 +20,10 @@ Görev akışı (her İHA kendi evresini yürütür, lider yoktur):
                   7) güven sistemi: makul olmayan teklif, konum yalanı ve sahte "tamamlandı"ya karşı
                   8) karıştırıcıyı bulma ve karıştırma alanını önceden kestirme
                   9) frekans atlama (FHSS) ve GPS aldatma tespiti (suru/ew.py)
+                  10) radar ikaz alıcısı, radarın yerini kerteriz kestirimiyle bulma, radar görüşünden
+                      kaçan rota (A*/Dijkstra) ve kilit ikazında arazinin arkasına kaçma (suru/threat.py)
+                  11) enerji farkında karar: rüzgâra karşı eve dönüş enerjisini hesaplayıp görev seçme
+                      ve zamanında dönme (suru/energy.py)
                   (isteğe bağlı) bağlantı koruma: kopan arkadaşa ulaşmak için kendiliğinden röle olma
                   Her mekanizma ayrı bir ayarla kapatılabilir (ablasyon deneyi).
 
@@ -37,7 +41,7 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from . import decision, ew, radio
+from . import decision, energy, ew, radio, threat
 from .config import SimConfig
 from .swarm import FORMATIONS, Path, formation_offsets, largest_component, place, reynolds
 from .terrain import Terrain
@@ -55,6 +59,8 @@ TRACK_MAX = 120               # uçuş raporunda İHA başına en fazla iz nokta
 
 # Uçuş evreleri
 TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND, LANDED = range(7)
+RTB_FLAG = -2                 # sürü durum tablosunda (st_relay) "bataryası azaldı, eve dönüyor" işareti
+RADAR_RESEND = 3.0            # radar görüş haritası değişmese de kaç saniyede bir yeniden gönderilir (s)
 PHASE_NAMES = ("kalkis", "intikal", "gorev", "toplanma", "donus", "inis", "indi")
 AIRBORNE = (TAKEOFF, TRANSIT, TASK, REGROUP, RETURN, LAND)
 
@@ -120,7 +126,7 @@ class World:
         R = self.resilient
         self.ew = SimpleNamespace(**{k: R and getattr(c, "ew_" + k) for k in (
             "jam_map", "long_ttl", "avoid", "coop_loc", "search", "recover", "trust", "localize", "fhss",
-            "spoof_detect", "valuation")})
+            "spoof_detect", "valuation", "radar", "energy")})
         self.sneaky = c.spoof_mode == "sneaky"
 
         # Görevler ve saldırganlar aynı tohumla önce çekilir: aynı seed'de
@@ -188,12 +194,61 @@ class World:
         self.jrx_bar = np.full(N, -300.0)   # yalnızca geniş bant karıştırma (GPS'i ve FHSS'i de etkiler)
         self._field, self._field_key = None, None           # karıştırma ısı haritası (bkz. jam_field)
         self._field_sent, self._field_sent_t = 0, -np.inf
+
+        # Hava savunma tehdidi (suru/threat.py). Radar, rüzgâr ve batarya kendi rastgele akışlarını kullanır:
+        # bunlar yokken eski deneylerin sonuçları birebir aynı kalır.
+        self.rng_r = np.random.default_rng([c.seed, 13])
+        self.radars = [threat.Radar(d, self.terrain, N, k) for k, d in enumerate(c.radars)]
+        self.missiles = []
+        self._mid = itertools.count()                    # füze numarası (Unity füzeleri bununla eşler)
+        self.MR = 600                                    # kerteriz ölçümü halka tamponu
+        self.rw_xy = np.zeros((self.MR, 2))              # ölçümün yapıldığı yer (İHA'nın kestirdiği konum)
+        self.rw_b = np.zeros(self.MR)                    # ölçülen kerteriz (pusula, radyan)
+        self.rw_t = np.full(self.MR, -np.inf)
+        self.rw_e = np.full(self.MR, -1)                 # radar imzası (hangi radar)
+        self.rw_n = 0
+        self.rw_k = np.zeros((N, self.MR), bool)         # rw_k[i, m]: i, m ölçümünü biliyor (dedikoduyla yayılır)
+        self.rw_lit = np.full(N, -np.inf)                # radar ikaz alıcısının son ikazı
+        self.rw_lock = np.zeros(N, bool)                 # kilit ikazı: bir radar bu İHA'yı izliyor
+        self.rw_lock_by = np.full(N, -1)                 # kilitleyen radar (imzasından tanınır)
+        self.rd_est = [dict() for _ in range(N)]         # İHA'nın bildiği radarlar: radar no -> (konum, hata)
+        for R in self.radars:                            # istihbarat: bilinen radarların yeri görev emrinde gelir
+            if R.known:
+                e = R.xy + self.rng_r.normal(0, c.intel_err / np.sqrt(2.0), 2)
+                for i in range(N):
+                    self.rd_est[i][R.id] = (e.copy(), float(c.intel_err))
+        self.tmaps = {}                                  # tehdit haritası önbelleği (aynı bilgiyle aynı harita)
+        self.route = [None] * N                          # tehdit farkında rota (Path) ya da düz
+        self.route_goal = np.full((N, 2), np.inf)
+        self.route_key = [None] * N
+        self.route_t = np.full(N, -np.inf)
+        self.evade_until = np.full(N, -np.inf)           # kilit ikazında arazinin arkasına kaçış
+        self.evade_to = np.zeros((N, 2))
+        self.low = np.zeros(N, bool)                     # tehdit bölgesinde alçak uçuş
+        self.rd_err_log = []                             # (t, hata) sürünün radar konum kestirimi
+        self.t_radar_fix = np.nan
+        self.radar_track_t = np.zeros(N)                 # İHA'nın radar tarafından izlendiği süre
+        self._rfield, self._rfield_key, self._rfield_sent, self._rfield_sent_t = None, None, 0, -np.inf
+        self._plan_key = None
+
+        # Enerji ve rüzgâr (suru/energy.py)
+        self.wind = energy.Wind(c.wind_speed, c.wind_from, c.gust, np.random.default_rng([c.seed, 11]))
+        soc = energy.BATTERY_MODES.get(c.battery)
+        soc0 = np.ones(N) if soc is None else np.resize(np.asarray(soc, float), N)
+        if soc is not None:
+            np.random.default_rng([c.seed, 12]).shuffle(soc0)
+        self.bat = soc0 * energy.CAPACITY_WH             # bataryada kalan enerji (Wh)
+        self.bat0 = self.bat.copy()
+        self.power = np.zeros(N)                         # anlık çekilen güç (W)
+        self.energy_on = self.wind.on or soc is not None
+        self.rtb = np.zeros(N, bool)                     # bataryası azaldığı için eve dönüyor
+        self.unaffordable = np.zeros(N, bool)            # açık görev var ama hiçbirine gidip dönmeye enerjisi yetmiyor
         # Uçuş raporu (yalnızca gösterim, bkz. report): İHA başına sayaçlar, süreler ve 3 s'de bir iz
         self.r = SimpleNamespace(
             done=np.zeros(N, int), wrong=np.zeros(N, int), search=np.zeros(N, int), recover=np.zeros(N, int),
             dist=np.zeros(N), nogps=np.zeros(N), jam=np.zeros(N), relay=np.zeros(N), spoofed=np.zeros(N),
             seen=np.zeros(N, bool), fail_t=np.full(N, np.nan), track=[[] for _ in range(N)],
-            task_by=np.full(self.T, -1))
+            task_by=np.full(self.T, -1), cause=[""] * N, wh=np.zeros(N), rtb=np.full(N, np.nan))
         self._report_frames = 0
         self.gps_rx = np.ones(N, bool)      # alıcı GPS çözümü üretiyor mu (gerçek ya da sahte)
         self.gps_trust = np.ones(N, bool)   # İHA GPS'ine güveniyor mu (aldatma tespit edilince hayır)
@@ -314,6 +369,10 @@ class World:
         self.att_task = np.full(N, -1)
         self.att_feat = [None] * N
 
+        # (Dirençli) bilinen radarlara göre toplanma noktası, intikal ve dönüş rotası
+        if self.ew.radar and self.radars:
+            self._plan_threat_paths()
+
     # ------------------------------------------------------------------ deneme kaydı
     def _log_attempts(self):
         """Görev evresinde yeni bir hedefe yönelen İHA için deneme açar; hedefi başka sebeple
@@ -341,6 +400,7 @@ class World:
         self.t += c.dt
         self.k += 1
         self._failures()
+        self.wind.step(c.dt)
         for j in self.jammers:
             j.step(c.dt)
         if self.jammers:
@@ -358,6 +418,9 @@ class World:
             self._ew_1hz()
         self._navigate()
         self._update_estimates()
+        if self.radars:
+            self._radar_step()
+        self._energy_step()
         self._check_arrivals()
         if c.log_attempts:
             self._log_attempts()
@@ -429,13 +492,16 @@ class World:
         """İHA i'nin her görevi başarma çarpanı (0-1). Düz CBBA: hepsi 1.
         Dirençli (uzman kuralı): karıştırma bölgesindeki görev 'jam_penalty' metre daha uzakmış gibi,
         konum belirsizliği de beklenen arama süresi kadar gecikme gibi değerlendirilir.
-        Yapay zekâ: sinir ağı başarı olasılığını kestirir."""
+        Yapay zekâ: sinir ağı başarı olasılığını kestirir.
+        (Radar tehdidi değere katılmaz: İHA'ların tehdit haritaları biraz farklı olduğundan teklifler tutarsızlaşır,
+        uzlaşma salınır. Radar, görev adaylarını süzen kesin bir kuralla hesaba katılır: _allowed.)"""
         if self.ai is not None:
-            return self.ai(self._ai_features(i))
-        rho = np.ones(self.T)
-        if self.ew.valuation:
-            rho[self._tasks_in_jam(i)] = np.exp(self.lnlam * self.cfg.jam_penalty / self.cruise)
-            rho *= np.exp(self.lnlam * self._search_time(i))
+            rho = self.ai(self._ai_features(i))
+        else:
+            rho = np.ones(self.T)
+            if self.ew.valuation:
+                rho[self._tasks_in_jam(i)] = np.exp(self.lnlam * self.cfg.jam_penalty / self.cruise)
+                rho *= np.exp(self.lnlam * self._search_time(i))
         return rho
 
     def _search_time(self, i):
@@ -522,8 +588,9 @@ class World:
         for i in np.nonzero(self.alive & (self.t >= self.fail_at))[0]:
             self.fail_drone(i)
 
-    def fail_drone(self, i=None):
-        """İHA'yı arızalandırır (motor/batarya). i verilmezse rastgele dürüst bir İHA."""
+    def fail_drone(self, i=None, cause="ariza"):
+        """İHA'yı arızalandırır. i verilmezse rastgele dürüst bir İHA.
+        cause: ariza (motor arızası), radar (hava savunma düşürdü), batarya (bataryası bitti)."""
         if i is None:
             cand = np.nonzero(self.alive & ~self.spoofer & (self.phase != LANDED))[0]
             if len(cand) <= 1:
@@ -531,6 +598,7 @@ class World:
             i = int(self.rng.choice(cand))
         self.alive[i] = False
         self.r.fail_t[i] = self.t
+        self.r.cause[i] = cause
         self._track_point(i)
         self._clear_plan(i)
         self.relay_for[i], self.recover[i] = -1, False
@@ -567,6 +635,10 @@ class World:
             self._gossip(heard)
         if self.ew.coop_loc:
             self._coop_localize(heard)
+        if self.ew.radar and self.rw_n:
+            # Kerteriz ölçümleri dedikoduyla yayılır (güvenilmeyen ve saldırgan İHA'nın ölçümü alınmaz)
+            H = heard & ~self.distrust.T & ~self.spoofer[:, None]
+            self.rw_k |= (H.T.astype(np.int32) @ self.rw_k.astype(np.int32)) > 0
 
     def _per(self, tx, rx, jam_all, jam_bar, gain=0.0, max_range=None, extra=None):
         """Paket kaybı olasılığı. Nokta karıştırıcı varken frekans atlamalı (FHSS) İHA'nın paketlerinin
@@ -604,7 +676,8 @@ class World:
         # 1) Herkes kendi durumunu tablosuna yazar
         for i in np.nonzero(self.alive)[0]:
             self.st_t[i, i], self.st_pos[i, i] = now, self.est[i]
-            self.st_task[i, i], self.st_phase[i, i], self.st_relay[i, i] = self.my_task[i], self.phase[i], self.relay_for[i]
+            self.st_task[i, i], self.st_phase[i, i] = self.my_task[i], self.phase[i]
+            self.st_relay[i, i] = RTB_FLAG if self.rtb[i] else self.relay_for[i]
             self.st_sig[i, i] = self.sigma(i)
             if self.spoofer[i]:
                 if self.sneaky:
@@ -927,6 +1000,8 @@ class World:
         for j in range(self.N):
             if not self.alive[j]:
                 continue
+            if self.energy_on and not self.spoofer[j] and self._battery_rtb(j):
+                continue
             if self.phase[j] >= RETURN:
                 if self.path[j] or self.bundle[j]:
                     self._clear_plan(j)
@@ -955,11 +1030,67 @@ class World:
             if self.my_task[j] < 0:
                 free = self.known_task[j] & ~self.known_done[j] & (~valid | (self.cl_id[j] == j) | (self.cl_bid[j] < bids))
                 free &= self.cooldown[j] <= self.t
+                free &= self._allowed(j, free)
                 if free.any():
                     t = int(np.argmax(np.where(free, bids, -np.inf)))
                     self.path[j] = [t]
                     self._set_task(j)
                     self.cl_bid[j, t], self.cl_id[j, t], self.cl_time[j, t] = bids[t], j, self.t
+
+    def _allowed(self, j, cand, keep=False):
+        """Dirençli İHA'nın kendi kendine koyduğu sınırlar (görev adaylarını süzer):
+        - hava savunma şemsiyesinin içindeki hedef: ancak radarın görmediği yerden kısa bir dalışla (50 m,
+          birkaç saniye) ulaşılabiliyorsa alınır. Daha derindeki hedefte radar İHA'yı izleyip füze atmaya
+          yetecek kadar uzun görür: İHA'yı kaybetme riski hedefin değerinden büyüktür, bilerek bırakılır;
+        - enerji: hedefe gidip rüzgâra karşı eve dönmeye bataryası yetmeyen hedef alınmaz.
+        keep=True: paketteki görevi tutmak için daha gevşek eşik (kestirim titreyince görev el değiştirmesin)."""
+        ok = np.ones(self.T, bool)
+        if self.ew.radar and self.rd_est[j]:
+            ok &= self._tmap(j).escape_at(self.tasks[:, :2]) <= (1.8 if keep else 1.0) * threat.DASH
+        if self.ew.energy and self.energy_on:
+            aff = self._affordable(j)
+            self.unaffordable[j] = bool((cand & ok).any() and not (cand & ok & aff).any())
+            ok &= aff
+        return ok
+
+    def _affordable(self, j):
+        """Bu hedefe gidip eve dönmeye bataryası yetiyor mu (rüzgâr dahil, %20 pay ve iniş yedeğiyle)."""
+        c, X = self.cfg, self.tasks[:, :2]
+        p0, _ = self._plan_start(j)
+        w, v = self.wind.mean, c.max_speed
+        need = energy.leg_energy_wh(np.broadcast_to(p0, X.shape), X, w, v) + energy.home_energy_wh(X, self.home, w, v)
+        if self.path[j]:                      # rotasındaki hedeflere gitmenin enerjisi de düşülür
+            pts = np.vstack([p0, X[self.path[j]]])
+            need = need + float(energy.leg_energy_wh(pts[:-1], pts[1:], w, v).sum())
+        avail = self.bat[j] - energy.RESERVE * energy.CAPACITY_WH
+        if self.phase[j] in (TAKEOFF, TRANSIT):
+            avail -= float(energy.leg_energy_wh(self.est[j:j + 1, :2], p0[None, :], w, c.transit_speed)[0])
+        return 1.2 * need < avail
+
+    def _battery_rtb(self, j):
+        """Batarya dönüşü. Standart emniyet (her mimaride): batarya %10'a inince eve dön.
+        Enerji farkında (dirençli): bulunduğu yerden rüzgâra karşı eve dönüş enerjisi, iniş yedeğiyle birlikte
+        bataryaya yaklaşınca ya da açık hedeflerin hiçbirine enerjisi yetmiyorsa eve dön.
+        Döndürür: İHA eve dönüyor mu."""
+        if self.rtb[j]:
+            return True
+        if self.phase[j] not in (TRANSIT, TASK, REGROUP):
+            return False
+        cap = energy.CAPACITY_WH
+        if self.ew.energy:
+            need = float(energy.home_energy_wh(self.est[j, :2], self.home, self.wind.mean, self.cfg.max_speed)[0])
+            go = self.bat[j] - energy.RESERVE * cap < 1.15 * need
+            go |= self.unaffordable[j] and self.my_task[j] < 0 and self.phase[j] in (TASK, REGROUP)
+        else:
+            go = self.bat[j] <= energy.FAILSAFE * cap
+        if go:
+            self.rtb[j] = True
+            self.r.rtb[j] = self.t
+            self._close_attempt(j, False)
+            self._release_claim(j)
+            self.recover[j], self.relay_for[j] = False, -1
+            self._set_phase(j, RETURN)
+        return bool(go)
 
     def _gps_recovery(self, j):
         """(Dirençli) GPS kurtarma: konumunu çok kaybeden İHA görevlerini bırakır, son GPS aldığı
@@ -1012,11 +1143,14 @@ class World:
             zz = np.maximum(z, 0)
             stale = other & ((now - self.st_t[j, zz] > self._ttl(j)) | self.distrust[j, zz])
             self.cl_bid[j, stale], self.cl_id[j, stale], self.cl_time[j, stale] = -np.inf, -1, -np.inf
-        # 2) Teklifi geçilen ilk görevden sonrasını bırak (sonrakiler ona göre hesaplanmıştı)
+        # 2) Teklifi geçilen ilk görevden sonrasını bırak (sonrakiler ona göre hesaplanmıştı). Artık izin
+        #    verilmeyen görev de (yeni bulunan radarın şemsiyesinde kaldı, enerjisi yetmiyor) bırakılır.
+        cand = self.known_task[j] & ~self.known_done[j] & (self.cooldown[j] <= now)
+        keep = self._allowed(j, cand, keep=True) & (self.cooldown[j] <= now)
         b = self.bundle[j]
         for n, t in enumerate(b):
-            if self.cl_id[j, t] != j:
-                for t2 in b[n + 1:]:
+            if self.cl_id[j, t] != j or not keep[t]:
+                for t2 in b[n:]:
                     if self.cl_id[j, t2] == j:
                         self.cl_bid[j, t2], self.cl_id[j, t2], self.cl_time[j, t2] = -np.inf, -1, -np.inf
                 b = b[:n]
@@ -1027,7 +1161,7 @@ class World:
         X, V, A = self.tasks[:, :2], self.value, self.ref_t
         rho = self._rho(j)
         bids = decision.refresh_bids(b, path, p0, t0, X, V, A, rho, self.lnlam, self.cruise)
-        cand = self.known_task[j] & ~self.known_done[j] & (self.cooldown[j] <= now)
+        cand &= self._allowed(j, cand)
         b, path, bids = decision.build_bundle(list(b), path, bids, p0, t0, X, V, A, rho, self.cl_bid[j], self.cl_id[j],
                                               j, cand, c.bundle_size, self.lnlam, self.cruise, c.outbid_margin)
         for t, y in zip(b, bids):
@@ -1063,6 +1197,9 @@ class World:
                     self._set_phase(i, TASK)
                 elif self._ready_to_return(i):
                     self._set_phase(i, RETURN)
+            elif ph == RETURN and self.rtb[i]:
+                if np.linalg.norm(self.est[i, :2] - self.home) < 12.0:
+                    self._set_phase(i, LAND)
             elif ph == RETURN and self.lead_s[i] >= self.paths[RETURN].length - 1.0:
                 self._set_phase(i, LAND)
             elif ph == LAND and self.pos[i, 2] - self.terrain.height(self.pos[i, 0], self.pos[i, 1]) < 0.6:
@@ -1087,7 +1224,7 @@ class World:
         if self.central:
             return (now >= self.gcs_return_t and now - self.last_gcs[i] < 3.0) or \
                 (waited >= self.cfg.regroup_hold and now - self.last_gcs[i] > self.cfg.gcs_timeout)
-        known = (self.st_t[i] > now - 10.0) & ~self.distrust[i]
+        known = (self.st_t[i] > now - 10.0) & ~self.distrust[i] & (self.st_relay[i] != RTB_FLAG)
         known[i] = False
         working = known & (self.st_phase[i] == TASK) & ((self.st_task[i] >= 0) | (self.st_relay[i] >= 0))
         if working.any():
@@ -1200,11 +1337,12 @@ class World:
         group[(self.phase == REGROUP) | ((self.phase == TASK) & idle & ~lost_link)] = 1
         group[self.phase == TRANSIT] = 2
         group[self.phase == RETURN] = 3
+        group[self.rtb & (self.phase == RETURN)] = -1     # batarya dönüşü: düzene girmeden doğrudan eve
         group[~alive] = -1
 
         # Sanal lider ilerlemesi (intikal/dönüş): düzen hatası büyüyünce yavaşlar ki geride kalanlar yetişsin
         for i in np.nonzero(alive & M_FORM[self.phase])[0]:
-            v = c.transit_speed * float(np.clip(1.0 - (self.slot_err[i] - 6.0) / 20.0, 0.3, 1.0))
+            v = self._lead_speed(i)
             self.lead_s[i] = min(self.lead_s[i] + v * dt, self.paths[self.phase[i]].length)
 
         def slots_of(g, s_lead):
@@ -1236,14 +1374,16 @@ class World:
                 if g in (2, 3):
                     p, u = self.paths[self.phase[i]].at(self.lead_s[i])
                     target[i] = place(p, u, offs[k:k + 1])[0]
-                    lead_v = c.transit_speed * float(np.clip(1.0 - (self.slot_err[i] - 6.0) / 20.0, 0.3, 1.0))
+                    lead_v = self._lead_speed(i)
                     ff[i] = u * (lead_v if self.lead_s[i] < self.paths[self.phase[i]].length else 0.0)
                 else:
                     target[i] = slots_of(g, 0.0)[k]
                 formation[i] = True
                 continue
             t = self.my_task[i]
-            if self.recover[i]:
+            if self.rtb[i]:
+                target[i] = self.home            # bataryası azaldı: doğrudan eve
+            elif self.recover[i]:
                 target[i] = self.recover_to[i]   # GPS'i geri almak için karıştırma/aldatma dışına
             elif self.relay_for[i] >= 0:
                 target[i] = self.relay_pos[i]
@@ -1257,6 +1397,10 @@ class World:
                     target[i] = self.tasks[t, :2] + [r * np.cos(self.search[i]), r * np.sin(self.search[i])]
             else:
                 target[i] = self.home            # merkezi, bağlantı kaybı: istasyona doğru dön
+
+        # Dirençli: radar görüşünden kaçan rota, kilit ikazında arazinin arkasına kaçış, alçak uçuş
+        if self.ew.radar and self.radars:
+            self._threat_nav(target, formation, group)
 
         # --- yatay hız isteği
         to = target - self.est[:, :2]
@@ -1329,11 +1473,12 @@ class World:
         at_tgt = self.terrain.height(target[:, 0], target[:, 1])
         # Görevde her İHA kendi irtifa katmanında uçar (çapraz geçişlerde dikey ayrım)
         layer = np.where(formation, 0.0, ((np.arange(N) % 3) - 1) * c.layer_step)
-        z_goal = np.maximum.reduce([here, ahead, at_tgt]) + c.agl + layer + avoid_dz
+        agl = np.where(self.low, c.agl_low, c.agl) if self.radars else c.agl   # tehdit bölgesinde alçak uçuş
+        z_goal = np.maximum.reduce([here, ahead, at_tgt]) + agl + layer + avoid_dz
         ground_true = self.terrain.height(self.pos[:, 0], self.pos[:, 1])
         agl_now = self.pos[:, 2] - ground_true                                   # telemetre (radar altimetre)
         # Emniyet: konum kestirimi kaysa bile (GPS yok) gerçek yere olan yükseklik korunur
-        z_goal = np.maximum(z_goal, ground_true + 0.75 * c.agl)
+        z_goal = np.maximum(z_goal, ground_true + 0.75 * agl)
         landing = self.phase == LAND
         near_pad = dist[:, 0] < 4.0
         z_goal = np.where(landing, np.where(near_pad, at_tgt + 0.3, self.pos[:, 2] + avoid_dz), z_goal)
@@ -1347,11 +1492,22 @@ class World:
         acc = (desired - self.vel) / 1.0
         an = np.linalg.norm(acc, axis=1, keepdims=True)
         acc *= np.minimum(1.0, c.max_accel / np.maximum(an, 1e-6))
-        acc += self.rng.normal(0, 0.3, acc.shape) * (agl_now[:, None] > 1.0)   # rüzgâr türbülansı
+        turb = 0.3 * (1.0 + float(np.linalg.norm(self.wind.vec)) / 5.0) if self.wind.on else 0.3
+        acc += self.rng.normal(0, turb, acc.shape) * (agl_now[:, None] > 1.0)   # rüzgâr türbülansı
         acc[~alive] = 0.0
         self.vel += acc * dt
-        sp = np.linalg.norm(self.vel, axis=1, keepdims=True)
-        self.vel *= np.minimum(1.0, c.max_speed / np.maximum(sp, 1e-6))
+        if self.wind.on:
+            # Hız sınırı havaya göredir: karşı rüzgârda İHA yere göre yavaşlar, arkadan esende hızlanamaz
+            # (kontrolcü yere göre hız ister); dikey hız ayrıca sınırlanır.
+            w = np.r_[self.wind.vec, 0.0]
+            air = self.vel - w
+            a = np.linalg.norm(air, axis=1, keepdims=True)
+            self.vel = w + air * np.minimum(1.0, c.max_speed / np.maximum(a, 1e-6))
+            sp = np.linalg.norm(self.vel, axis=1, keepdims=True)
+            self.vel *= np.minimum(1.0, (c.max_speed + float(np.linalg.norm(w))) / np.maximum(sp, 1e-6))
+        else:
+            sp = np.linalg.norm(self.vel, axis=1, keepdims=True)
+            self.vel *= np.minimum(1.0, c.max_speed / np.maximum(sp, 1e-6))
 
         # Yerdekiler kıpırdamaz; arızalananlar düşer
         parked = alive & (self.phase == LANDED)
@@ -1366,6 +1522,301 @@ class World:
         self.pos[hit, 2] = ground[hit] + 0.3
         self.vel[hit & dead] = 0.0
         self.vel[hit & ~dead, 2] = np.maximum(self.vel[hit & ~dead, 2], 0.0)
+
+    def _lead_speed(self, i):
+        """Sanal liderin hızı: düzen hatası büyüyünce yavaşlar ki geride kalanlar yetişsin.
+        Rüzgârda, karşı rüzgâra rağmen yere göre tutturulabilecek hızı aşmaz."""
+        c = self.cfg
+        v = c.transit_speed * float(np.clip(1.0 - (self.slot_err[i] - 6.0) / 20.0, 0.3, 1.0))
+        if self.wind.on:
+            _, u = self.paths[self.phase[i]].at(self.lead_s[i])
+            v = min(v, 0.8 * float(energy.ground_speed(u, self.wind.mean, c.max_speed)[0]))
+        return max(v, 0.5)
+
+    # ----------------------------------------------------------- hava savunma tehdidi (suru/threat.py)
+    def _tmap(self, i):
+        """İHA i'nin bildiği radarlardan tehdit haritası (aynı bilgiye sahip İHA'lar aynı haritayı paylaşır)."""
+        key = self._rd_key(i)
+        tm = self.tmaps.get(key)
+        if tm is None:
+            if len(self.tmaps) > 24:
+                self.tmaps.clear()
+            tm = self.tmaps[key] = threat.ThreatMap([np.array(k[1:], float) * 40.0 for k in key], self.terrain,
+                                                    self.cfg.agl_low, r50=[self.radars[k[0]].r50 for k in key])
+        return tm
+
+    def _rd_key(self, i):
+        """İHA'nın radar bilgisinin özeti (40 m'ye yuvarlanmış konumlar): aynı özet = aynı tehdit haritası."""
+        return tuple(sorted((k, int(round(q[0] / 40.0)), int(round(q[1] / 40.0))) for k, (q, _) in self.rd_est[i].items()))
+
+    def _radar_view(self):
+        """Radarlar hakkında en çok şey bilen dürüst İHA (sürünün kestirimi olarak gösterilir), yoksa -1."""
+        cand = [i for i in range(self.N) if self.alive[i] and not self.spoofer[i]]
+        if not cand:
+            return -1
+        return max(cand, key=lambda i: (len(self.rd_est[i]), int(self.rw_k[i].sum())))
+
+    def _plan_threat_paths(self):
+        """(Dirençli) Radarlara göre toplanma noktası, intikal ve dönüş rotası: sürü düzende radar görüşüne
+        girmeden uçar, toplanmayı radarın görmediği yerde yapar. Düzen geniş olduğu için harita 40 m genişletilir."""
+        c = self.cfg
+        i = self._radar_view()
+        if i < 0 or not self.rd_est[i]:
+            return
+        key = self._rd_key(i)
+        if key == self._plan_key:
+            return
+        self._plan_key = key
+        wide = threat.ThreatMap([q for q, _ in self.rd_est[i].values()], self.terrain, c.agl,
+                                r50=[self.radars[k].r50 for k in self.rd_est[i]], dilate=2)
+        returning = (self.alive & (self.phase >= RETURN) & ~self.rtb).any()
+        if not returning:
+            ac = np.asarray(c.area_center, float)
+            thr = 0.03 if self.t < c.takeoff_time else 0.15  # eşik farkı: kestirim iyileşince nokta boşuna oynamasın
+            if float(wide.pd_at(self.rally)[0]) > thr:
+                for rad in (220.0, 330.0, 450.0):            # görev alanına yakın, radarın görmediği yer
+                    self.rally = wide.safest_near(ac, rad)
+                    if float(wide.pd_at(self.rally)[0]) <= 0.02:
+                        break
+            back = wide.route(self.rally, self.home)
+            self.paths[RETURN] = back if back is not None else Path([self.rally, self.home])
+        if self.t < c.takeoff_time:
+            out = wide.route(self.home, self.rally)
+            self.paths[TRANSIT] = out if out is not None else Path([self.home, self.rally])
+        else:
+            # İntikal sürüyorsa: sanal liderin şimdiki yerinden yeni toplanma noktasına yeni rota
+            tr = np.nonzero(self.alive & (self.phase == TRANSIT))[0]
+            if len(tr):
+                s0 = float(self.lead_s[tr].mean())
+                p0, _ = self.paths[TRANSIT].at(s0)
+                rest = [p0] + [q for q, cs in zip(self.paths[TRANSIT].p, self.paths[TRANSIT].cum) if cs > s0]
+                danger = max(wide.line_pd(a, b) for a, b in zip(rest[:-1], rest[1:])) if len(rest) > 1 else 0.0
+                moved = np.linalg.norm(self.paths[TRANSIT].p[-1] - self.rally) > 30.0
+                if (danger > 0.25 or moved) and np.linalg.norm(p0 - self.rally) > 30.0:
+                    out = wide.route(p0, self.rally)
+                    self.paths[TRANSIT] = out if out is not None else Path([p0, self.rally])
+                    self.lead_s[tr] = 0.0
+
+    def _threat_nav(self, target, formation, group):
+        """Dirençli İHA radar biliyorsa: hedefe radarın en az gördüğü rotadan gider (Dijkstra ağacı, saf takip),
+        tehdit bölgesinde alçalır (arazi maskeleme); kilit ikazı alırsa radarın görmediği en yakın yere kaçar.
+        Toplanma halkasındaki (boştaki) İHA'lar da kaçar; intikal ve dönüş düzeni rotası zaten radardan uzak planlanır."""
+        now = self.t
+        self.low[:] = False
+        # Düzendeki (intikal, dönüş) İHA kilit ikazı alırsa düzeni bozup kaçar, sonra yuvasına döner
+        for i in np.nonzero(self.alive & ((group == 2) | (group == 3)) & ~self.spoofer)[0]:
+            if self.rw_lock[i] and now >= self.evade_until[i]:
+                self.evade_until[i] = now + 6.0
+                R = self.radars[int(self.rw_lock_by[i])]
+                b = threat.compass(*(R.xy - self.pos[i, :2]))
+                perp = np.array([np.cos(b), -np.sin(b)])
+                if perp @ self.vel[i, :2] < 0:
+                    perp = -perp
+                self.evade_to[i] = self.est[i, :2] + 150.0 * perp
+            if now < self.evade_until[i]:
+                target[i] = self.evade_to[i]
+                formation[i] = False
+                self.low[i] = True
+        for i in np.nonzero(self.alive & ((group == -1) | (group == 1)) & ~self.spoofer)[0]:
+            if not self.rd_est[i] or self.phase[i] not in (TASK, REGROUP, RETURN):
+                self.route[i] = None
+                continue
+            tm = self._tmap(i)
+            p = self.est[i, :2]
+            here = float(tm.pd_at(p)[0])
+            if self.rw_lock[i] and now >= self.evade_until[i]:
+                self.evade_until[i] = now + 6.0
+                t = self.my_task[i]
+                if t >= 0:
+                    # Bu hedefe giderken radar kilitlendi: hedef sürüce "riskli" ilan edilir (yayınlanır), denenmez
+                    self.cooldown[:, t] = np.inf
+                    self.cl_bid[i, t], self.cl_id[i, t], self.cl_time[i, t] = -np.inf, -1, -np.inf
+                    self._drop(i, t)
+                k = int(self.rw_lock_by[i])
+                if k in self.rd_est[i]:
+                    self.evade_to[i] = tm.safest_near(p, 220.0)     # radarın görmediği en yakın yer (tepe arkası)
+                else:
+                    # Radarın yeri henüz bilinmiyor, yalnızca yönü (kerteriz): radara dik uç. Radyal hız sıfıra
+                    # yaklaşınca Doppler süzgeci yankıyı zayıflatır, iz kopabilir ("beaming").
+                    R = self.radars[k]
+                    b = threat.compass(*(R.xy - self.pos[i, :2])) + self.rng_r.normal(0.0, threat.BEARING_SIGMA)
+                    perp = np.array([np.cos(b), -np.sin(b)])
+                    if perp @ self.vel[i, :2] < 0:
+                        perp = -perp
+                    self.evade_to[i] = p + 150.0 * perp
+            if now < self.evade_until[i]:
+                target[i] = self.evade_to[i]
+                formation[i] = False
+                self.low[i] = True
+                continue
+            t = self.my_task[i]
+            goal = self.tasks[t, :2] if (t >= 0 and not self.rtb[i] and not self.recover[i]) else target[i]
+            if np.linalg.norm(goal - p) < 60.0:
+                self.route[i] = None
+            else:
+                key = id(tm)
+                if (np.linalg.norm(goal - self.route_goal[i]) > 25.0 or key != self.route_key[i]
+                        or now - self.route_t[i] > 4.0):
+                    self.route[i] = tm.route(p, goal)
+                    self.route_goal[i], self.route_key[i], self.route_t[i] = goal, key, now
+                if self.route[i] is not None:
+                    q, rest = threat.pursue(self.route[i], p, 40.0)
+                    if rest > 30.0:
+                        target[i] = q
+            self.low[i] = here > 0.02 or self.route[i] is not None
+
+    def _radar_step(self):
+        """Radarlar döner ve tarar; izlenen İHA'ya füze atılır; dirençli İHA'ların radar ikaz alıcısı huzmeyi
+        duyar, kerteriz ölçer, izlenince kilit ikazı verir. Füzeler komutla güdülür."""
+        c, dt, now = self.cfg, self.cfg.dt, self.t
+        agl = self.pos[:, 2] - self.terrain.height(self.pos[:, 0], self.pos[:, 1])
+        flying = self.alive & (self.phase != LANDED) & (agl > 3.0)
+        rwr = self.alive & ~self.spoofer if self.ew.radar else np.zeros(self.N, bool)
+        targeted = {M.target for M in self.missiles if M.state == 0}
+        lock_by = np.full(self.N, -1)
+        for R in self.radars:
+            R.track &= self.alive
+            if not R.active(now):
+                continue
+            a0 = R.az
+            sweep = 2.0 * np.pi * dt / R.period
+            R.az = (a0 + sweep) % (2.0 * np.pi)
+            rel = self.pos[:, :2] - R.xy
+            phi = threat.compass(rel[:, 0], rel[:, 1])
+            idx = np.nonzero(flying & (((phi - a0) % (2.0 * np.pi)) < sweep))[0]
+            if len(idx):
+                d3 = self.pos[idx] - R.pos
+                rng = np.linalg.norm(d3, axis=1)
+                if self.terrain.flat:
+                    L = np.zeros(len(idx))
+                else:
+                    L = radio.terrain_loss_db(R.pos[None, :], self.pos[idx], self.terrain, lam=threat.LAMBDA_X, samples=40)[0]
+                radial = (self.vel[idx] * d3).sum(1) / np.maximum(rng, 1.0)
+                pd = threat.detect_prob(rng, L, R.r50, radial)
+                hit = self.rng_r.random(len(idx)) < pd
+                h = np.roll(R.hist[idx], -1, axis=1)
+                h[:, -1] = hit
+                R.hist[idx] = h
+                trk = h.sum(1) >= threat.TRACK_M
+                R.track_since[idx[trk & ~R.track[idx]]] = now
+                R.track_since[idx[~trk]] = np.inf
+                R.track[idx] = trk
+                R.lit[idx] = now
+                # Radar ikaz alıcısı: huzme tek yönlü yol alır, radarın menzilinin çok ötesinden duyulur
+                hear = rwr[idx] & (rng < threat.RWR_RANGE) & (L < threat.RWR_MAX_LOSS)
+                for i, r in zip(idx[hear], rng[hear]):
+                    self.rw_lit[i] = now
+                    if self.sigma(i) < 10.0:                 # konumundan emin değilse ölçüm kaydetmez
+                        b = threat.compass(R.xy[0] - self.pos[i, 0], R.xy[1] - self.pos[i, 1])
+                        m = self.rw_n % self.MR
+                        self.rw_xy[m] = self.est[i, :2]
+                        self.rw_b[m] = b + self.rng_r.normal(0.0, threat.BEARING_SIGMA)
+                        self.rw_t[m], self.rw_e[m] = now, R.id
+                        self.rw_k[:, m] = False
+                        self.rw_k[i, m] = True
+                        self.rw_n += 1
+            lock_by[R.track] = R.id
+            self.radar_track_t[R.track] += dt
+            # Angajman: iz yeterince uzun korunduysa füze (atış arası ve füze sayısı sınırlı)
+            if R.missiles > 0 and now >= R.next_fire:
+                ready = R.track & self.alive & (now - R.track_since >= threat.ENGAGE_AFTER)
+                cand = [i for i in np.nonzero(ready)[0] if i not in targeted]
+                if cand:
+                    i = min(cand, key=lambda k: R.track_since[k])
+                    p0 = R.pos + [0.0, 0.0, 2.0]
+                    d = self.pos[i] - p0
+                    M = threat.Missile(R.id, i, p0, d / max(np.linalg.norm(d), 1.0) * threat.MISSILE_SPEED, now)
+                    M.id = next(self._mid)
+                    self.missiles.append(M)
+                    R.missiles -= 1
+                    R.fired += 1
+                    R.next_fire = now + threat.RELOAD
+                    targeted.add(i)
+        self.rw_lock = (lock_by >= 0) & rwr
+        self.rw_lock_by = np.where(self.rw_lock, lock_by, -1)
+        self._missile_step()
+
+    def _missile_step(self):
+        """Füze: radar izi sürdükçe hedefin önüne doğru güdülür (komut güdümü); iz koparsa düz gider.
+        Bir adımda hedefe en yakın geçişi yakınlık tapası mesafesinden azsa PK olasılıkla vurur."""
+        dt, now = self.cfg.dt, self.t
+        for M in self.missiles:
+            if M.state != 0:
+                continue
+            R, i = self.radars[M.radar], M.target
+            tgt = self.pos[i]
+            if R.track[i] and self.alive[i]:
+                d = tgt - M.pos
+                aim = tgt + self.vel[i] * float(np.linalg.norm(d)) / threat.MISSILE_SPEED - M.pos
+                M.vel = aim / max(np.linalg.norm(aim), 1e-6) * threat.MISSILE_SPEED
+            p0 = M.pos.copy()
+            M.pos = M.pos + M.vel * dt
+            r0, r1 = p0 - (tgt - self.vel[i] * dt), M.pos - tgt
+            dr = r1 - r0
+            s = float(np.clip(-(r0 @ dr) / max(dr @ dr, 1e-9), 0.0, 1.0))
+            miss = float(np.linalg.norm(r0 + s * dr))
+            if miss < threat.KILL_DIST and self.alive[i]:
+                if self.rng_r.random() < threat.PK:
+                    M.state = 1
+                    self.fail_drone(i, cause="radar")
+                else:
+                    M.state = 2
+                M.t_end = now
+            elif now - M.t0 > threat.MISSILE_LIFE or M.pos[2] < self.terrain.height(M.pos[0], M.pos[1]):
+                M.state, M.t_end = 2, now
+        self.missiles = [M for M in self.missiles if M.state == 0 or now - M.t_end < 2.0]
+
+    def _radar_fix_tick(self):
+        """(1 Hz) Dirençli İHA bildiği kerteriz ölçümlerinden radarların yerini bulur (son 120 s). Aynı ölçümleri
+        bilen İHA'lar aynı sonucu bulur (bir kez hesaplanır). Hatası 150 m'den büyük kestirim kullanılmaz;
+        konum, yalnızca belirgin biçimde iyileşince ya da kayınca güncellenir (harita boşuna değişmesin)."""
+        now = self.t
+        recent = self.rw_t > now - 120.0
+        solved = {}
+        for i in np.nonzero(self.alive & ~self.spoofer)[0]:
+            know = self.rw_k[i] & recent
+            if know.sum() < 3:
+                continue
+            for e in np.unique(self.rw_e[know]):
+                sel = know & (self.rw_e == e)
+                if sel.sum() < 3:
+                    continue
+                key = (int(e), sel.tobytes())
+                if key not in solved:
+                    idx = np.nonzero(sel)[0]
+                    idx = idx[np.argsort(self.rw_t[idx])]
+                    solved[key] = threat.bearing_fix(self.rw_xy[idx], self.rw_b[idx], rng=self.rng_r)
+                fix = solved[key]
+                if fix is None or fix[1] > 150.0:
+                    continue
+                q, err = fix
+                old = self.rd_est[i].get(int(e))
+                if old is None or err < 0.75 * old[1] or np.linalg.norm(q - old[0]) > max(2.0 * old[1], 40.0):
+                    self.rd_est[i][int(e)] = (q, err)
+        j = self._radar_view()
+        if j >= 0 and self.rd_est[j]:
+            truth = {R.id: R.xy for R in self.radars}
+            err = float(np.mean([np.linalg.norm(q - truth[k]) for k, (q, _) in self.rd_est[j].items()]))
+            self.rd_err_log.append((now, err))
+            found = [k for k in self.rd_est[j] if not self.radars[k].known]
+            if found and np.isnan(self.t_radar_fix) and err < 60.0:
+                self.t_radar_fix = now
+        self._plan_threat_paths()
+
+    # ----------------------------------------------------------- enerji
+    def _energy_step(self):
+        """Her İHA'nın çektiği güç (havaya göre hızıyla, Zeng 2019) bataryadan düşülür; biterse İHA düşer."""
+        c = self.cfg
+        air = self.alive & (self.phase != LANDED)
+        v_air = np.linalg.norm(self.vel[:, :2] - (self.wind.vec if self.wind.on else 0.0), axis=1)
+        P = energy.power_w(v_air, self.vel[:, 2]) * air
+        self.power = P
+        used = P * c.dt / 3600.0
+        self.bat = np.maximum(self.bat - used, 0.0)
+        self.r.wh += used
+        if self.energy_on:
+            for i in np.nonzero(air & (self.bat <= 0.0))[0]:
+                self.fail_drone(i, cause="batarya")
 
     def _update_estimates(self):
         """Basit tümleşik seyrüsefer: IMU ile tahmin, GPS varsa düzelt."""
@@ -1433,6 +1884,8 @@ class World:
             self.tr_b *= 0.98
         if self.ew.localize and self.jammers:
             self._localize_tick()
+        if self.ew.radar and self.radars:
+            self._radar_fix_tick()
 
     def _spoof_tests(self):
         c, now = self.cfg, self.t
@@ -1649,17 +2102,21 @@ class World:
     # ----------------------------------------------------------- uçuş raporu
     def _mode(self, i):
         """İHA'nın Unity'deki durumu: 0 normal, 1 spiral arama, 2 saldırgan, 3 röle, 4 arızalı, 5 GPS kurtarma,
-        6 GPS'i aldatılıyor (fark etmedi), 7 aldatmayı fark etti."""
-        return (4 if not self.alive[i] else 2 if self.spoofer[i] else 3 if self.relay_for[i] >= 0
+        6 GPS'i aldatılıyor (fark etmedi), 7 aldatmayı fark etti, 8 batarya dönüşü, 9 radardan kaçıyor."""
+        return (4 if not self.alive[i] else 2 if self.spoofer[i] else 8 if self.rtb[i]
+                else 9 if self.t < self.evade_until[i] else 3 if self.relay_for[i] >= 0
                 else 1 if self.search[i] > 0 else 5 if self.recover[i]
                 else 7 if not self.gps_trust[i] else 6 if self.spoofed[i] else 0)
 
     def _status(self, i):
         """İzin rengi için tek harflik durum: Unity'deki ışık rengiyle aynı öncelik (DroneView.StatusColor).
-        n normal, j karıştırılıyor, g GPS yok, s spiral arama, r röle, a saldırgan, p aldatılıyor, y fark etti, f arızalı"""
+        n normal, j karıştırılıyor, g GPS yok, s spiral arama, r röle, a saldırgan, p aldatılıyor, y fark etti, f arızalı,
+        b batarya dönüşü, k radardan kaçıyor, t radar izliyor"""
         m = self._mode(i)
-        if m in (4, 2, 3, 7, 6):
-            return {4: "f", 2: "a", 3: "r", 7: "y", 6: "p"}[m]
+        if m in (4, 2, 8, 9, 3, 7, 6):
+            return {4: "f", 2: "a", 8: "b", 9: "k", 3: "r", 7: "y", 6: "p"}[m]
+        if any(R.track[i] for R in self.radars):
+            return "t"
         if not self.gps_ok[i]:
             return "g"
         return "s" if m == 1 else "j" if self.jrx[i] > -89.5 else "n"
@@ -1697,6 +2154,9 @@ class World:
                 "jam": round(float(r.jam[i]), 1), "relay": round(float(r.relay[i]), 1),
                 "spoofed": round(float(r.spoofed[i]), 1), "seen": int(r.seen[i]), "liar": int(self.spoofer[i]),
                 "fail": round(float(r.fail_t[i]), 1) if np.isfinite(r.fail_t[i]) else -1.0,
+                "cause": r.cause[i], "wh": round(float(r.wh[i]), 2), "bat0": round(float(self.bat0[i] / energy.CAPACITY_WH), 2),
+                "bat": round(float(self.bat[i] / energy.CAPACITY_WH), 2), "radar": round(float(self.radar_track_t[i]), 1),
+                "rtb": round(float(r.rtb[i]), 1) if np.isfinite(r.rtb[i]) else -1.0,
                 "xy": [v for p in tr for v in p[:2]], "st": "".join(p[2] for p in tr),
             })
         return {"t": round(self.t, 1), "mission": round(float(self.mission_time()), 1), "drones": drones,
@@ -1710,6 +2170,8 @@ class World:
         for d in c.jammers:
             for p in [d["pos"][:2]] + list(d.get("route") or []):
                 pts += [np.asarray(p, float) - 300.0, np.asarray(p, float) + 300.0]
+        for d in c.radars:
+            pts += [np.asarray(d["pos"][:2], float) - 150.0, np.asarray(d["pos"][:2], float) + 150.0]
         lo, hi = np.min(pts, axis=0), np.max(pts, axis=0)
         if not self.terrain.flat:
             edge = self.terrain.origin + (self.terrain.n - 1) * self.terrain.step
@@ -1738,6 +2200,27 @@ class World:
             }}
         return self._field["msg"]
 
+    def radar_field(self):
+        """Radar görüş haritası (görselleştirme): uçuş yüksekliğinde açık radarların bir taramada İHA'yı
+        görme olasılığı (0-1 -> 0-255 bayt), arazi gölgesiyle. Radar açılıp kapanınca yeniden hesaplanır."""
+        on = [R for R in self.radars if R.active(self.t)]
+        if not self.radars:
+            return None
+        key = tuple(R.id for R in on)
+        if self._rfield is None or key != self._rfield_key:
+            xs, ys, step = self._field_axes() if self._field is None else self._field["axes"]
+            gx, gy = np.meshgrid(xs, ys)
+            pts = np.c_[gx.ravel(), gy.ravel(), self.terrain.height(gx.ravel(), gy.ravel()) + self.cfg.agl]
+            miss = np.ones(len(pts))
+            for R in on:
+                miss *= 1.0 - threat.coverage(R.pos, pts, self.terrain, R.r50)
+            q = np.clip(np.round((1.0 - miss) * 255.0), 0, 255).astype(np.uint8)
+            self._rfield_key = key
+            self._rfield = {"rev": next(_FIELD_REV), "x0": round(float(xs[0]), 2), "y0": round(float(ys[0]), 2),
+                            "step": round(step, 3), "nx": len(xs), "ny": len(ys), "agl": self.cfg.agl,
+                            "q": base64.b64encode(q.tobytes()).decode("ascii")}
+        return self._rfield
+
     def _ew_summary(self):
         errs = [e for _, e in self.loc_err_log]
         tail = [e for t, e in self.loc_err_log if t >= self.t - 60.0]
@@ -1754,6 +2237,28 @@ class World:
             liars_caught=caught,                                           # saldırganları dışlama oranı
             honest_excluded=wrong,                                         # dürüst arkadaşı yanlış dışlama
         )
+
+    def _threat_summary(self):
+        """Radar ve enerji ölçümleri (yalnızca bu tehditler varken)."""
+        out = {}
+        if self.radars:
+            errs = [e for _, e in self.rd_err_log]
+            honest = ~self.spoofer
+            out.update(
+                shot_down=int(sum(1 for i in range(self.N) if self.r.cause[i] == "radar")),
+                missiles=int(sum(R.fired for R in self.radars)),
+                radar_track=float(self.radar_track_t[honest].sum()),          # İHA'ların izlendiği toplam süre (s)
+                radar_loc_err=float(errs[-1]) if errs else np.nan,           # radar konum kestirimi hatası (m)
+                t_radar_fix=float(self.t_radar_fix),
+            )
+        if self.energy_on:
+            out.update(
+                depleted=int(sum(1 for i in range(self.N) if self.r.cause[i] == "batarya")),
+                rtb=int(np.isfinite(self.r.rtb).sum()),
+                energy_wh=float(self.r.wh[~self.spoofer].mean()),
+                min_soc=float((self.bat[~self.spoofer] / energy.CAPACITY_WH).min()),
+            )
+        return out
 
     def summary(self):
         m = self.m
@@ -1785,6 +2290,7 @@ class World:
             relay_time=m["relay_time"],
             failures=m["failures"],
             sim_time=self.t,
+            **self._threat_summary(),
         )
 
     # ----------------------------------------------------------- canlı komutlar
@@ -1836,13 +2342,20 @@ class World:
         for i in range(self.N):
             mode = self._mode(i)
             plan = [int(t) for t in self.path[i]] if self.alive[i] and not self.spoofer[i] else []
-            drones.append({
+            d = {
                 "id": i, "p": r(self.pos[i]), "e": r(self.est[i]), "v": r(self.vel[i]),
                 "jam": round(float(np.clip((self.jrx[i] + 100.0) / 30.0, 0, 1)), 3),
                 "gps": int(self.gps_ok[i]), "task": int(self.my_task[i]), "mode": mode,
                 "sigma": round(self.sigma(i), 1), "phase": int(self.phase[i]),
                 "relay": int(self.relay_for[i]), "plan": plan,
-            })
+                "bat": round(float(self.bat[i] / energy.CAPACITY_WH), 3), "pw": int(round(float(self.power[i]))),
+            }
+            if self.radars:
+                d["trk"] = int(any(R.track[i] for R in self.radars))
+                d["rw"] = 2 if self.rw_lock[i] else 1 if self.t - self.rw_lit[i] < 3.0 else 0
+                if self.route[i] is not None and self.alive[i]:
+                    d["route"] = [int(round(float(v))) for v in self.route[i].p.ravel()]
+            drones.append(d)
         links = []
         for i in range(self.N):
             for j in range(i + 1, self.N):
@@ -1871,6 +2384,13 @@ class World:
             "spoofers": [{"p": r(np.r_[s.xy, float(self.terrain.height(*s.xy))]), "r": s.radius}
                          for s in self.gps_spoofers],
             "fhss": int(self.ew.fhss),
+            "wind": [round(float(v), 2) for v in (self.wind.vec if self.wind.on else (0.0, 0.0))],
+            "radars": [{"p": r(R.pos), "az": round(float(np.degrees(R.az)), 1), "on": int(R.active(self.t)),
+                        "r": R.r50, "known": int(R.known), "n": R.missiles,
+                        "trk": [int(i) for i in np.nonzero(R.track)[0]]} for R in self.radars],
+            "missiles": [{"id": M.id, "p": r(M.pos), "v": r(M.vel), "st": M.state, "tgt": int(M.target), "r": M.radar}
+                         for M in self.missiles],
+            "radarEst": self._frame_radar_est(),
             "gcs": {"p": r(self.gcs), "on": int(self.central), "up": [int(x) for x in self.gcs_up]},
             "cell": CELL,
             "jamCells": jam_cells,
@@ -1891,6 +2411,11 @@ class World:
                 "spoofed": int((self.spoofed & self.alive).sum()),
                 "spoofSeen": int((~self.gps_trust & self.alive).sum()),
                 "liars": round(float(np.nan_to_num(self._trust_stats()[0], nan=-1.0)), 2),
+                "bat": round(float((self.bat[self.alive] / energy.CAPACITY_WH).mean()), 3) if self.alive.any() else 0.0,
+                "shot": int(sum(1 for x in self.r.cause if x == "radar")),
+                "depleted": int(sum(1 for x in self.r.cause if x == "batarya")),
+                "rtb": int(self.rtb.sum()),
+                "radarErr": round(self.rd_err_log[-1][1], 1) if self.rd_err_log else -1.0,
             },
         }
         # Uçuş raporu: iniş bitince ilk karede ve sonra 60 karede bir (Unity sonradan bağlanırsa diye)
@@ -1905,4 +2430,19 @@ class World:
                 and (field["rev"] != self._field_sent or self.t - self._field_sent_t >= FIELD_RESEND)):
             out["jamField"] = field
             self._field_sent, self._field_sent_t = field["rev"], self.t
+        # Radar görüş haritası: aynı kuralla, ısı haritasıyla ve raporla aynı kareye konmaz
+        rf = self.radar_field()
+        if (rf is not None and "report" not in out and "jamField" not in out
+                and (rf["rev"] != self._rfield_sent or self.t - self._rfield_sent_t >= RADAR_RESEND)):
+            out["radarField"] = rf
+            self._rfield_sent, self._rfield_sent_t = rf["rev"], self.t
         return out
+
+    def _frame_radar_est(self):
+        """Sürünün bildiği radarlar (en çok bilen dürüst İHA'nın kestirimi)."""
+        j = self._radar_view() if self.radars else -1
+        if j < 0:
+            return []
+        return [{"p": [round(float(q[0]), 1), round(float(q[1]), 1), round(float(self.terrain.height(*q)), 1)],
+                 "e": round(float(err), 1), "id": int(k), "intel": int(self.radars[k].known and err >= self.cfg.intel_err - 1e-6)}
+                for k, (q, err) in self.rd_est[j].items()]

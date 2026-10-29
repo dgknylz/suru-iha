@@ -87,6 +87,20 @@ namespace SuruIHA
             else rows.Add(("Karıştırıcı", "kapalı", Ui.Ink2));
             if (f.spoofers != null && f.spoofers.Length > 0)
                 rows.Add(("GPS aldatma", $"kandırılan {m.spoofed} · fark eden {m.spoofSeen}", m.spoofed > 0 ? Ui.Pink : Ui.Ink));
+            if (f.radars != null && f.radars.Length > 0)
+            {
+                int on = 0;
+                foreach (var r in f.radars) if (r.on == 1) on++;
+                rows.Add(("Hava savunma", $"{on}/{f.radars.Length} radar açık · {m.shot} İHA düştü", m.shot > 0 ? Ui.Bad : Ui.Ink));
+                if (f.strategy == "resilient")
+                    rows.Add(("Radarların yeri", m.radarErr >= 0 ? $"biliniyor · hata {m.radarErr:0} m" : "aranıyor…",
+                              m.radarErr >= 0 && m.radarErr < 80 ? Ui.Good : Ui.Ink2));
+            }
+            float ws = f.wind != null && f.wind.Length >= 2 ? new Vector2(f.wind[0], f.wind[1]).magnitude : 0f;
+            if (ws > 0.5f) rows.Add(("Rüzgâr", $"{ws:0} m/s · {WindFrom(f.wind)}", Ui.Ink));
+            if (ws > 0.5f || m.rtb > 0 || m.depleted > 0 || m.bat < 0.5f || details)
+                rows.Add(("Batarya (ortalama)", $"%{m.bat * 100:0}" + (m.rtb > 0 ? $" · {m.rtb} eve döndü" : "") +
+                          (m.depleted > 0 ? $" · {m.depleted} bitti" : ""), m.depleted > 0 ? Ui.Bad : m.bat < 0.25f ? Ui.Warn : Ui.Ink));
             if (f.ctl != null && f.ctl.spoof > 0)
             {
                 string liar = f.ctl.spoofMode == "sneaky" ? "sinsi" : "saf";
@@ -111,6 +125,16 @@ namespace SuruIHA
             string[] qn = { "Yüksek", "Dengeli", "Performans" };
             int ql = QualitySettings.GetQualityLevel();
             rows.Add(("Grafik [K]", $"{(ql < qn.Length ? qn[ql] : QualitySettings.names[ql])} · {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} FPS", Ui.Ink));
+        }
+
+        // Rüzgârın estiği yön (meteoroloji): "lodostan (güneybatı)" gibi
+        public static string WindFrom(float[] w)
+        {
+            if (w == null || w.Length < 2) return "-";
+            float from = Mathf.Repeat(Mathf.Atan2(-w[0], -w[1]) * Mathf.Rad2Deg, 360f);
+            string[] names = { "yıldızdan (kuzey)", "poyrazdan (kuzeydoğu)", "gündoğusundan (doğu)", "keşişlemeden (güneydoğu)",
+                               "kıbleden (güney)", "lodostan (güneybatı)", "batıdan", "karayelden (kuzeybatı)" };
+            return names[Mathf.RoundToInt(from / 45f) % 8];
         }
 
         void OnGUI()
