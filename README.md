@@ -23,58 +23,122 @@ Ekran görüntüleri `gorseller/` klasöründe; TÜBİTAK rapor iskeleti `RAPOR_
 
 > **İndir ve çalıştır (Windows, kurulum yok):** [Sürümler (Releases)](../../releases/latest) sayfasından
 > `SuruIHA_Windows.zip` dosyasını (~500 MB) indir, bir klasöre çıkar, `SuruIHA\SuruIHA.exe`'yi çalıştır.
-> Python ve simülasyon paketin içinde; ayrıntılar aşağıda, "Hazır Windows uygulaması" bölümünde.
+> Python ve simülasyon paketin içinde; adım adım kurulum ve sorun giderme aşağıda, "1. Kurulum" bölümünde.
 
 ![Yer istasyonu ve sürü](gorseller/01_yer_istasyonu_ve_suru.jpg)
 
 ---
 
-## 1. Hızlı başlangıç
+## 1. Kurulum
 
-### Python
+Ne yapmak istediğine göre üç yol var. Sadece görmek ve göstermek için **A** yeter.
 
+| | Kimin için | Ne gerekir | Süre |
+|---|---|---|---|
+| **A. Uygulamayı indir** | jüri, fuar, merak eden | Windows 10/11, ekran kartı | 5 dk |
+| **B. Simülasyonu koddan çalıştır** | kodu incelemek, deney tekrarlamak | + Python 3.14, Git | 10 dk |
+| **C. Unity projesini sıfırdan kur** | 3D sahneyi geliştirmek | + Unity 6000.3.1f1, Blender 5.2 | ~1 saat |
+
+### A. Uygulamayı indir (kurulum yok)
+
+1. [Sürümler (Releases)](../../releases/latest) sayfasından **`SuruIHA_Windows.zip`** dosyasını indir (~500 MB).
+2. Zip'e sağ tıkla → **Tümünü ayıkla** → bir klasör seç (ör. Masaüstü). Zip'in içinden doğrudan çalıştırma:
+   uygulama yanındaki klasörlere ihtiyaç duyar.
+3. Çıkan `SuruIHA` klasöründe **`SuruIHA.exe`**'yi çift tıkla.
+   - Windows "Windows bilgisayarınızı korudu" derse: **Ek bilgi → Yine de çalıştır** (uygulama imzalı değil).
+   - Güvenlik duvarı izin isterse **İzin ver**: simülasyon ile görüntü aynı bilgisayarda yerel ağ portu
+     (UDP 5065-5067) üzerinden konuşur, internete çıkmaz.
+4. Açılış ekranında **Simülasyonu başlat**'a bas ya da **Simülasyon** sekmesinden bir senaryo seçip **Başlat**.
+   İlk açılışta simülasyon birkaç saniye ısınır.
+
+Python, numpy ve simülasyon paketin içindeki `sim` klasöründedir; başka hiçbir şey kurmak gerekmez.
+
+**Gereksinim:** Windows 10/11 64 bit, DirectX 12 destekleyen ekran kartı (oyun ekran kartı önerilir: RTX 4060
+dizüstünde 45-50 fps; tümleşik ekran kartında **K** tuşuyla grafik kalitesini düşür), ~1,5 GB boş disk, 8 GB bellek.
+Dizüstü bilgisayar prize takılı olmalı: pilde ekran kartı yavaşlar.
+
+**Sorun çıkarsa:**
+
+| Belirti | Çözüm |
+|---|---|
+| Uygulama açılmıyor, hemen kapanıyor | Ekran kartı sürücüsünü güncelle; zip'i tam çıkardığından emin ol |
+| "Simülasyon klasörü bulunamadı" | `SuruIHA.exe`'nin yanında `sim` klasörü olmalı: zip'i baştan çıkar |
+| Çok yavaş (düşük fps) | **K** tuşu (Yüksek → Dengeli → Performans); Alt+Enter ile pencereye al; şarja tak |
+| Simülasyon başlamıyor, sürü gelmiyor | Güvenlik duvarında `SuruIHA.exe` ve `sim\python\python.exe`'ye izin ver |
+
+### B. Simülasyonu koddan çalıştır (Python)
+
+Gerekenler: [Python 3.14](https://www.python.org/downloads/) (kurarken "Add python.exe to PATH" işaretli) ve
+[Git](https://git-scm.com/download/win).
+
+```bash
+git clone https://github.com/dgknylz/suru-iha.git
+```
+```bash
+cd suru-iha
+```
 ```bash
 py -3.14 -m venv .venv
 ```
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+Kurulumun doğru olduğunu denetle (45 otomatik test, ~8 dk):
+```bash
+.venv\Scripts\python.exe -m pytest tests -q
+```
 
-### Unity projesi
+Simülasyonu A'daki uygulamayla izlemek için iki yol var:
+- **Uygulama başlatsın:** `SuruIHA.exe`'nin yanına `simulasyon_yolu.txt` adlı bir dosya koy, içine deponun yolunu
+  yaz (ör. `C:\Users\ad\suru-iha`). Uygulama artık paketteki kopya yerine depodaki kodu çalıştırır; kodda
+  yaptığın değişiklik bir sonraki **Başlat**'ta görünür. (Ya da `SURU_IHA_REPO` ortam değişkenine aynı yolu yaz.)
+- **Terminalden:** önce `SuruIHA.exe`'yi aç, sonra:
+  ```bash
+  .venv\Scripts\python.exe run_live.py --convoy
+  ```
+  Uygulama dışarıdan gelen yayına kendiliğinden bağlanır. Bütün seçenekler: "Canlı simülasyon seçenekleri" bölümü.
 
-Unity projesi **`C:\SuruIHA\SuruIHA_Unity`** konumunda (Unity 6000.3.1f1, HDRP).
-OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını OneDrive'ın eşitlemeye
-çalışması projeyi bozar. Ayrıca Unity Türkçe karakterli yollarda (ğ, ı, ü) sorun çıkarabiliyor.
+Deneyleri tekrarlamak ve grafikleri üretmek: "3. Deneyler" bölümü (`run_experiments.py`, `analyze.py`).
+Aynı tohum (seed) her bilgisayarda aynı sonucu verir; `results/` klasöründeki CSV'lerle karşılaştırılabilir.
 
+### C. Unity projesini sıfırdan kur (geliştirici)
+
+Gerekenler: [Unity Hub](https://unity.com/download) üzerinden **Unity 6000.3.1f1**,
+[Blender 5.2](https://www.blender.org/download/), B'deki Python ortamı, ~10 GB boş disk.
+
+Tek komut her şeyi kurar: HDRP şablonundan boş proje, repodaki proje ayarları, Blender modelleri, dokular, sahne,
+Windows uygulaması ve uçtan uca test (~1 saat, çoğu sahne kurulumu ve derleme):
+```bash
+powershell -File tools/setup_unity_project.ps1
+```
+Unity ya da Blender başka yerdeyse: `-Unity "...\Unity.exe" -Blender "...\blender.exe"`. Proje **`C:\SuruIHA\SuruIHA_Unity`**
+konumuna kurulur. Bu konum bilerek seçildi: OneDrive'ın Unity'nin binlerce önbellek dosyasını eşitlemeye çalışması
+projeyi bozar, Unity Türkçe karakterli yollarda (ğ, ı, ü) sorun çıkarabilir. Depoda yalnızca C# betikleri ve ayarlar
+var (`unity/`); `tools/sync_unity.ps1` onları projeye kopyalar.
+
+Fotoğraf tabanlı arazi dokuları (isteğe bağlı, bir kez, ~100 MB, Poly Haven CC0; indirilmezse kodla üretilen dokular
+kullanılır):
+```bash
+.venv\Scripts\python.exe tools/fetch_assets.py
+```
+
+Kurulumdan sonra Unity editöründe çalışmak için:
 1. Unity Hub → **Add project from disk** → `C:\SuruIHA\SuruIHA_Unity`
 2. `Assets/SuruIHA/Scenes/SuruSahnesi.unity` sahnesini aç.
 3. **Play**'e bas. Açılış ekranı gelir; "Simülasyonu başlat" Python'u kendisi açar.
 
-İstersen simülasyonu terminalden de başlatabilirsin; uygulama dışarıdan gelen yayına bağlanır:
+Sonraki derlemeler: yalnızca C# değiştiyse `bash tools/cs_check.sh` (Unity'yi açmadan derleme denetimi, ~30 s), sonra
+`powershell -File tools/full_build.ps1` (eşitle → sahne → uygulama → test). Ayrıntılar "4. 3D modeller ve sahne" bölümünde.
 
-```bash
-.venv\Scripts\python.exe run_live.py
-```
+### Hazır Windows uygulaması: kullanım
 
-### Unity açmadan: hazır Windows uygulaması (fuar için)
+**Geliştirme bilgisayarında:** `C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek
+yoktur; depodaki güncel kodu çalıştırır.
 
-**İndirerek (herhangi bir bilgisayarda):**
-1. [Sürümler (Releases)](../../releases/latest) sayfasından `SuruIHA_Windows.zip`'i indir (~500 MB).
-2. Zip'e sağ tıkla → **Tümünü ayıkla**. Zip'in içinden doğrudan çalıştırma: uygulama yanındaki klasörlere ihtiyaç duyar.
-3. `SuruIHA\SuruIHA.exe`'yi çift tıkla. Windows "bilinmeyen yayımcı" uyarısı verirse **Ek bilgi → Yine de çalıştır**
-   (uygulama imzalı değil). İlk açılışta simülasyon birkaç saniye ısınır; menüden bir senaryo seçip **Başlat**.
-
-Gereksinim: Windows 10/11 64 bit, DirectX 12 destekleyen ekran kartı (oyun ekran kartı önerilir: RTX 4060 dizüstünde
-45-50 fps; tümleşik ekran kartında **K** tuşuyla grafik kalitesini düşür), ~1,5 GB boş disk. Dizüstü bilgisayar
-prize takılı olmalı: pilde ekran kartı yavaşlar. Python kurmak gerekmez.
-
-**Geliştirme bilgisayarında:** `C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur.
-
-**Başka bilgisayarda (jüri, fuar):** `C:\SuruIHA\Build` klasörünün tamamını (ya da `yedek\SuruIHA_uygulama.zip`'i açıp)
-kopyalamak yeter; Python kurmak gerekmez. Uygulamanın yanındaki `sim` klasöründe simülasyon ve yalın bir Python
-(numpy, scipy) vardır (`tools/make_portable.py`, her derlemede kurulur, ~170 MB). Uygulama depoyu bulamazsa bu paketi
-kullanır; geliştirme bilgisayarında depodaki güncel kod çalışır. Paketi bu bilgisayarda denemek için
-`SuruIHA.exe -suruTasinabilir` (ya da `tools/ui_test.ps1 -Portable`).
+**İndirilebilir paketi üretmek:** `tools/make_portable.py` uygulamanın yanına `sim` klasörünü (simülasyon kodu, yalın
+Python, numpy ve scipy, ~170 MB) kurar; `full_build.ps1` her derlemede çalıştırır. Paketi bu bilgisayarda denemek için
+`SuruIHA.exe -suruTasinabilir` (ya da `tools/ui_test.ps1 -Portable`). Release'deki zip, `C:\SuruIHA\Build` klasörünün
+`simulasyon_yolu.txt` ve hata ayıklama klasörü çıkarılmış hâlidir.
 
 Kullanım:
 1. `SuruIHA.exe`'yi çift tıkla (tam ekran açılır; Alt+Enter pencereye alır).
