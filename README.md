@@ -21,6 +21,10 @@ Python (beyin)                         Unity HDRP (göz)
 
 Ekran görüntüleri `gorseller/` klasöründe; TÜBİTAK rapor iskeleti `RAPOR_ISKELETI.md` dosyasında.
 
+> **İndir ve çalıştır (Windows, kurulum yok):** [Sürümler (Releases)](../../releases/latest) sayfasından
+> `SuruIHA_Windows.zip` dosyasını (~500 MB) indir, bir klasöre çıkar, `SuruIHA\SuruIHA.exe`'yi çalıştır.
+> Python ve simülasyon paketin içinde; ayrıntılar aşağıda, "Hazır Windows uygulaması" bölümünde.
+
 ![Yer istasyonu ve sürü](gorseller/01_yer_istasyonu_ve_suru.jpg)
 
 ---
@@ -54,7 +58,17 @@ OneDrive dışında tutuldu, çünkü Unity'nin binlerce önbellek dosyasını O
 
 ### Unity açmadan: hazır Windows uygulaması (fuar için)
 
-`C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur.
+**İndirerek (herhangi bir bilgisayarda):**
+1. [Sürümler (Releases)](../../releases/latest) sayfasından `SuruIHA_Windows.zip`'i indir (~500 MB).
+2. Zip'e sağ tıkla → **Tümünü ayıkla**. Zip'in içinden doğrudan çalıştırma: uygulama yanındaki klasörlere ihtiyaç duyar.
+3. `SuruIHA\SuruIHA.exe`'yi çift tıkla. Windows "bilinmeyen yayımcı" uyarısı verirse **Ek bilgi → Yine de çalıştır**
+   (uygulama imzalı değil). İlk açılışta simülasyon birkaç saniye ısınır; menüden bir senaryo seçip **Başlat**.
+
+Gereksinim: Windows 10/11 64 bit, DirectX 12 destekleyen ekran kartı (oyun ekran kartı önerilir: RTX 4060 dizüstünde
+45-50 fps; tümleşik ekran kartında **K** tuşuyla grafik kalitesini düşür), ~1,5 GB boş disk. Dizüstü bilgisayar
+prize takılı olmalı: pilde ekran kartı yavaşlar. Python kurmak gerekmez.
+
+**Geliştirme bilgisayarında:** `C:\SuruIHA\Build\SuruIHA.exe` derlenmiş, bağımsız uygulamadır. Terminal açmaya gerek yoktur.
 
 **Başka bilgisayarda (jüri, fuar):** `C:\SuruIHA\Build` klasörünün tamamını (ya da `yedek\SuruIHA_uygulama.zip`'i açıp)
 kopyalamak yeter; Python kurmak gerekmez. Uygulamanın yanındaki `sim` klasöründe simülasyon ve yalın bir Python
