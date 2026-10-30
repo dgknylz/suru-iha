@@ -411,3 +411,11 @@ YAPAY ZEKÂ: görev başarı olasılığı kestirimi (test haritaları, eğitimd
   karıştırma yok   5 İHA: Merkezi %100.0/79.9  Merkeziyetsiz %100.0/75.5  Merkeziyetsiz %100.0/75.4  (tamamlama/puan;   49 ms/sim-s)
   karıştırma yok  10 İHA: Merkezi %100.0/82.6  Merkeziyetsiz %100.0/79.1  Merkeziyetsiz %100.0/78.9  (tamamlama/puan;   79 ms/sim-s)
   karıştırma yok  20 İHA: Merkezi %100.0/85.4  Merkeziyetsiz %100.0/81.6  Merkeziyetsiz %100.0/81.5  (tamamlama/puan;  149 ms/sim-s)
+##### KONVOY KORUMA (4 İKA, 2 mayın, 2 pusu, HSS radarı, 20 dBm karıştırıcı, n=30) #####
+  Merkezi (yer istasyonu)      varış % 63.3  araç kaybı 1.83 ± 1.76 (mayın 0.23, pusu 1.60)  bulunan tehdit 3.50/4  radar imha %  0.0  İHA kaybı 3.90 (kamikaze 0.00)  yanlış "temiz" 1.00  varış süresi (medyan)  266 s
+  Merkeziyetsiz                varış % 60.0  araç kaybı 2.03 ± 1.83 (mayın 0.13, pusu 1.90)  bulunan tehdit 3.80/4  radar imha %  0.0  İHA kaybı 4.17 (kamikaze 0.00)  yanlış "temiz" 0.93  varış süresi (medyan)  227 s
+  Merkeziyetsiz + EH direnci   varış %100.0  araç kaybı 0.00 ± 0.00 (mayın 0.00, pusu 0.00)  bulunan tehdit 4.00/4  radar imha %100.0  İHA kaybı 2.20 (kamikaze 1.00)  yanlış "temiz" 0.00  varış süresi (medyan)  246 s
+  araç kaybı: dirençli - Merkezi (yer istasyonu): fark -1.833, Wilcoxon p=9.72e-05 (anlamlı)
+  İHA kaybı: dirençli - Merkezi (yer istasyonu): fark -1.700, Wilcoxon p=0.0006589 (anlamlı)
+  araç kaybı: dirençli - Merkeziyetsiz: fark -2.033, Wilcoxon p=8.105e-05 (anlamlı)
+  İHA kaybı: dirençli - Merkeziyetsiz: fark -1.967, Wilcoxon p=0.0001025 (anlamlı)

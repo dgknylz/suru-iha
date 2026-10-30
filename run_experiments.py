@@ -11,8 +11,9 @@ karşılaştırılır (eşleştirilmiş deney tasarımı).
     python run_experiments.py --ablation   # ablasyon: dirençli mekanizmaları tek tek kapatıp katkısını ölçmek
     python run_experiments.py --scaling    # ölçekleme: 5 / 10 / 20 İHA
     python run_experiments.py --threats    # yeni tehditler: hava savunma radarı, lodos ve yarı dolu bataryalar
+    python run_experiments.py --convoy     # konvoy koruma: İKA konvoyu, mayın, pusu, HSS radarı, 20 dBm karıştırıcı
     python run_experiments.py --quick      # hızlı deneme (5 tekrar)
-Sonuç: results/results.csv, swarm.csv, decision.csv, ew.csv, tune.csv, ablation.csv, scaling.csv, tehdit.csv
+Sonuç: results/results.csv, swarm.csv, decision.csv, ew.csv, tune.csv, ablation.csv, scaling.csv, tehdit.csv, konvoy.csv
 """
 import argparse
 import csv
@@ -122,6 +123,12 @@ def jobs_threats(seeds):
             for (name, kw), s, seed in itertools.product(THREAT_SCENARIOS.items(), STRATEGIES, seeds)]
 
 
+def jobs_convoy(seeds):
+    """Konvoy koruma: İKA konvoyu, gizli mayın ve pusu, yolu koruyan HSS radarı, yolun ortasında 20 dBm karıştırıcı.
+    Görev konvoy hedefe varınca (ya da yok olunca) biter."""
+    return [("konvoy", s, 20.0, 0.0, seed, {"convoy": True}) for s, seed in itertools.product(STRATEGIES, seeds)]
+
+
 def jobs_scaling(seeds):
     jobs = []
     for n, s, (p, sp), seed in itertools.product((5, 10, 20), STRATEGIES, ((None, 0.0), (20.0, 0.0), (None, 0.2)),
@@ -215,6 +222,7 @@ def main():
     p.add_argument("--ablation", action="store_true", help="dirençli mekanizmaların ablasyonu")
     p.add_argument("--scaling", action="store_true", help="5 / 10 / 20 İHA")
     p.add_argument("--threats", action="store_true", help="hava savunma radarı, rüzgâr ve batarya")
+    p.add_argument("--convoy", action="store_true", help="konvoy koruma (İKA, mayın, pusu, HSS bastırma)")
     p.add_argument("--out", default=None, help="sonuç dosyası (varsayılanın yerine)")
     p.add_argument("--seeds", type=int, default=30)
     p.add_argument("--workers", type=int, default=8, help="paralel işlem sayısı")
@@ -224,6 +232,8 @@ def main():
         run(jobs_ew(seeds), a.out or "results/ew.csv", a.workers)
     elif a.threats:
         run(jobs_threats(seeds), a.out or "results/tehdit.csv", a.workers)
+    elif a.convoy:
+        run(jobs_convoy(seeds), a.out or "results/konvoy.csv", a.workers)
     elif a.tune:
         run(jobs_tune(TUNE_SEEDS[:5] if a.quick else TUNE_SEEDS), a.out or "results/tune.csv", a.workers)
     elif a.ablation:

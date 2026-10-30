@@ -41,6 +41,7 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
+from . import convoy as cvy
 from . import decision, energy, ew, radio, threat
 from .config import SimConfig
 from .swarm import FORMATIONS, Path, formation_offsets, largest_component, place, reynolds
@@ -126,7 +127,7 @@ class World:
         R = self.resilient
         self.ew = SimpleNamespace(**{k: R and getattr(c, "ew_" + k) for k in (
             "jam_map", "long_ttl", "avoid", "coop_loc", "search", "recover", "trust", "localize", "fhss",
-            "spoof_detect", "valuation", "radar", "energy")})
+            "spoof_detect", "valuation", "radar", "energy", "sead")})
         self.sneaky = c.spoof_mode == "sneaky"
 
         # Görevler ve saldırganlar aynı tohumla önce çekilir: aynı seed'de
@@ -142,7 +143,21 @@ class World:
         v_pop = rng2.choice([2.0, 3.0], P)          # yeni hedefler genelde acil
         t_pop = np.sort(rng2.uniform(*c.popup_window, P))
         txy = np.vstack([txy, pxy, np.tile(ac, (Rv, 1))])
-        self.T = T = T + P + Rv
+        # Konvoy koruma: tarama, işaretleme ve HSS bastırma görevleri için yer (görev sırasında açılır)
+        self.convoy = None
+        cv_xy, cv_type, cv_val = np.zeros((0, 2)), [], []
+        if c.convoy:
+            self.convoy = cvy.Convoy(cvy.CONVOY_ROUTE, cvy.CONVOY_THREATS, c.convoy_vehicles, self.terrain)
+            L = self.convoy.path.length
+            self.scan_s = np.arange(cvy.SEG / 2, L, cvy.SEG)
+            pts = [self.convoy.path.at(s)[0] for s in self.scan_s]
+            amb = [th for th in self.convoy.threats if th.kind == "pusu"]
+            cv_xy = np.array(pts + [th.xy for th in amb], float).reshape(-1, 2)
+            cv_type = [cvy.T_SCAN] * len(pts) + [cvy.T_MARK] * len(amb)
+            cv_val = [2.0] * len(pts) + [3.0] * len(amb)
+        Cv = len(cv_xy)
+        txy = np.vstack([txy, cv_xy])
+        self.T = T = T + P + Rv + Cv
         self.n_popup = P
         self.value = np.ones(T)
         if c.priorities:
@@ -154,6 +169,20 @@ class World:
         self.appear[c.n_tasks + P:] = np.inf      # yedek hedefler: ancak elle eklenince belirir
         self.popup = np.zeros(T, bool)
         self.popup[c.n_tasks:] = True
+        self.ttype = np.zeros(T, int)             # görev türü (convoy.T_*): 0 hedef, 1 tarama, 2 işaretleme
+        c0 = T - Cv
+        if Cv:
+            self.ttype[c0:] = cv_type
+            self.value[c0:] = cv_val
+            self.scan_idx = np.arange(c0, c0 + len(self.scan_s))
+            k = c0 + len(self.scan_s)
+            for th in self.convoy.threats:
+                if th.kind == "pusu":
+                    th.task, k = k, k + 1
+        self.role = np.zeros(N, int)              # HSS bastırma rolü (convoy.R_*): 0 yok, 1 yem, 2 karıştırıcı, 3 kamikaze
+        self.role_to = np.zeros((N, 2))           # rolün gittiği nokta
+        self.dash = np.zeros(N, bool)             # saldırı anı: yem radara koşuyor, kamikaze dalıyor
+        self.sead = {}                            # radar no -> HSS bastırma planı (roller, noktalar, evre)
         # Ödülün azalmaya başladığı an: baştaki görevler için sürünün alana vardığı an
         t_area = c.takeoff_time + float(np.linalg.norm(ac)) / c.transit_speed
         self.ref_t = np.where(self.popup, self.appear, t_area)
@@ -422,6 +451,10 @@ class World:
             self._radar_step()
         self._energy_step()
         self._check_arrivals()
+        if self.convoy is not None:
+            self._convoy_step()
+            if self.sead:
+                self._sead_step()
         if c.log_attempts:
             self._log_attempts()
         self._metrics()
@@ -438,6 +471,8 @@ class World:
     def finished(self):
         """Görev bitti mi? (deneyler burada durur)"""
         c = self.cfg
+        if self.convoy is not None:               # konvoy görevi: konvoy hedefe vardı ya da imha oldu
+            return self.convoy.done or self.t >= c.max_time
         stalled = not np.isnan(self.idle_since) and self.t - self.idle_since > c.idle_stop
         return self.all_done() or self.t >= c.max_time or stalled
 
@@ -452,6 +487,8 @@ class World:
 
     def mission_time(self):
         """Görevin bittiği an: hepsi yapıldıysa o an, sürü boşta kaldıysa boşta kaldığı an."""
+        if self.convoy is not None and np.isfinite(self.convoy.arrived_t):
+            return float(self.convoy.arrived_t)
         if not np.isnan(self.finished_t):
             return float(self.finished_t)
         if not np.isnan(self.idle_since) and self.t - self.idle_since > self.cfg.idle_stop:
@@ -1006,7 +1043,7 @@ class World:
                 if self.path[j] or self.bundle[j]:
                     self._clear_plan(j)
                 continue
-            if self.spoofer[j] or self.relay_for[j] >= 0:
+            if self.spoofer[j] or self.relay_for[j] >= 0 or self.role[j] > 0:
                 self._clear_plan(j)
                 continue
             if self.ew.recover and self._gps_recovery(j):
@@ -1187,7 +1224,7 @@ class World:
                     if known.sum() and (self.st_phase[i, known] >= REGROUP).mean() > 0.5:
                         self._set_phase(i, REGROUP)
                     continue
-                idle = self.my_task[i] < 0 and self.relay_for[i] < 0 and not self.recover[i]
+                idle = self.my_task[i] < 0 and self.relay_for[i] < 0 and not self.recover[i] and self.role[i] == 0
                 self.idle_t[i] = self.idle_t[i] + dt if idle else 0.0
                 if self.idle_t[i] >= c.regroup_wait:
                     self._set_phase(i, REGROUP)
@@ -1213,6 +1250,8 @@ class World:
     def _ready_to_return(self, i):
         """Dönüşe geçiş: toplanma noktasına vardım ve (bildiğim herkes de toplandı ya da çok bekledim)."""
         now, near = self.t, 60.0
+        if self.convoy is not None and not self.convoy.done:
+            return False                   # konvoy yoldayken sürü onu korumaya devam eder
         if np.linalg.norm(self.est[i, :2] - self.rally) > near:
             self.phase_t[i] = now          # bekleme süresi ancak noktaya varınca işlemeye başlar
             return False
@@ -1338,6 +1377,7 @@ class World:
         group[self.phase == TRANSIT] = 2
         group[self.phase == RETURN] = 3
         group[self.rtb & (self.phase == RETURN)] = -1     # batarya dönüşü: düzene girmeden doğrudan eve
+        group[self.role > 0] = -1                         # HSS bastırma rolündeki İHA düzene girmez
         group[~alive] = -1
 
         # Sanal lider ilerlemesi (intikal/dönüş): düzen hatası büyüyünce yavaşlar ki geride kalanlar yetişsin
@@ -1381,7 +1421,9 @@ class World:
                 formation[i] = True
                 continue
             t = self.my_task[i]
-            if self.rtb[i]:
+            if self.role[i] > 0:
+                target[i] = self.role_to[i]      # HSS bastırma rolü: nöbet noktası ya da radar
+            elif self.rtb[i]:
                 target[i] = self.home            # bataryası azaldı: doğrudan eve
             elif self.recover[i]:
                 target[i] = self.recover_to[i]   # GPS'i geri almak için karıştırma/aldatma dışına
@@ -1409,7 +1451,8 @@ class World:
         self.slot_err_true = np.where(formation, np.linalg.norm(target - self.pos[:, :2], axis=1), 0.0)   # gerçek hata (ölçüm için)
         desired = np.zeros((N, 3))
         task_mode = ~formation
-        speed = np.minimum(c.max_speed, 0.6 * dist)
+        vmax = np.where(self.dash & (self.role == cvy.R_STRIKE), cvy.DASH_SPEED, c.max_speed)   # kamikaze dalışı
+        speed = np.minimum(vmax[:, None], 0.6 * dist)
         desired[:, :2] = np.where(task_mode[:, None], to / np.maximum(dist, 1e-6) * speed, ff + 0.6 * to)
 
         # Reynolds: düzen uçuşunda hizalanma + uyum (komşular yakın mesafe sensörüyle algılanır)
@@ -1459,6 +1502,11 @@ class World:
                 t = self.my_task[i]
                 if self.spoofer[i] or not grid.any() or (t >= 0 and grid[self.task_ix[t], self.task_iy[t]]):
                     continue
+                if t >= 0 and self.ttype[t] != cvy.T_NORMAL and np.linalg.norm(target[i] - self.est[i, :2]) < 40.0:
+                    # Konvoy görevi (yol tarama, işaretleme): hedef temiz hücrede, son 40 m'de yandaki karıştırma
+                    # hücreleri İHA'yı noktadan itmesin (yoksa yanında asılı kalır, konvoy bekler). Genel hedeflerde
+                    # kapalı: önceki deneyler (results/*.csv) birebir tekrarlanabilsin.
+                    continue
                 ctr = cell_centers(grid)
                 v = self.est[i, :2] - ctr
                 d = np.linalg.norm(v, axis=1, keepdims=True)
@@ -1467,7 +1515,7 @@ class World:
 
         # --- dikey: arazi takibi (yükseklik haritası + ileriye bakış), iniş ve kalkış
         h = np.linalg.norm(desired[:, :2], axis=1, keepdims=True)
-        desired[:, :2] *= np.minimum(1.0, c.max_speed / np.maximum(h, 1e-6))
+        desired[:, :2] *= np.minimum(1.0, vmax[:, None] / np.maximum(h, 1e-6))
         here = self.terrain.height(self.est[:, 0], self.est[:, 1])
         ahead = self.terrain.max_along(self.est[:, :2], self.est[:, :2] + self.vel[:, :2] * c.lookahead)
         at_tgt = self.terrain.height(target[:, 0], target[:, 1])
@@ -1507,7 +1555,7 @@ class World:
             self.vel *= np.minimum(1.0, (c.max_speed + float(np.linalg.norm(w))) / np.maximum(sp, 1e-6))
         else:
             sp = np.linalg.norm(self.vel, axis=1, keepdims=True)
-            self.vel *= np.minimum(1.0, c.max_speed / np.maximum(sp, 1e-6))
+            self.vel *= np.minimum(1.0, vmax[:, None] / np.maximum(sp, 1e-6))
 
         # Yerdekiler kıpırdamaz; arızalananlar düşer
         parked = alive & (self.phase == LANDED)
@@ -1570,7 +1618,7 @@ class World:
         wide = threat.ThreatMap([q for q, _ in self.rd_est[i].values()], self.terrain, c.agl,
                                 r50=[self.radars[k].r50 for k in self.rd_est[i]], dilate=2)
         returning = (self.alive & (self.phase >= RETURN) & ~self.rtb).any()
-        if not returning:
+        if not returning and self.convoy is None:
             ac = np.asarray(c.area_center, float)
             thr = 0.03 if self.t < c.takeoff_time else 0.15  # eşik farkı: kestirim iyileşince nokta boşuna oynamasın
             if float(wide.pd_at(self.rally)[0]) > thr:
@@ -1624,7 +1672,12 @@ class World:
             tm = self._tmap(i)
             p = self.est[i, :2]
             here = float(tm.pd_at(p)[0])
-            if self.rw_lock[i] and now >= self.evade_until[i]:
+            if self.dash[i]:
+                # Saldırı anı: yem radara koşar (izlensin diye yüksekten), kamikaze alçaktan dalar; rota ve kaçış yok
+                self.route[i] = None
+                self.low[i] = self.role[i] == cvy.R_STRIKE
+                continue
+            if self.rw_lock[i] and now >= self.evade_until[i] and self.role[i] == cvy.R_NONE:
                 self.evade_until[i] = now + 6.0
                 t = self.my_task[i]
                 if t >= 0:
@@ -1692,7 +1745,8 @@ class World:
                 else:
                     L = radio.terrain_loss_db(R.pos[None, :], self.pos[idx], self.terrain, lam=threat.LAMBDA_X, samples=40)[0]
                 radial = (self.vel[idx] * d3).sum(1) / np.maximum(rng, 1.0)
-                pd = threat.detect_prob(rng, L, R.r50, radial)
+                gain = self._sead_gain(R, idx)               # HSS bastırma: karıştırıcı yankıyı zayıflatır, yem büyütür
+                pd = threat.detect_prob(rng, L - 5.0 * np.log10(gain), R.r50, radial)
                 hit = self.rng_r.random(len(idx)) < pd
                 h = np.roll(R.hist[idx], -1, axis=1)
                 h[:, -1] = hit
@@ -1722,7 +1776,9 @@ class World:
                 ready = R.track & self.alive & (now - R.track_since >= threat.ENGAGE_AFTER)
                 cand = [i for i in np.nonzero(ready)[0] if i not in targeted]
                 if cand:
-                    i = min(cand, key=lambda k: R.track_since[k])
+                    # Atış: radar kesit alanı en büyük hedef (yem İHA, Luneburg merceği); eşitse en uzun izlenen
+                    g = self._sead_gain(R, np.array(cand))
+                    i = cand[int(np.lexsort((np.array([R.track_since[k] for k in cand]), -g))[0])]
                     p0 = R.pos + [0.0, 0.0, 2.0]
                     d = self.pos[i] - p0
                     M = threat.Missile(R.id, i, p0, d / max(np.linalg.norm(d), 1.0) * threat.MISSILE_SPEED, now)
@@ -1778,6 +1834,8 @@ class World:
             if know.sum() < 3:
                 continue
             for e in np.unique(self.rw_e[know]):
+                if not self.radars[int(e)].alive:      # imha edilen radar: sürü biliyor, yeniden kestirilmez
+                    continue
                 sel = know & (self.rw_e == e)
                 if sel.sum() < 3:
                     continue
@@ -1886,6 +1944,8 @@ class World:
             self._localize_tick()
         if self.ew.radar and self.radars:
             self._radar_fix_tick()
+        if self.convoy is not None:
+            self._convoy_1hz()
 
     def _spoof_tests(self):
         c, now = self.cfg, self.t
@@ -1983,6 +2043,7 @@ class World:
             t = self.my_task[i]
             if t < 0 or self.spoofer[i] or not self.alive[i] or self.phase[i] not in (TRANSIT, TASK, REGROUP):
                 continue
+            ty = self.ttype[t]
             d_true = np.linalg.norm(self.pos[i, :2] - self.tasks[t, :2])
             if d_true < c.task_radius or (self.search[i] > 0 and d_true < c.search_detect):
                 # Kamera hedefi gerçekten gördü (aramada tanıyınca görsel güdümle üstüne gelir)
@@ -1992,6 +2053,8 @@ class World:
                     self.done[t], self.done_time[t] = True, self.t
                     self.r.done[i] += 1
                     self.r.task_by[t] = i
+                    if ty in (cvy.T_SCAN, cvy.T_MARK):
+                        self._convoy_seen(t, ty)
                 self.known_done[i, t], self.done_by[i, t] = True, i
                 if self.att_task[i] == t:
                     self._close_attempt(i, True)
@@ -2026,6 +2089,267 @@ class World:
                     self.search_sig[i] = sig
                 else:
                     self._give_up(i, t)
+
+    # ----------------------------------------------------------- konvoy koruma (suru/convoy.py)
+    def _activate_task(self, t, xy):
+        """Görev sırasında beliren görev (tarama, işaretleme, HSS bastırma): yerini koyar ve açar."""
+        g = float(self.terrain.height(xy[0], xy[1]))
+        self.tasks[t] = [xy[0], xy[1], g + self.cfg.agl]
+        self.task_ground[t] = g
+        self.task_ix[t], self.task_iy[t] = cell_idx(xy[0], xy[1])
+        self.appear[t] = self.ref_t[t] = self.t
+        self.finished_t = np.nan
+
+    def _close_task(self, t):
+        """Görev artık gereksiz (ör. radar imha edildi): herkes yapıldı bilir."""
+        if not self.done[t] and np.isfinite(self.appear[t]):
+            self.done[t], self.done_time[t] = True, self.t
+        self.known_done[:, t] = True
+        self.gcs_done[t] = True
+
+    def _convoy_seen(self, t, ty):
+        """İHA tarama ya da işaretleme noktasına gerçekten vardı: kamerası çevredeki gizli tehditleri görür."""
+        cv = self.convoy
+        p = self.tasks[t, :2]
+        for th in cv.threats:
+            if ty == cvy.T_MARK and th.task == t and not th.dead:
+                th.marked_t = min(th.marked_t, self.t)          # işaretlendi: topçu ateşi MARK_DELAY sonra
+            if ty != cvy.T_SCAN or th.found or th.dead:
+                continue
+            r = cvy.MINE_DETECT if th.kind == "mayin" else cvy.AMBUSH_DETECT
+            if np.linalg.norm(th.xy - p) < r:
+                th.found, th.found_t = True, self.t
+                if th.kind == "pusu" and th.task >= 0:
+                    self._activate_task(th.task, th.xy)
+
+    def _sead_gain(self, R, idx):
+        """Radarın İHA'ları görme çarpanı: karıştırıcı nöbetteyse 0,1 (−10 dB), yem İHA'da 10 (büyük kesit alanı)."""
+        gain = np.ones(len(idx))
+        st = self.sead.get(R.id)
+        if not st:
+            return gain
+        jm = st["roles"].get(cvy.R_JAM, -1)
+        if jm >= 0 and self.alive[jm] and np.linalg.norm(self.pos[jm, :2] - st["pts"][cvy.R_JAM][0]) < 60.0:
+            gain *= cvy.JAM_SNR
+        dc = st["roles"].get(cvy.R_DECOY, -1)
+        if dc >= 0:
+            gain[np.asarray(idx) == dc] *= cvy.DECOY_RCS
+        return gain
+
+    def _sead_plan(self, k, q, blocked, tm):
+        """Radar k için HSS bastırma noktaları (şemsiyenin yola bakan yüzünde): karıştırıcı ve yem iki yanda
+        menzilin biraz dışında, iki kamikaze radardan 250 m'de iki ayrı yönde (iki yönden aynı anda dalış)."""
+        R = self.radars[k]
+        tgt = self.tasks[blocked, :2].mean(0)
+        d = (tgt - q) / max(np.linalg.norm(tgt - q), 1.0)
+
+        def rot(a):
+            a = np.radians(a)
+            return np.array([d[0] * np.cos(a) - d[1] * np.sin(a), d[0] * np.sin(a) + d[1] * np.cos(a)])
+        pts = {cvy.R_JAM: [q + rot(-35.0) * R.r50 * 1.3], cvy.R_DECOY: [q + rot(35.0) * R.r50 * 1.3],
+               cvy.R_STRIKE: [q + rot(a) * 250.0 for a in (-25.0, 25.0)]}
+        return {"q": q.copy(), "pts": pts, "roles": {}, "strikers": [-1, -1], "state": "hazırlık",
+                "t": self.t, "t_attack": np.inf}
+
+    def _sead_assign(self, k):
+        """Boş ya da ölen rollere, o rolün noktasına en yakın boştaki dürüst İHA (herkes aynı seçimi yapar)."""
+        st = self.sead[k]
+        free = [i for i in range(self.N) if self.alive[i] and not self.spoofer[i] and self.role[i] == 0
+                and not self.rtb[i] and self.phase[i] in (TASK, REGROUP)]
+        for r in (cvy.R_JAM, cvy.R_DECOY):
+            i = st["roles"].get(r, -1)
+            if (i < 0 or not self.alive[i]) and free:
+                i = min(free, key=lambda a: np.linalg.norm(self.est[a, :2] - st["pts"][r][0]))
+                free.remove(i)
+                self._take_role(i, r, st["pts"][r][0])
+                st["roles"][r] = i
+        for n in range(2):
+            i = st["strikers"][n]
+            if (i < 0 or not self.alive[i]) and free:
+                i = min(free, key=lambda a: np.linalg.norm(self.est[a, :2] - st["pts"][cvy.R_STRIKE][n]))
+                free.remove(i)
+                self._take_role(i, cvy.R_STRIKE, st["pts"][cvy.R_STRIKE][n])
+                st["strikers"][n] = i
+                if st["state"] == "saldırı":         # saldırı sürerken gelen yeni kamikaze doğrudan dalar
+                    self.role_to[i], self.dash[i] = st["q"], True
+
+    def _take_role(self, i, r, pt):
+        self._close_attempt(i, False)
+        self._release_claim(i)
+        self.role[i], self.role_to[i], self.dash[i] = r, np.asarray(pt, float), False
+        self.recover[i], self.relay_for[i] = False, -1
+        if self.phase[i] == REGROUP:
+            self._set_phase(i, TASK)
+
+    def _sead_release(self, k):
+        """Radar sustu: roller biter, İHA'lar normal görevlere döner."""
+        st = self.sead[k]
+        for i in list(st["roles"].values()) + st["strikers"]:
+            if i >= 0 and self.alive[i]:
+                self.role[i], self.dash[i] = 0, False
+        st["state"] = "bitti"
+
+    def _sead_tick(self):
+        """(1 Hz, dirençli) HSS bastırma: yeri bulunan radarın şemsiyesi taranacak yolu kesiyorsa roller dağıtılır;
+        karıştırıcı, yem ve iki kamikaze yerini alınca saldırı başlar: yem radara koşar, 4 s sonra kamikazeler dalar."""
+        now = self.t
+        j = self._radar_view()
+        if j < 0:
+            return
+        for R in self.radars:
+            k = R.id
+            st = self.sead.get(k)
+            if not R.alive:
+                if st and st["state"] != "bitti":
+                    self._sead_release(k)
+                continue
+            if k not in self.rd_est[j]:
+                continue
+            q, err = self.rd_est[j][k]
+            if err > 100.0:
+                continue
+            if st is None:
+                tm = self._tmap(j)
+                blocked = [t for t in self.scan_idx if not self.done[t] and np.isfinite(self.appear[t])
+                           and tm.escape_at(self.tasks[t, :2])[0] > threat.DASH]
+                if not blocked:
+                    continue
+                st = self.sead[k] = self._sead_plan(k, q, blocked, tm)
+            else:
+                st["q"] = q.copy()
+            self._sead_assign(k)
+            if st["state"] == "hazırlık":
+                on = lambda i, p: i >= 0 and self.alive[i] and np.linalg.norm(self.pos[i, :2] - p) < 50.0
+                ready = (on(st["roles"].get(cvy.R_JAM, -1), st["pts"][cvy.R_JAM][0])
+                         and on(st["roles"].get(cvy.R_DECOY, -1), st["pts"][cvy.R_DECOY][0])
+                         and all(on(st["strikers"][n], st["pts"][cvy.R_STRIKE][n]) for n in range(2)))
+                if ready:
+                    st["ready_since"] = st.get("ready_since", now)
+                    if now - st["ready_since"] >= 3.0:
+                        st["state"], st["t_attack"] = "saldırı", now
+                        dc = st["roles"][cvy.R_DECOY]
+                        self.role_to[dc], self.dash[dc] = q, True
+                else:
+                    st.pop("ready_since", None)
+            elif st["state"] == "saldırı" and now - st["t_attack"] >= cvy.ATTACK_DELAY:
+                for i in st["strikers"]:
+                    if i >= 0 and self.alive[i]:
+                        self.role_to[i], self.dash[i] = q, True
+
+    def _sead_step(self):
+        """Her adım: dalan kamikaze radara 30 m yaklaştıysa vurur (radar imha, İHA harcanır)."""
+        for k, st in self.sead.items():
+            R = self.radars[k]
+            if not R.alive or st["state"] != "saldırı":
+                continue
+            for i in st["strikers"]:
+                if i >= 0 and self.alive[i] and self.dash[i] and np.linalg.norm(self.pos[i] - R.pos) < cvy.STRIKE_HIT:
+                    R.alive, R.dead_t = False, self.t
+                    R.track[:] = False
+                    self.fail_drone(i, cause="kamikaze")
+                    for j in range(self.N):                    # sürü radarın sustuğunu bilir
+                        self.rd_est[j].pop(k, None)
+                    self.cooldown[np.isinf(self.cooldown)] = 0.0   # radar yüzünden "riskli" sayılan hedefler yeniden açılır
+                    self.tmaps.clear()
+                    self._plan_key = None
+                    self._sead_release(k)
+                    break
+
+    def _convoy_1hz(self):
+        """(1 Hz) Konvoyun önündeki tarama görevlerini açar, toplanma noktasını konvoyun önüne taşır,
+        dirençli sürüde HSS bastırma görevlerini kurar."""
+        cv, c, now = self.convoy, self.cfg, self.t
+        if cv.done:
+            return
+        lead = max(cv.lead, 0.0)
+        if now >= cvy.CONVOY_START - 15.0:
+            for t, s in zip(self.scan_idx, self.scan_s):
+                if not np.isfinite(self.appear[t]) and s - lead < cvy.LOOKAHEAD:
+                    self._activate_task(t, self.tasks[t, :2])
+        # Boştaki İHA'lar konvoyun 80 m önünde halka olur (refakat); dönüş rotası oradan
+        returning = (self.alive & (self.phase >= RETURN) & ~self.rtb).any()
+        if not returning:
+            want, _ = cv.path.at(min(lead + 80.0, cv.path.length))
+            j = self._radar_view() if self.ew.radar else -1
+            if j >= 0 and self.rd_est[j] and float(self._tmap(j).pd_at(want)[0]) > 0.15:
+                want = self._tmap(j).safest_near(want, 250.0)     # dirençli: refakat halkası radar görüşünde olmasın
+            self.rally = np.asarray(want, float)
+            self.paths[RETURN] = Path([self.rally, self.home])
+        if self.radars and not any(R.alive for R in self.radars):
+            self.cooldown[np.isinf(self.cooldown)] = 0.0   # radar kalmadı: "riskli" sayılan hedefler yeniden açılır
+        if self.ew.sead and self.radars:
+            self._sead_tick()
+
+    def _convoy_step(self):
+        """Konvoy: sürünün taradığı yolda ilerler; gizli tehditler gerçeğe göre işler."""
+        cv, c, now, dt = self.convoy, self.cfg, self.t, self.cfg.dt
+        if cv.done:
+            return
+        L = cv.path.length
+        believed = self.known_done[self.alive & ~self.spoofer].any(0) | self.gcs_done
+        lead = cv.lead
+        limit = L
+        hold = ""                                    # konvoyun durma sebebi (Unity'de yazılır)
+        for t, s in zip(self.scan_idx, self.scan_s):
+            if not believed[t]:
+                if s - cvy.SEG / 2 - cvy.STOP_GAP < limit:
+                    limit, hold = s - cvy.SEG / 2 - cvy.STOP_GAP, "bekliyor: önü taranıyor"
+                break
+        for th in cv.threats:
+            # Sürü pusuyu gördü ve etkisiz hâle getirildiğine inanmıyor (işaretleme görevi "bitti" bilinmiyor).
+            # İşaretleme yanlışlıkla "bitti" sayıldıysa (konum hatası) konvoy yola çıkar ve pusuya düşer.
+            if th.kind == "pusu" and th.found and not (th.task >= 0 and believed[th.task]):
+                s_in = cv.first_in_range(th.xy, cvy.AMBUSH_RANGE + 15.0)
+                if s_in is not None and s_in < limit:
+                    limit, hold = s_in, "bekliyor: pusu etkisizleştiriliyor"
+        slow = any(th.kind == "mayin" and th.found and not th.dead and
+                   -10.0 < cv.s_of(th.xy) - lead < 40.0 for th in cv.threats)
+        if now < cvy.CONVOY_START:
+            target, wait = 0.0, "yola çıkmaya hazır"
+        elif lead < limit - 1.0:
+            target = 2.0 if slow else cvy.CONVOY_SPEED
+            wait = "mayın dolanılıyor" if slow else "ilerliyor"
+        else:
+            target, wait = 0.0, hold
+        cv.speed += float(np.clip(target - cv.speed, -2.0 * dt, 1.0 * dt))
+        if lead + cv.speed * dt > limit and target == 0.0:
+            cv.speed = 0.0
+        cv.s[cv.alive] += cv.speed * dt
+        cv.wait = wait
+        # Gerçek tehditler: bulunmamış mayın, etkisiz hâle getirilmemiş pusu
+        pos = [cv.xy(k)[0] for k in range(cv.n)]
+        for th in cv.threats:
+            if th.dead:
+                continue
+            if th.kind == "mayin":
+                for k in np.nonzero(cv.alive)[0]:
+                    if cv.s[k] >= 0 and np.linalg.norm(pos[k] - th.xy) < cvy.MINE_HIT and not th.found:
+                        cv.alive[k], cv.lost_t[k], cv.lost_by[k] = False, now, "mayın"
+                        th.dead = True
+                        break
+            else:
+                if now >= th.marked_t + cvy.MARK_DELAY:
+                    th.dead = True                               # işaretlenen mevzi topçu ateşiyle imha
+                    if th.task >= 0:
+                        self._close_task(th.task)
+                    continue
+                if now >= th.next_fire:
+                    near = [k for k in np.nonzero(cv.alive)[0]
+                            if cv.s[k] >= 0 and np.linalg.norm(pos[k] - th.xy) < cvy.AMBUSH_RANGE]
+                    if near:
+                        th.next_fire = now + cvy.AMBUSH_PERIOD
+                        th.shots = getattr(th, "shots", 0) + 1
+                        k = min(near, key=lambda q: np.linalg.norm(pos[q] - th.xy))
+                        if self.rng_r.random() < cvy.AMBUSH_PK:
+                            cv.alive[k], cv.lost_t[k], cv.lost_by[k] = False, now, "pusu"
+                        th.found, th.found_t = True, th.found_t if th.found else now   # ateş edince yeri belli olur
+                        if th.task >= 0 and not np.isfinite(self.appear[th.task]):
+                            self._activate_task(th.task, th.xy)
+        if cv.alive.any() and cv.lead >= L - 1.0:
+            cv.arrived_t = now
+            cv.wait = "hedefe ulaştı"
+        elif not cv.alive.any():
+            cv.wait = "imha edildi"
 
     def _give_up(self, i, t):
         """İHA görevi bitti sanar ama aslında bitmedi -> yanlış tamamlanma."""
@@ -2239,8 +2563,21 @@ class World:
         )
 
     def _threat_summary(self):
-        """Radar ve enerji ölçümleri (yalnızca bu tehditler varken)."""
+        """Radar, enerji ve konvoy ölçümleri (yalnızca bu görevler varken)."""
         out = {}
+        cv = self.convoy
+        if cv is not None:
+            out.update(
+                convoy_arrived=int(np.isfinite(cv.arrived_t)),
+                convoy_time=float(cv.arrived_t),
+                convoy_lost=int((~cv.alive).sum()),
+                convoy_lost_mine=int(sum(1 for x in cv.lost_by if x == "mayın")),
+                convoy_lost_ambush=int(sum(1 for x in cv.lost_by if x == "pusu")),
+                threats_found=int(sum(th.found for th in cv.threats)),
+                radar_destroyed=int(sum(not R.alive for R in self.radars)),
+                kamikaze=int(sum(1 for x in self.r.cause if x == "kamikaze")),
+                drones_lost=int(sum(1 for x in self.r.cause if x in ("radar", "batarya"))),
+            )
         if self.radars:
             errs = [e for _, e in self.rd_err_log]
             honest = ~self.spoofer
@@ -2335,7 +2672,7 @@ class World:
                 s = -1                                   # henüz belirmedi
             else:
                 s = 2 if self.done[t] else 3 if believed[t] else 1 if t in claimed else 0
-            tasks.append({"p": r(self.tasks[t]), "s": s, "v": int(self.value[t]),
+            tasks.append({"p": r(self.tasks[t]), "s": s, "v": int(self.value[t]), "ty": int(self.ttype[t]),
                           "age": round(float(self.t - self.appear[t]), 1) if self.popup[t] and s >= 0 else -1.0,
                           "k": int(known[t])})
         drones = []
@@ -2355,6 +2692,9 @@ class World:
                 d["rw"] = 2 if self.rw_lock[i] else 1 if self.t - self.rw_lit[i] < 3.0 else 0
                 if self.route[i] is not None and self.alive[i]:
                     d["route"] = [int(round(float(v))) for v in self.route[i].p.ravel()]
+            if self.convoy is not None:
+                d["role"] = int(self.role[i])
+                d["dash"] = int(self.dash[i])
             drones.append(d)
         links = []
         for i in range(self.N):
@@ -2386,11 +2726,14 @@ class World:
             "fhss": int(self.ew.fhss),
             "wind": [round(float(v), 2) for v in (self.wind.vec if self.wind.on else (0.0, 0.0))],
             "radars": [{"p": r(R.pos), "az": round(float(np.degrees(R.az)), 1), "on": int(R.active(self.t)),
+                        "dead": int(not R.alive),
                         "r": R.r50, "known": int(R.known), "n": R.missiles,
                         "trk": [int(i) for i in np.nonzero(R.track)[0]]} for R in self.radars],
             "missiles": [{"id": M.id, "p": r(M.pos), "v": r(M.vel), "st": M.state, "tgt": int(M.target), "r": M.radar}
                          for M in self.missiles],
             "radarEst": self._frame_radar_est(),
+            "convoy": self._frame_convoy(),
+            "sead": self._frame_sead(),
             "gcs": {"p": r(self.gcs), "on": int(self.central), "up": [int(x) for x in self.gcs_up]},
             "cell": CELL,
             "jamCells": jam_cells,
@@ -2436,6 +2779,46 @@ class World:
                 and (rf["rev"] != self._rfield_sent or self.t - self._rfield_sent_t >= RADAR_RESEND)):
             out["radarField"] = rf
             self._rfield_sent, self._rfield_sent_t = rf["rev"], self.t
+        return out
+
+    def _frame_convoy(self):
+        """Konvoy, rota, taranan yol ve gizli tehditler (Unity). Konvoy görevi yoksa boş."""
+        cv = self.convoy
+        if cv is None:
+            return None
+        veh = []
+        for k in range(cv.n):
+            p, u = cv.xy(k)
+            g = float(self.terrain.height(p[0], p[1]))
+            veh += [round(float(p[0]), 1), round(float(p[1]), 1), round(g, 2),
+                    round(float(np.degrees(np.arctan2(u[0], u[1]))), 1), int(cv.alive[k])]
+        believed = self.known_done[self.alive & ~self.spoofer].any(0) | self.gcs_done
+        cleared = 0.0
+        for t, s in zip(self.scan_idx, self.scan_s):
+            if not believed[t]:
+                break
+            cleared = s + cvy.SEG / 2
+        threats = [{"k": th.kind, "p": [round(float(th.xy[0]), 1), round(float(th.xy[1]), 1),
+                                        round(float(self.terrain.height(*th.xy)), 1)],
+                    "f": int(th.found), "d": int(th.dead), "m": int(np.isfinite(th.marked_t)),
+                    "fire": round(float(self.t - th.next_fire + cvy.AMBUSH_PERIOD), 1) if getattr(th, "shots", 0) else -1.0}
+                   for th in cv.threats]
+        return {"v": veh, "lead": round(float(cv.lead), 1), "len": round(cv.path.length, 1),
+                "speed": round(cv.speed, 2), "wait": cv.wait, "arrived": int(np.isfinite(cv.arrived_t)),
+                "route": [round(float(x), 1) for x in cv.path.p.ravel()], "cleared": round(cleared, 1),
+                "threats": threats, "lost": int((~cv.alive).sum())}
+
+    def _frame_sead(self):
+        """HSS bastırma planları (Unity): radar kestirimi, rol noktaları, rolü alan İHA'lar ve durum."""
+        out = []
+        for k, st in self.sead.items():
+            h = lambda p: [round(float(p[0]), 1), round(float(p[1]), 1), round(float(self.terrain.height(p[0], p[1])), 1)]
+            out.append({"r": int(k), "st": st["state"], "q": h(st["q"]),
+                        "jam": h(st["pts"][cvy.R_JAM][0]), "dec": h(st["pts"][cvy.R_DECOY][0]),
+                        "str": [v for p in st["pts"][cvy.R_STRIKE] for v in h(p)],
+                        "ij": int(st["roles"].get(cvy.R_JAM, -1)), "id": int(st["roles"].get(cvy.R_DECOY, -1)),
+                        "is": [int(i) for i in st["strikers"]],
+                        "ta": round(float(self.t - st["t_attack"]), 1) if np.isfinite(st["t_attack"]) else -1.0})
         return out
 
     def _frame_radar_est(self):

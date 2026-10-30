@@ -15,6 +15,6 @@ $pargs = @("-suruUiTest", $Out, "-screen-fullscreen", "0", "-screen-width", "$Wi
     "-logFile", (Join-Path $Out "player.log"))
 if ($Portable) { $pargs += "-suruTasinabilir" }
 $p = Start-Process -FilePath $Exe -PassThru -ArgumentList $pargs
-if (-not $p.WaitForExit(900000)) { Write-Host "zaman aşımı"; $p.Kill() }
+if (-not $p.WaitForExit(1800000)) { Write-Host "zaman aşımı"; $p.Kill() }
 Get-Content (Join-Path $Out "rapor.txt") -ErrorAction SilentlyContinue
 Get-ChildItem $Out -Filter *.png | ForEach-Object { $_.Name }

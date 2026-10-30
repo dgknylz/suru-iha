@@ -20,6 +20,8 @@ Hava savunma ve rüzgâr:
     python run_live.py --jammer off --radar iki                 # bilinen radar + görevde açılan pusu radarı
     python run_live.py --jammer off --radars=-300,650;500,200   # radarları verilen noktalara koy
     python run_live.py --jammer off --wind 9 --battery karisik  # lodos ve yarı dolu bataryalar
+Konvoy koruma (İKA konvoyu, yol taraması, pusu, mayın, HSS bastırma):
+    python run_live.py --convoy                                 # 20 dBm karıştırıcı + konvoy yolunu koruyan radar
 Sürü kalkar, düzende intikal eder, görevleri paylaşır, toplanır, düzende döner ve iner.
 İniş bitince simülasyon yeni komut bekler (--loop verilirse yeni haritayla kendiliğinden başlar).
 Çıkmak için Ctrl+C.
@@ -78,13 +80,15 @@ def add_custom_args(p):
     p.add_argument("--wind", type=float, default=0.0, help="ortalama rüzgâr hızı (m/s)")
     p.add_argument("--wind-from", type=float, default=210.0, help="rüzgârın estiği yön (derece; 180 güney, 225 güneybatı = lodos)")
     p.add_argument("--battery", default="tam", choices=list(BATTERY_MODES), help="kalkıştaki batarya doluluğu")
+    p.add_argument("--convoy", action="store_true",
+                   help="konvoy koruma: sürü İKA konvoyunun yolunu tarar, pusuyu işaretler, HSS radarını bastırır")
 
 
 def custom_state(a):
     sp = parse_points(a.spoofer)
     return {"jammer_xy": parse_points(a.jammers), "jammer_band": a.jammer_band, "spoofer_xy": sp[0] if sp else None,
             "region": a.region, "radar_mode": a.radar, "radar_xy": parse_points(a.radars), "wind": a.wind,
-            "wind_from": a.wind_from, "battery": a.battery}
+            "wind_from": a.wind_from, "battery": a.battery, "convoy": a.convoy}
 
 
 def custom_kw(st):
@@ -93,7 +97,7 @@ def custom_kw(st):
             "spoofer_xy": st.get("spoofer_xy"), "region": st.get("region", "ova"),
             "radar_mode": st.get("radar_mode", ""), "radar_xy": st.get("radar_xy"),
             "wind_speed": wind, "wind_from": float(st.get("wind_from", 210.0)), "gust": 0.25 * wind,
-            "battery": st.get("battery", "tam")}
+            "battery": st.get("battery", "tam"), "convoy": bool(st.get("convoy", False))}
 
 
 class Controls:
@@ -164,8 +168,9 @@ def describe(st):
     p = "kapalı" if st["power"] is None else f"{st['power']:.0f} dBm {mode}"
     g = f" | GPS aldatma: {st['gps_spoof']}" if st["gps_spoof"] else ""
     sp = f"%{st['spoof'] * 100:.0f} {'sinsi' if st['spoof_mode'] == 'sneaky' else 'saf'}" if st["spoof"] else "yok"
+    cv = " | konvoy koruma" if st.get("convoy") else ""
     return (f"{STRATEGY_NAMES[st['strategy']]} | {PLANNER_NAMES[st['planner']]} | karıştırıcı: {p}{g} | "
-            f"saldırgan: {sp} | harita {st['seed']}")
+            f"saldırgan: {sp} | harita {st['seed']}{cv}")
 
 
 def main():
@@ -212,6 +217,11 @@ def main():
                     print(f"Görev bitti: tamamlama %{s['completion'] * 100:.0f}, puan {s['score'] * 100:.0f}/100, "
                           f"süre {s['mission_time']:.0f}s, yanlış tamamlama {s['false_done']}, "
                           f"tekrar ziyaret {s['redundant']}. Sürü üsse dönüyor...")
+                    if world.convoy is not None:
+                        print(f"Konvoy: {'hedefe vardı' if s['convoy_arrived'] else 'varamadı'}, araç kaybı "
+                              f"{s['convoy_lost']} (mayın {s['convoy_lost_mine']}, pusu {s['convoy_lost_ambush']}), "
+                              f"tehdit bulundu {s['threats_found']}/4, radar imha {s['radar_destroyed']}, "
+                              f"İHA kaybı {s['drones_lost']}")
                 if world.flight_over():
                     print(f"Sürü indi (t={world.t:.0f}s).")
                     done_at = time.perf_counter()

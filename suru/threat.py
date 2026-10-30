@@ -107,9 +107,11 @@ class Radar:
         self.lit = np.full(n, -np.inf)                # huzme İHA'nın üstünden en son ne zaman geçti
         self.next_fire = 0.0
         self.fired = 0
+        self.alive = True                             # kamikaze İHA vurunca False (HSS bastırma)
+        self.dead_t = np.nan
 
     def active(self, t):
-        return t >= self.on_at
+        return t >= self.on_at and self.alive
 
 
 class Missile:

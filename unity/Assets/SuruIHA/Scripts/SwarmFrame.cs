@@ -28,6 +28,8 @@ namespace SuruIHA
         public int trk;        // 1 = bir radar bu İHA'yı izliyor
         public int rw;         // radar ikaz alıcısı: 0 sessiz, 1 huzme geçti, 2 kilit ikazı (yalnız dirençli sürü)
         public int[] route;    // radardan kaçan rota: [x, y, x, y, ...] (dirençli sürü, yoksa boş)
+        public int role;       // konvoy görevinde HSS bastırma rolü: 0 yok, 1 yem, 2 karıştırıcı, 3 kamikaze
+        public int dash;       // 1 = rolünün son koşusunda (yem radara koşuyor, kamikaze dalıyor)
     }
 
     [Serializable]
@@ -40,6 +42,7 @@ namespace SuruIHA
         public int known;      // 1 = yeri istihbaratla biliniyordu
         public int n;          // kalan füze
         public int[] trk;      // izlenen İHA'lar
+        public int dead;       // 1 = imha edildi (kamikaze İHA vurdu)
     }
 
     [Serializable]
@@ -79,6 +82,46 @@ namespace SuruIHA
         public int v;          // değer (öncelik) 1-3
         public float age;      // yeni hedefse belireli kaç saniye oldu (-1: baştan beri var)
         public int k;          // 1 = sürü bu hedefin varlığını biliyor
+        public int ty;         // 0 hedef, 1 yol taraması (konvoy), 2 pusu işaretleme (konvoy)
+    }
+
+    [Serializable]
+    public class ConvoyThreatState // konvoyun yolundaki gizli tehdit
+    {
+        public string k;       // "mayin" | "pusu"
+        public float[] p;
+        public int f;          // 1 = sürü gerçekten gördü
+        public int d;          // 1 = imha edildi (pusu) ya da patladı (mayın)
+        public int m;          // 1 = işaretlendi (pusu; birkaç saniye sonra topçu vurur)
+        public float fire = -1f;   // pusunun son atışından bu yana geçen süre (s), -1: hiç ateş etmedi
+    }
+
+    [Serializable]
+    public class ConvoyState   // İKA konvoyu
+    {
+        public float[] v;      // araç başına [x, y, z, yön (pusula derecesi), canlı]
+        public float lead;     // öndeki aracın rotada aldığı yol (m)
+        public float len;      // rota uzunluğu (m)
+        public float speed;
+        public string wait;    // konvoyun durumu ("yol taranıyor", "pusu menzili dışında bekliyor"...)
+        public int arrived;
+        public float[] route;  // rota noktaları [x, y, x, y, ...]
+        public float cleared;  // rotanın başından taranmış (sürünün temiz bildiği) kısım (m)
+        public ConvoyThreatState[] threats;
+        public int lost;       // kaybedilen araç
+    }
+
+    [Serializable]
+    public class SeadState     // HSS bastırma planı (dirençli sürü)
+    {
+        public int r;          // radar
+        public string st;      // "hazırlık" | "saldırı" | "bitti"
+        public float[] q;      // sürünün radar kestirimi
+        public float[] jam, dec;   // karıştırıcı ve yemin nöbet noktası
+        public float[] str;        // kamikazelerin bekleme noktaları [x, y, z, x, y, z] (JsonUtility iç içe dizi okumaz)
+        public int ij, id;     // karıştırıcı ve yem İHA (-1 yok)
+        public int[] @is;      // kamikaze İHA'lar
+        public float ta = -1f; // saldırının başlamasından bu yana (s), -1: başlamadı
     }
 
     [Serializable]
@@ -226,6 +269,8 @@ namespace SuruIHA
         public MissileState[] missiles;
         public RadarEstState[] radarEst;
         public RadarFieldState radarField;  // radar görüş haritası (ara ara gelir)
+        public ConvoyState convoy;       // konvoy koruma görevi (yoksa boş)
+        public SeadState[] sead;         // HSS bastırma planları
         public FlightReport report;      // uçuş raporu (iniş bitince ara ara gelir)
         public FrameMetrics m;
         public ControlState ctl;

@@ -1,8 +1,8 @@
 # Sürü İHA'larda Otonom Sürü Zekâsı ile Karar Alma ve Elektronik Harp Direnci
 
 TÜBİTAK 2204-A projesi. Bir İHA sürüsünün elektronik harp (haberleşme karıştırma, GPS karıştırma,
-sahte mesaj), hava savunma radarı, rüzgâr ve sınırlı batarya altında görevlerini nasıl paylaştığını ve ne kadar
-dayanıklı olduğunu inceleyen
+sahte mesaj), hava savunma radarı, rüzgâr ve sınırlı batarya altında görevlerini nasıl paylaştığını, bir insansız kara
+aracı (İKA) konvoyunu mayın, pusu ve hava savunmaya karşı nasıl koruduğunu ve ne kadar dayanıklı olduğunu inceleyen
 **Python simülasyonu** ve sonuçları gerçekçi şekilde gösteren **Unity HDRP 3D görselleştirmesi**.
 
 ```
@@ -14,6 +14,7 @@ Python (beyin)                         Unity HDRP (göz)
  suru/radio.py  ── SINR, paket kaybı │  UDP 5065 (JSON, 30 kare/s)
  suru/threat.py ── radar, Dijkstra   │
  suru/energy.py ── güç, rüzgâr       │
+ suru/convoy.py ── İKA konvoyu, HSS  │
  run_live.py    ── canlı yayın ──────┴──────────────► SwarmReceiver → SwarmVisualizer
  run_experiments.py → results.csv → analyze.py → grafikler + istatistik
 ```
@@ -71,7 +72,7 @@ Kullanım:
    | **Nasıl çalışır?** | Sürü zekâsı (uçuş evreleri), CBBA döngüsü, tehdit → savunma eşleşmesi, simülasyon mimarisi |
    | **Kullanılanlar** | Yazılımlar (Python, Unity HDRP, Blender…), algoritmalar ve modeller, rakamlarla proje |
    | **Bulgular** | Uygulamanın içinde çizilen altı grafik: EH senaryoları, karar alma, yapay zekâ, savunmaların katkısı, ölçekleme, hava savunma ve enerji |
-   | **Simülasyon** | 10 senaryo (karıştırma, arazi, GPS aldatma, saldırgan, **hava savunma radarı**, **lodos ve yarı dolu bataryalar**), mimari, algoritma, tek sürü ya da yan yana, bölge (ova, karlı dağlar, Kızılırmak, Divriği, Gökpınar, Akdeniz), hız; **Başlat** |
+   | **Simülasyon** | 11 senaryo (karıştırma, arazi, GPS aldatma, saldırgan, **hava savunma radarı**, **lodos ve yarı dolu bataryalar**, **konvoy koruma**), mimari, algoritma, tek sürü ya da yan yana, bölge (ova, karlı dağlar, Kızılırmak, Divriği, Gökpınar, Akdeniz), hız; **Başlat** |
    | **Kendi senaryon** | Haritaya tıklayarak karıştırıcı, GPS aldatıcı ve hava savunma radarı koy; İHA ve hedef sayısı, arıza, saldırgan, rüzgâr ve batarya seç; **Başlat** |
    | **Uçuş raporu** | Son biten uçuş: ısı haritası üstünde İHA izleri, İHA tablosu, öne çıkanlar |
    | **Kullanım** | Adım adım kullanım, klavye kısayolları, renklerin anlamı |
@@ -219,6 +220,30 @@ Simülasyon sırasında ekranda:
   dönüyordur. Görev sonu ekranı düşen İHA sayısını (hava savunma / batarya) da verir.
 
   ![Lodos ve yarı dolu bataryalar](gorseller/95_lodos_ve_batarya.jpg)
+- **Konvoy koruma** (senaryo "Konvoy koruma (İKA)"): üsten çıkan 4 İKA'lık konvoy 721 m'lik bir rotayla düz vadiden hedefe gider;
+  yolda iki gizli mayın, yol kenarında kamuflaj ağı altında iki pusu mevzisi, yolun ortasında 20 dBm karıştırıcı ve yolun
+  kuzeyini koruyan bir HSS radarı var. Konvoy yalnızca sürünün taradığı yolda ilerler: taranmış yol yeşil, taranmamışı
+  soluk çizilir; küçük halkalar yol tarama noktalarıdır. Araçlar araziye oturur, tekerleri döner, arkalarında toz kalkar;
+  silah kuleleri bulunan pusuya döner. Sürünün henüz bilmediği tehdit mor, bulunan kırmızı halkayla görünür; bulunan mayına
+  ikaz bayrağı dikilir, bulunan pusunun 160 m'lik ateş menzili çizilir. Pusuyu bir İHA lazerle işaretler (kızıl huzme),
+  topçu mevziyi vurur (patlama, duman). Radarın şemsiyesi taranacak yolu kesince dirençli sürü **HSS bastırma** yapar:
+  karıştırıcı İHA'dan radara mor bir huzme uzanır, yem İHA radara koşar (turuncu), iki kamikaze İHA iki yönden dalar
+  (kırmızı); vurulan radar kararır ve tüter. Korumasız sürü karıştırmada konumunu yanlış bildiği için bazı yol parçalarını
+  taramadan "temiz" sayar: konvoy gizli mayına basar ya da pusuya yürür; vurulan araç patlar, kararır ve tüter. Görev
+  kartında konvoyun aldığı yol ve sağlam araç sayısı, olay akışında her an ("İHA kamerası yolun üstünde gömülü bir mayın
+  gördü", "Saldırı! … yem radara koşuyor", "HSS radarı kamikaze İHA'yla imha edildi") yazar.
+
+  ![Konvoy koruma](gorseller/100_konvoy_koruma.jpg)
+
+  ![İKA konvoyu yakından](gorseller/101_ika_konvoyu.jpg)
+
+  ![HSS bastırma](gorseller/102_hss_bastirma.jpg)
+
+  ![İmha edilen radar](gorseller/103_radar_imha.jpg)
+
+  ![Pusunun işaretlenmesi](gorseller/104_pusu_isaretleme.jpg)
+
+  ![Yan yana: korumasız sürünün konvoyu pusuya düşüyor](gorseller/105_konvoy_yan_yana.jpg)
 - **Uçuş tekrarı:** araç çubuğundaki **Tekrar** ya da görev sonu ekranındaki **Tekrar izle** uçuşu baştan oynatır. Alttaki
   zaman çubuğuna tıklayıp sürükleyerek istenen ana gidilir, oynatma durdurulur, 1×, 3×, 6× ya da 12× hızla izlenir
   (yeşil çizgi görevlerin bittiği an). Tekrar sırasında canlı simülasyon arkada bekler; **Canlıya dön** kaldığı yere döner.
@@ -282,6 +307,7 @@ simülasyon bekler, N ile yeni harita başlar.
 | `python run_live.py --jammer off --radar iki` | Hava savunma: yeri bilinen radar + 80. saniyede açılan pusu radarı (`bilinen`, `pusu` tek başına) |
 | `python run_live.py --jammer off --radars=-300,650;500,200` | Kendi senaryon: radarları verilen noktalara koy (baştan açık, yerleri bilinmez) |
 | `python run_live.py --jammer off --wind 8 --battery karisik` | 8 m/s lodos, bataryaların bir kısmı %20-35 (`--wind-from` derece, `--battery dusuk`) |
+| `python run_live.py --convoy` | Konvoy koruma: 4 İKA, gizli mayın ve pusu, yolu koruyan HSS radarı, yolun ortasında 20 dBm karıştırıcı (`run_compare.py --convoy` yan yana) |
 | `python run_live.py --region kar` | Karlı dağlar bölgesinde uç (`nehir`: Kızılırmak, `divrigi`: Divriği, `gokpinar`: Gökpınar Gölü, `deniz`: Akdeniz kıyısı; varsayılan `ova`: Orta Anadolu ovası; `run_compare.py` de kabul eder) |
 
 ### Yan yana karşılaştırma (sunum için)
@@ -483,6 +509,26 @@ yeri için tahminidir; beyaz çizgi tahmin ile gerçek karıştırıcı arasınd
 - **Risk/ödül kararı:** hedef, radarın görmediği yerden en fazla 50 m'lik kısa bir dalışla ulaşılamıyorsa alınmaz. Radar orada
   İHA'yı izleyip füze atmaya yetecek kadar uzun görür: İHA'yı kaybetme riski hedefin değerinden büyüktür.
 
+### Konvoy koruma ve HSS bastırma (`suru/convoy.py`)
+- **Görev:** 4 İKA'lık konvoy 721 m'lik rotayı 5 m/s ile, araçlar arası 25 m bırakarak izler. Rota 60 m'lik parçalara
+  bölünür; her parçanın ortası bir "yol tarama" görevidir ve konvoy yaklaştıkça (350 m önü) belirir. Görevleri sürü her
+  zamanki gibi paylaşır (CBBA ya da merkezi SGA).
+- **Gizli tehditler:** iki mayın (rotanın üstünde) ve iki pusu (yol kenarında, 160 m ateş menzili, 10 s'de bir atış, isabet
+  0,7). İHA tarama noktasına **gerçekten** varırsa kamerası 45 m'deki mayını, 150 m'deki pusuyu görür. Konumunu yanlış
+  bilen İHA (karıştırılmış GPS, aldatma) noktaya vardığını sanıp parçayı "temiz" bildirir ama bir şey görmez: tehdit gizli
+  kalır. Bulunan pusu için bir "işaretleme" görevi doğar; İHA mevziye varınca lazerle işaretler, 3 s sonra topçu vurur.
+  Ateş eden pusu kendini ele verir.
+- **Konvoy kuralı:** konvoy, sürünün temiz bildiği yolun sonundan 40 m geride ve işaretlenmemiş pusunun menzili dışında
+  bekler; bulunan mayının yanından 2 m/s ile dolanır. Bulunmamış mayının 5 m yakınından geçen araç kaybedilir.
+- **HSS bastırma (SEAD, dirençli):** radarın yeri kerterizle bulunup şemsiyesi taranacak yolu kesince sürü dört rol
+  dağıtır. Lider yoktur: her İHA aynı bilgiyle aynı seçimi yapar (her rol için o rolün noktasına en yakın boştaki İHA).
+  **Karıştırıcı**, menzil dışında nöbet tutup radarın alıcısını karıştırır (yankı 10 dB zayıflar); **yem**, radar kesit
+  alanı 10 kat büyütülmüş (Luneburg merceği) İHA'dır, saldırıda radara koşar; radar en güçlü yankıyı veren hedefe ateş
+  ettiği için füzeler yeme gider. **İki kamikaze** radardan 250 m'de iki ayrı yönde bekler, yem koşunca 4 s sonra
+  alçaktan 25 m/s ile dalar: radarın iki atışı arası 6 s olduğundan ikisini birden durduramaz. 30 m'ye giren kamikaze radarı
+  imha eder (İHA harcanır). Ölen rolün yerine yenisi seçilir; radar susunca roller biter ve şemsiyenin altındaki yol da
+  taranır.
+
 ### Enerji ve rüzgâr (`suru/energy.py`)
 - **Güç modeli** (Zeng, Xu, Zhang 2019, IEEE Trans. Wireless Commun.): havaya göre V hızında
   `P(V) = P0(1 + 3V²/U²) + Pi·(√(1 + V⁴/4v0⁴) − V²/2v0²)^½ + ½·d0·ρ·s·A·V³` (kanat profili, taşıma, gövde sürüklemesi),
@@ -557,7 +603,7 @@ yükseklik, yakın geçiş (iki İHA'nın 2 m'den fazla yaklaşması).
 ```bash
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-43 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
+45 otomatik test: radyo fiziği, düzen geometrisi, tam uçuş (kalkıştan inişe, hiç yakın geçiş olmadan),
 arazi takibi, karıştırmanın düzeni bozması, İHA arızası sonrası görev paylaşımı, eşleştirilmiş deney.
 Karar alma için: en iyi ekleme hesabının kaba kuvvetle aynı sonucu vermesi, Choi uzlaşma kuralları,
 CBBA'nın çakışmasız ve ortak plana yakınsaması, CBBA'nın açgözlü yöntemden iyi olması, yeni ve
@@ -570,6 +616,9 @@ Hava savunma ve enerji için: radar tespit olasılığının menzille ve arazi g
 tespiti zorlaştırması, kerteriz kestiriminin isabeti ve kısa tabanlı ölçümlerin reddedilmesi, rotanın radar görüşünü
 dolanması, radarı bilmeyen sürünün İHA kaybetmesi ve dirençli sürünün pusu radarını bulup kayıpsız kalması, güç eğrisi
 ve karşı rüzgârın dönüş enerjisini katlaması, sabit %10 kuralında bataryası biten İHA olması ve enerji farkında sürüde olmaması.
+Konvoy için: rotanın düz vadide kalması (en dik yer < %15), mayının rotanın üstünde, pusunun yolu menziline alması,
+korumasız sürünün konvoyunun araç kaybetmesi, dirençli sürünün dört tehdidi de bulup radarı kamikazeyle imha etmesi ve
+konvoyu kayıpsız hedefe ulaştırması.
 
 ---
 
@@ -603,6 +652,9 @@ ve karşı rüzgârın dönüş enerjisini katlaması, sabit %10 kuralında bata
 .venv\Scripts\python.exe run_experiments.py --threats
 ```
 ```bash
+.venv\Scripts\python.exe run_experiments.py --convoy
+```
+```bash
 .venv\Scripts\python.exe analyze.py
 ```
 
@@ -616,6 +668,7 @@ ve karşı rüzgârın dönüş enerjisini katlaması, sabit %10 kuralında bata
 | Ablasyon (`--ablation`) | 11 mekanizma tek tek kapalı + tam + korumasız × 6 senaryo × 12 | 936 |
 | Ölçekleme (`--scaling`) | 5 / 10 / 20 İHA × 3 strateji × 3 koşul × 20 | 540 |
 | Yeni tehditler (`--threats`) | hava savunma (bilinen + pusu radarı), lodos 8 m/s + karışık batarya × 3 strateji × 30 | 180 |
+| Konvoy koruma (`--convoy`) | 4 İKA, 2 mayın, 2 pusu, HSS radarı, 20 dBm karıştırıcı × 3 strateji × 30 | 90 |
 | Yapay zekâ (`tools/train_ai.py`) | eğitim / doğrulama / test haritaları ayrı, ~20 000 görev denemesi | 570 uçuş |
 
 - Aynı tohum (seed) = aynı görev haritası olduğu için stratejiler birebir aynı koşulda
@@ -737,6 +790,24 @@ Elektronik harp senaryoları (her uçuşta 6 yeni hedef, n=30; dirençli diğer 
 
 ![Bulgular: hava savunma ve enerji](gorseller/99_arayuz_bulgular_tehditler.jpg)
 
+### Öne çıkan bulgular: konvoy koruma (n=30, `results/konvoy.csv`)
+
+| Ölçüt | Merkezi | Merkeziyetsiz | Merkeziyetsiz + EH direnci |
+|---|---|---|---|
+| Konvoyun hedefe varması | %63,3 | %60 | **%100** |
+| Kaybedilen İKA (4 araçtan) | 1,83 | 2,03 | **0** |
+| … mayından / pusudan | 0,23 / 1,60 | 0,13 / 1,90 | 0 / 0 |
+| Taramadan "temiz" sayılan yol parçası | 1,00 | 0,93 | **0** |
+| HSS radarının imhası | %0 | %0 | **%100** |
+| Kaybedilen İHA (10 İHA'dan; kamikaze dahil) | 3,90 | 4,17 | **2,2** |
+
+Dirençli sürünün araç kaybı iki korumasız mimariden de anlamlı az (Wilcoxon p < 0,0001). Karıştırma bölgesinde korumasız
+İHA, konumunu yanlış bildiği hâlde yol parçasını "temiz" bildirir; konvoy bu parçaya güvenip gizli mayına ya da pusuya
+girer. Dirençli İHA hedefi görmeden "bitti" demez (spiral arama), konvoy taranmamış yolda beklemeye devam eder.
+Radarın şemsiyesi altındaki yolu korumasız sürüler tarayamaz ya da tararken düşer; dirençli sürü radarı rollere bölünmüş
+bir saldırıyla susturur. Bedeli: uçuş başına ortalama 2,2 İHA (radara dalan bir kamikaze ve füzeyle vurulan 1,2 İHA,
+çoğu radara koşan yem).
+
 ### Öne çıkan bulgular: bilimsel kanıt (Aşama 4)
 
 - **Ayar ve test ayrımı:** Dirençli stratejinin 4 parametresi ayrı ayar haritalarında tarandı. Hiçbir
@@ -772,6 +843,7 @@ Bütün modeller kodla üretilir. Arazi, kaya ve ağaç kabuğu dokuları Poly H
 | `blender/jammer.py` | 6x6 elektronik harp aracı, ekipman kabini, teleskopik direk, panel ve LPDA antenler |
 | `blender/radar.py` | Hava savunma sistemi: römork üstünde dönen düzlemsel dizi anten (IFF dizisi, yan lob antenleri, arka kafes), açılmış dengeleme ayakları, jeneratör ve kabin; yanında dört tüplü füze rampası. "Anten" nesnesini Unity döndürür |
 | `blender/gcs.py` | Yer kontrol istasyonu: konteyner, kafes direk, takip anteni, jeneratör, kum torbaları |
+| `blender/ika.py` | 4x4 zırhlı İKA (V tabanlı eğimli gövde, sensör direğinde EO/IR kamera, uzaktan kumandalı silah kulesi, sürüş kameraları ve LIDAR, tavanda turuncu dost tanıma paneli; tekerler ve kule Unity'de döner), kamuflaj ağı altında silahlı arazi aracı ve kum torbası siperi (pusu), TM-62 benzeri tanksavar mayını ve ikaz bayrağı |
 | `blender/village.py` | Orta Anadolu köyü: kiremit kırma çatılı sıvalı evler (güneş enerjili su ısıtıcılı), revaklı kubbeli minareli cami, ahşap elektrik direği |
 | `blender/nature.py` | Karaçam (genç/yaşlı), meşe, çalı (alfa kesimli yaprak kartları, LOD'lu), kayalar, ot öbekleri |
 | `tools/gen_textures.py` | Dikişsiz dokular: çimen, bozkır, sürülmüş tarla, anız, kaya, çakıl, kabuk, iğne, yaprak, ot, Türk bayrağı; Ulu Camii için kesme taş, iki Selçuklu oyması (yükseklik haritalı), kurşun çatı, avlu döşemesi (renk + normal + HDRP maske) |
@@ -855,6 +927,13 @@ ve görev durumunu yazar.
   dağlık bölgelerde rota tepelerin arkasından daha çok yararlanır.
 - Hava savunma sonuçları bir ödünleşimdir: dirençli sürü İHA kaybetmez ama şemsiyenin altındaki hedefleri yapmaz.
   Hedef değeri ile İHA değeri arasındaki oran farklı seçilirse karar da değişir (burada sabit bir kuralla verildi).
+- Konvoy görevinde tehditlerin görülmesi kesin bir menzil kuralıdır (kamera, hava, kamuflaj olasılıksal değil); topçu
+  işaretlenen mevziyi her zaman vurur. Karıştırıcı İHA, yem ve kamikaze etkileri basit çarpanlarla modellenmiştir
+  (radarın gördüğü yankı −10 dB, yem ×10 kesit alanı; radar en büyük kesit alanlı hedefe öncelik verir). Rota ve
+  tehditlerin yeri senaryo için seçilmiştir.
+- "Karıştırma bölgesinden kaçınma" kuralı, hedef temiz hücrede olsa bile yandaki karıştırma hücreleriyle İHA'yı hedefin
+  birkaç metre yanında tutabiliyor. Konvoy görevlerinde hedefe son 40 m'de kapatıldı; genel hedeflerde önceki deneylerin
+  tekrarlanabilirliği için açık bırakıldı (ablasyonda bu kuralın zararlı çıkmasının bir sebebi olabilir).
 - Enerji modeli 2 kg'lık bir quadcopter için yayımlanmış parametrelerle kurulmuştur; batarya yaşlanması, sıcaklık ve
   gerilim düşümü yoktur. Rüzgâr bütün alanda aynıdır (arazinin rüzgârı yönlendirmesi yok).
 - Yapay zekâ bu simülatörün verisiyle eğitildi. Gerçek İHA'da yeniden eğitilmesi gerekir. Görev puanına
@@ -865,7 +944,7 @@ ve görev durumunu yazar.
 ## 6. Klasör yapısı
 
 ```
-suru/                 Python simülasyon paketi (config, radio, world, decision, ew, threat, energy, swarm, terrain, bridge)
+suru/                 Python simülasyon paketi (config, radio, world, decision, ew, threat, energy, convoy, swarm, terrain, bridge)
 suru/data/            Unity'den aktarılan arazi yükseklik haritası, eğitilmiş yapay zekâ ağırlıkları
 tests/                Otomatik doğrulama testleri (pytest)
 run_live.py           Unity'ye canlı yayın

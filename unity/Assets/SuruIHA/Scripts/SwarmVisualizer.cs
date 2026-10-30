@@ -152,6 +152,7 @@ namespace SuruIHA
             ApplyRadarEstimates(f);
             ApplyRadarField(f);
             ApplyWind(f);
+            ApplyConvoy(f);
         }
 
         void Init()
@@ -247,6 +248,7 @@ namespace SuruIHA
             AnimateRadars();
             AnimateMissiles();
             AnimateWindsock();
+            AnimateConvoy();
             if (drones.Count > 0)
             {
                 Vector3 c = Vector3.zero;
@@ -592,6 +594,7 @@ namespace SuruIHA
                 new Color(1f, 0.15f, 0.25f),      // yanlış tamamlandı (İHA bitti sandı)
             };
             public static readonly Color ColUnknown = new Color(0.75f, 0.3f, 1f);   // belirdi ama sürü henüz bilmiyor
+            public static readonly Color ColMark = new Color(1f, 0.32f, 0.12f);     // pusuyu işaretleme görevi
 
             public TaskMarker(SwarmVisualizer v, Transform parent, int id)
             {
@@ -620,12 +623,14 @@ namespace SuruIHA
                 float h = Mathf.Max(p.y - ground, 1f);
                 Root.localPosition = new Vector3(p.x, ground, p.z);
                 int val = Mathf.Clamp(s.v, 1, 3);
-                float wBeam = s.s == 2 ? 0.3f : 0.45f + 0.2f * val;
+                float sz = s.ty == 1 ? 0.55f : 1f;            // konvoy yol taraması: küçük işaret
+                float wBeam = (s.s == 2 ? 0.3f : 0.45f + 0.2f * val) * sz;
                 beamT.localPosition = new Vector3(0, h * 0.5f, 0);
                 beamT.localScale = new Vector3(wBeam, h * 0.5f, wBeam);
                 bool unknown = s.s == 0 && s.k == 0;
                 float pulse = unknown ? 0.55f + 0.45f * Mathf.Sin(Time.time * 5f) : 1f;
                 Color c = unknown ? ColUnknown : StateColors[Mathf.Clamp(s.s, 0, 3)];
+                if (s.ty == 2 && s.s <= 1 && !unknown) c = ColMark;   // pusu işaretleme görevi
                 // Yeni hedef: ilk saniyelerde ışık sütunu parlar
                 float fresh = s.age >= 0 ? Mathf.Clamp01(1f - s.age / 6f) : 0f;
                 SwarmMaterials.SetBlock(block, new Color(c.r, c.g, c.b, 0.07f + 0.25f * fresh), c * (0.15f + 1.5f * fresh));
@@ -634,6 +639,7 @@ namespace SuruIHA
                 {
                     ring[k].enabled = k < val;
                     ring[k].transform.localPosition = new Vector3(0, h, 0);
+                    ring[k].transform.localScale = Vector3.one * sz;
                     SwarmMaterials.SetBlock(block, c * 0.3f, c * (1.4f - 0.25f * k) * pulse);
                     ring[k].SetPropertyBlock(block);
                 }

@@ -150,6 +150,11 @@ class SimConfig:
     gust: float = 0.0               # esinti şiddeti (m/s, standart sapma)
     battery: str = "tam"            # kalkıştaki batarya doluluğu: tam | karisik | dusuk (energy.BATTERY_MODES)
 
+    # --- konvoy koruma (suru/convoy.py) ---
+    convoy: bool = False            # İKA konvoyu görevi: yol taraması, pusu, mayın, HSS bastırma
+    convoy_vehicles: int = 4
+    ew_sead: bool = True            # (dirençli) HSS bastırma: yem + karıştırıcı + kamikaze İHA
+
     def relay_enabled(self):
         return bool(self.relay) and self.strategy != "centralized"
 
@@ -204,8 +209,22 @@ def make_config(strategy="resilient", jammer_power=20.0, spoof=0.0, seed=0, jamm
     radars = radar_scenario(radar_mode, radar_xy)
     if radar_xy:
         radar_mode = "ozel"
+    if kw.get("convoy"):
+        # Konvoy koruma: rotayı koruyan HSS radarı ve yolun ortasında karıştırıcı; rastgele hedef yok
+        from .convoy import CONVOY_RADAR, CONVOY_ROUTE
+        if not radar_mode:
+            radars, radar_mode = [dict(CONVOY_RADAR)], "konvoy"
+        kw.setdefault("area_center", tuple(CONVOY_ROUTE[1]))   # düzen uçuşu rotanın başında biter
+        kw["n_tasks"], kw["n_popup"] = 0, 0                     # hedefler konvoyun yolundan doğar
+        kw.setdefault("max_time", 600.0)                        # konvoy 721 m, beklemelerle 4-8 dk
+        if kw.get("region", "ova") not in ("ova", "kar"):
+            kw["region"] = "ova"                                 # rota düz vadide: öbür bölgelerde nehir, göl, deniz ya da dik yamaç
     if jammer_power is None:
         jammers = []
+    elif kw.get("convoy") and not jammer_xy:
+        from .convoy import CONVOY_JAMMER
+        jammers = [dict(CONVOY_JAMMER, power_dbm=float(jammer_power))]
+        jammer_mode = "konvoy"
     elif jammer_xy:
         jammers = [{"pos": (float(x), float(y), 15.0), "power_dbm": float(jammer_power), "band": jammer_band}
                    for x, y in jammer_xy]

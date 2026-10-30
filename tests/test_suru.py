@@ -451,3 +451,31 @@ def test_enerji_farkinda_sure_eve_doner():
     direncli = fly(make_config("resilient", None, 0.0, 2, **kw), until="flight").summary()
     assert korumasiz["depleted"] >= 1, "sabit %10 kuralı rüzgârı bilmez: bataryası biten İHA olmalı"
     assert direncli["depleted"] == 0 and direncli["rtb"] >= 1 and direncli["completion"] >= 0.9
+
+
+def test_konvoy_rotasi_ve_tehditler():
+    from suru import convoy as cvy
+    from suru.terrain import Terrain
+    cv = cvy.Convoy(cvy.CONVOY_ROUTE, cvy.CONVOY_THREATS, 4, Terrain(region="ova"))
+    assert abs(cv.path.length - 721.0) < 2.0 and cv.lead == 0.0
+    s = np.arange(0.0, cv.path.length, 5.0)
+    xy = np.array([cv.path.at(v)[0] for v in s])
+    h = cv.terrain.height(xy[:, 0], xy[:, 1])
+    assert np.abs(np.diff(h)).max() / 5.0 < 0.15, "konvoy yolu düz vadide kalmalı (dağa tırmanmamalı)"
+    mine = cv.threats[0]
+    assert mine.kind == "mayin" and abs(cv.s_of(mine.xy) - 225.0) < 1.0, "mayın rotanın üstünde"
+    s = cv.first_in_range(cv.threats[1].xy, cvy.AMBUSH_RANGE)
+    assert s is not None and 200.0 < s < 400.0, "pusu yolu menziline almalı"
+    assert cv.xy(3)[0][1] < cv.xy(0)[0][1], "konvoy arka arkaya dizilir"
+
+
+def test_konvoy_direncli_sure_yolu_acar():
+    korumasiz = fly(make_config("decentralized", 20.0, 0.0, 1, convoy=True)).summary()
+    assert korumasiz["convoy_lost"] >= 1, "yanlış taranan yolda konvoy mayına ya da pusuya girmeli"
+    w = fly(make_config("resilient", 20.0, 0.0, 1, convoy=True))
+    s = w.summary()
+    assert s["convoy_arrived"] == 1 and s["convoy_lost"] == 0, "dirençli sürü konvoyu kayıpsız geçirmeli"
+    assert s["threats_found"] == 4 and s["radar_destroyed"] == 1 and s["kamikaze"] == 1, "HSS bastırılmalı"
+    f = w.frame()
+    assert f["convoy"]["arrived"] == 1 and len(f["convoy"]["v"]) == 5 * 4 and f["sead"][0]["st"] == "bitti"
+    assert all("role" in d for d in f["drones"])

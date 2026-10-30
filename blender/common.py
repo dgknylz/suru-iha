@@ -12,6 +12,7 @@ from mathutils import Matrix, Vector
 
 def reset_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    _materials.clear()                 # aynı betikte birden çok model: eski sahnenin malzemeleri silindi
     bpy.context.scene.unit_settings.system = "METRIC"
     bpy.context.scene.unit_settings.scale_length = 1.0
 

@@ -31,7 +31,7 @@ Copy-Item (Join-Path $repo "unity\Packages\*") (Join-Path $Project "Packages") -
 
 Write-Host "Modeller (Blender) ve dokular üretiliyor..."
 New-Item -ItemType Directory -Force $Models | Out-Null
-foreach ($s in "drone", "jammer", "gcs", "radar") { & $Blender -b --factory-startup -P (Join-Path $repo "blender\$s.py") -- $Models | Out-Null }
+foreach ($s in "drone", "jammer", "gcs", "radar", "ika") { & $Blender -b --factory-startup -P (Join-Path $repo "blender\$s.py") -- $Models | Out-Null }
 & $Blender -b --factory-startup -P (Join-Path $repo "blender\nature.py") -- (Join-Path $Models "nature") | Out-Null
 & $Blender -b --factory-startup -P (Join-Path $repo "blender\village.py") -- (Join-Path $Models "village") | Out-Null
 & $Blender -b --factory-startup -P (Join-Path $repo "blender\divrigi.py") -- (Join-Path $Models "divrigi") | Out-Null

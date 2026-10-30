@@ -135,6 +135,8 @@ namespace SuruIHA
                 missileSt.Clear();
                 radarFound.Clear();
                 intelSaid = windSaid = false;
+                convoyMoved = convoyHeld = convoyTaskSaid = false;
+                seadSt.Clear();
                 Add(f, (first ? "Simülasyon bağlandı: " : "Yeni uçuş: ") +
                        $"{SwarmScenarios.StrategyTitle(f.strategy)}, {SwarmScenarios.PlannerTitle(f.planner, f.strategy)}.", Ui.Accent);
                 return;
@@ -144,7 +146,12 @@ namespace SuruIHA
             lastT = f.t;
             if (p.phase != f.phase)
             {
-                string s = PhaseText(f.phase, f.formation);
+                // Konvoyda sürü, tarama noktaları belirdikçe görev ile toplanma arasında gidip gelir: bir kez anlatılır
+                bool cvy = SwarmHud.Convoy(f) != null;
+                string s = cvy && f.phase == "toplanma" ? null
+                         : cvy && f.phase == "gorev" ? (convoyTaskSaid ? null : "Sürü konvoyun önüne geçti: İHA'lar yol parçalarını paylaşıp tarıyor.")
+                         : PhaseText(f.phase, f.formation);
+                if (cvy && f.phase == "gorev") convoyTaskSaid = true;
                 if (s != null) Add(f, s, Ui.Ink);
             }
 
@@ -194,6 +201,7 @@ namespace SuruIHA
                     {
                         if (f.missiles != null && f.missiles.Any(m => m.st == 1 && m.tgt == i)) shot.Add(i);
                         else if (b.bat <= 0.005f) empty.Add(i);
+                        else if (a.role == 3) { }            // radara dalan kamikaze: ConvoyEvents anlatır
                         else failed.Add(i);
                     }
                     else if (b.mode == 3) relay.Add(i);
@@ -226,6 +234,8 @@ namespace SuruIHA
             Collect("evade", evade, "{0}: kilit ikazı aldı, alçalıp radarın görmediği yere kaçıyor.", Ui.Warn);
             Flush(f, false);
             ThreatEvents(f, p);
+            bool convoy = SwarmHud.Convoy(f) != null;
+            if (convoy && SwarmHud.Convoy(p) != null) ConvoyEvents(f, p);
 
             if (f.tasks != null && p.tasks != null)
             {
@@ -235,19 +245,25 @@ namespace SuruIHA
                     int a = p.tasks[i].s, b = f.tasks[i].s;
                     if (a == b) continue;
                     if (a < 0 && b >= 0)
-                        Add(f, $"Yeni hedef belirdi (öncelik {f.tasks[i].v}). Sürü yeniden plan yapıyor.", Ui.Violet);
+                    {
+                        // Konvoyda tarama noktaları konvoy ilerledikçe sürekli belirir; işaretleme görevini pusu olayı anlatır
+                        if (f.tasks[i].ty == 0) Add(f, $"Yeni hedef belirdi (öncelik {f.tasks[i].v}). Sürü yeniden plan yapıyor.", Ui.Violet);
+                    }
                     else if (b == 2)
                     {
                         if (pendingDone == 0) pendingDoneSince = Time.unscaledTime;
                         pendingDone++;
                     }
                     else if (b == 3)
-                        Add(f, $"Hedef {i + 1} yanlışlıkla \"bitti\" sayıldı: İHA konumunu yanlış biliyor.", Ui.Bad);
+                        Add(f, f.tasks[i].ty == 1 ? "Bir yol parçası taranmadan \"temiz\" sayıldı: İHA konumunu yanlış biliyor. Konvoy taranmamış yola girecek!"
+                             : f.tasks[i].ty == 2 ? "Pusu işaretlenmeden \"işaretlendi\" sayıldı: İHA konumunu yanlış biliyor. Konvoy pusuya yürüyecek!"
+                             : $"Hedef {i + 1} yanlışlıkla \"bitti\" sayıldı: İHA konumunu yanlış biliyor.", Ui.Bad);
                 }
             }
             if (pendingDone > 0 && Time.unscaledTime - pendingDoneSince > 3f && f.m != null)
             {
-                Add(f, $"{pendingDone} hedef tamamlandı · toplam {f.m.done}/{f.m.total}", Ui.Good);
+                Add(f, convoy ? $"{pendingDone} yol parçası tarandı · toplam {f.m.done}/{f.m.total}"
+                              : $"{pendingDone} hedef tamamlandı · toplam {f.m.done}/{f.m.total}", Ui.Good);
                 pendingDone = 0;
             }
 
@@ -269,7 +285,9 @@ namespace SuruIHA
                     Add(f, $"Güven sistemi saldırganları dışlıyor: dürüst İHA'ların %{f.m.liars * 100:0}'ı onlara artık güvenmiyor.", Ui.Good);
                 }
             }
-            if (f.ctl != null && p.ctl != null && f.ctl.missionDone == 1 && p.ctl.missionDone == 0)
+            if (f.ctl != null && p.ctl != null && f.ctl.missionDone == 1 && p.ctl.missionDone == 0 && convoy)
+                MissionDoneAt = f.t;                       // konvoyun varışını ConvoyEvents anlatır
+            else if (f.ctl != null && p.ctl != null && f.ctl.missionDone == 1 && p.ctl.missionDone == 0)
             {
                 MissionDoneAt = f.t;
                 // Sürü kalan hedefleri yapamadığı ya da bilerek bıraktığı için de görev bitebilir (boşta kalma)
@@ -328,6 +346,75 @@ namespace SuruIHA
                         ? $"Kerteriz ölçümleri bilinen radarın yerini düzeltti (hata {err:0} m)."
                         : $"Sürü pusu radarının yerini kerterizlerin kesişiminden buldu (hata {err:0} m). Rotalar yeniden planlanıyor.", Ui.Good);
                 }
+        }
+
+        // Konvoy koruma olayları: yola çıkış, tehditlerin bulunması, pusunun ateşi ve imhası, araç kaybı, HSS bastırma
+        bool convoyMoved, convoyHeld, convoyTaskSaid;
+        readonly Dictionary<int, string> seadSt = new Dictionary<int, string>();
+
+        void ConvoyEvents(SwarmFrame f, SwarmFrame p)
+        {
+            var c = f.convoy;
+            var q = p.convoy;
+            if (!convoyMoved && c.speed > 0.5f)
+            {
+                convoyMoved = true;
+                Add(f, $"Konvoy yola çıktı: {c.v.Length / 5} İKA, yalnızca sürünün taradığı (yeşil) yolda ilerliyor.", Ui.Accent);
+            }
+            if (convoyMoved && !convoyHeld && c.speed < 0.1f && q.speed >= 0.1f && c.wait != null && c.wait.Contains("taranıyor"))
+            {
+                convoyHeld = true;
+                Add(f, "Konvoy taranmamış yolun önünde durdu: sürü yolun devamını tarıyor.", Ui.Ink);
+            }
+            int nt = Mathf.Min(c.threats?.Length ?? 0, q.threats?.Length ?? 0);
+            for (int k = 0; k < nt; k++)
+            {
+                var a = q.threats[k];
+                var b = c.threats[k];
+                bool pusu = b.k == "pusu";
+                if (b.f == 1 && a.f == 0)
+                {
+                    if (pusu && b.fire >= 0f) Add(f, "Pusu! Yol kenarındaki gizli mevzi konvoya ateş açtı ve ortaya çıktı.", Ui.Bad);
+                    else if (pusu) Add(f, "İHA kamerası yol kenarında kamufle edilmiş bir düşman mevzisi gördü (pusu). Konvoy menzilin dışında bekletiliyor.", Ui.Warn);
+                    else Add(f, "İHA kamerası yolun üstünde gömülü bir mayın gördü. İkaz bayrağı dikildi, konvoy yavaşlayıp dolanacak.", Ui.Warn);
+                }
+                if (pusu && b.m == 1 && a.m == 0 && b.d == 0)
+                    Add(f, "İHA pusuyu lazerle işaretledi: topçu ateşi geliyor.", Ui.Accent);
+                if (b.d == 1 && a.d == 0)
+                    Add(f, pusu ? "Pusu imha edildi. Yol açık." : "Bulunamayan mayın patladı!", pusu ? Ui.Good : Ui.Bad);
+                else if (pusu && b.d == 0 && b.f == 1 && a.f == 1 && b.fire >= 0f && (a.fire < 0f || b.fire + 1e-3f < a.fire))
+                    Add(f, "Pusu konvoya ateş ediyor!", Ui.Bad);
+            }
+            int nv = Mathf.Min(c.v.Length, q.v.Length) / 5;
+            for (int k = 0; k < nv; k++)
+                if (c.v[5 * k + 4] < 0.5f && q.v[5 * k + 4] > 0.5f)
+                {
+                    bool mine = false;
+                    for (int j = 0; j < nt; j++)
+                        if (c.threats[j].k == "mayin" && c.threats[j].d == 1 && q.threats[j].d == 0) mine = true;
+                    Add(f, $"İKA-{k + 1} kaybedildi ({(mine ? "mayına bastı" : "pusunun ateşiyle vuruldu")}).", Ui.Bad);
+                }
+            if (c.arrived == 1 && q.arrived == 0)
+            {
+                int n = c.v.Length / 5;
+                Add(f, c.lost == 0 ? $"Konvoy hedefe ulaştı: {n} İKA'nın hepsi sağlam." : $"Konvoy hedefe ulaştı: {n - c.lost}/{n} İKA sağlam, {c.lost} araç kaybedildi.",
+                    c.lost == 0 ? Ui.Good : Ui.Warn);
+            }
+            if (f.sead == null || f.strategy != "resilient") return;
+            foreach (var s in f.sead)
+            {
+                seadSt.TryGetValue(s.r, out var old);
+                if (s.st == old) continue;
+                seadSt[s.r] = s.st;
+                string str = s.@is != null ? string.Join(" ve ", System.Array.ConvertAll(s.@is, i => i >= 0 ? $"İHA-{i + 1}" : "?")) : "?";
+                if (s.st == "hazırlık")
+                    Add(f, $"HSS bastırma kararı: radarın şemsiyesi konvoyun yolunu kesiyor. Roller dağıtıldı: karıştırıcı İHA-{s.ij + 1}, " +
+                           $"yem İHA-{s.id + 1}, kamikaze {str}.", Ui.Pink);
+                else if (s.st == "saldırı")
+                    Add(f, $"Saldırı! İHA-{s.ij + 1} radarı karıştırıyor, yem İHA-{s.id + 1} radara koşuyor; kamikazeler 4 s sonra iki yönden dalacak.", Ui.Pink);
+                else if (s.st == "bitti" && f.radars != null && s.r < f.radars.Length && f.radars[s.r].dead == 1)
+                    Add(f, "HSS radarı kamikaze İHA'yla imha edildi. Sürü şemsiyenin altındaki yolu da tarıyor.", Ui.Good);
+            }
         }
     }
 }

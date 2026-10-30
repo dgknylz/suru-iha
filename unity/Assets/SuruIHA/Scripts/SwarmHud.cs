@@ -70,6 +70,17 @@ namespace SuruIHA
         {
             rows.Clear();
             var m = f.m;
+            var cv = Convoy(f);
+            if (cv != null)
+            {
+                int found = 0, killed = 0, nt = cv.threats?.Length ?? 0;
+                if (cv.threats != null)
+                    foreach (var t in cv.threats) { found += t.f; if (t.k == "pusu" && t.d == 1) killed++; }
+                rows.Add(("Konvoy", cv.wait ?? "-", cv.arrived == 1 ? Ui.Good : cv.lost > 0 ? Ui.Bad : cv.speed > 0.5f ? Ui.Ink : Ui.Warn));
+                rows.Add(("Gizli tehdit", $"{found}/{nt} bulundu" + (killed > 0 ? $" · {killed} pusu imha" : ""), found < nt ? Ui.Warn : Ui.Good));
+                if (f.radars != null && System.Array.Exists(f.radars, r => r.dead == 1))
+                    rows.Add(("HSS radarı", "imha edildi (kamikaze İHA)", Ui.Good));
+            }
             rows.Add(("GPS'siz uçan İHA", $"{m.gpsLost}", m.gpsLost > 0 ? Ui.Warn : Ui.Ink));
             rows.Add(("Yanlış \"bitti\"", $"{m.falseDone}", m.falseDone > 0 ? Ui.Bad : Ui.Ink));
             rows.Add(("Paket iletimi", $"%{m.pdr * 100:0}", Ui.Ink));
@@ -127,6 +138,9 @@ namespace SuruIHA
             rows.Add(("Grafik [K]", $"{(ql < qn.Length ? qn[ql] : QualitySettings.names[ql])} · {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} FPS", Ui.Ink));
         }
 
+        public static ConvoyState Convoy(SwarmFrame f) =>
+            f?.convoy != null && f.convoy.v != null && f.convoy.v.Length >= 5 ? f.convoy : null;
+
         // Rüzgârın estiği yön (meteoroloji): "lodostan (güneybatı)" gibi
         public static string WindFrom(float[] w)
         {
@@ -183,13 +197,26 @@ namespace SuruIHA
 
             var m = f.m;
             float tw = (iw - 16f) / 3f;
-            Ui.Stat(Ui.R(x + pad, y, tw, 78), $"{m.done}/{m.total}", "hedef tamam", m.done == m.total && m.total > 0 ? Ui.Good : Ui.Ink, 24);
-            Ui.Stat(Ui.R(x + pad + tw + 8, y, tw, 78), $"{m.score * 100:0}", "görev puanı", Ui.Accent, 24);
+            var cv = Convoy(f);
+            float prog = m.total > 0 ? m.done / (float)m.total : 0f;
+            if (cv != null)
+            {
+                // Konvoy görevinde ölçüt hedef sayısı değil: konvoyun aldığı yol ve sağlam kalan araç
+                int n = cv.v.Length / 5;
+                prog = cv.len > 0 ? Mathf.Clamp01(cv.lead / cv.len) : 0f;
+                Ui.Stat(Ui.R(x + pad, y, tw, 78), $"%{prog * 100:0}", "konvoy yolu", cv.arrived == 1 ? Ui.Good : Ui.Ink, 24);
+                Ui.Stat(Ui.R(x + pad + tw + 8, y, tw, 78), $"{n - cv.lost}/{n}", "İKA sağlam", cv.lost > 0 ? Ui.Bad : Ui.Good, 24);
+            }
+            else
+            {
+                Ui.Stat(Ui.R(x + pad, y, tw, 78), $"{m.done}/{m.total}", "hedef tamam", m.done == m.total && m.total > 0 ? Ui.Good : Ui.Ink, 24);
+                Ui.Stat(Ui.R(x + pad + tw + 8, y, tw, 78), $"{m.score * 100:0}", "görev puanı", Ui.Accent, 24);
+            }
             Ui.Stat(Ui.R(x + pad + 2 * (tw + 8), y, tw, 78), $"{f.t:0} s", "süre", Ui.Ink, 24);
             y += 78f;
             var bar = Ui.R(x + pad, y + 8, iw, 5);
             Ui.Fill(bar, new Color(1f, 1f, 1f, 0.1f), 2.5f);
-            Ui.Fill(Ui.R(x + pad, y + 8, iw * (m.total > 0 ? m.done / (float)m.total : 0f), 5), Ui.Good, 2.5f);
+            Ui.Fill(Ui.R(x + pad, y + 8, iw * prog, 5), Ui.Good, 2.5f);
             y += 26f;
 
             foreach (var (k, v, c) in rows)

@@ -31,6 +31,12 @@ namespace SuruIHA
             ("HAVA SAVUNMA", new Color(1f, 0.78f, 0.2f), "radarın görüşü ve tarama huzmesi"),
             ("HAVA SAVUNMA", new Color(1f, 0.08f, 0.3f), "kilit çizgisi: radar bu İHA'yı izliyor"),
             ("HAVA SAVUNMA", new Color(1f, 0.35f, 0.75f), "sürünün radar tahmini (çarpı nişangâh)"),
+            ("KONVOY", new Color(0.25f, 1f, 0.5f), "taranmış yol: konvoy yalnız burada ilerler"),
+            ("KONVOY", new Color(1f, 0.18f, 0.1f), "bulunan mayın / pusu (mor: henüz gizli)"),
+            ("KONVOY", new Color(1f, 0.32f, 0.12f), "pusuyu lazerle işaretleme (topçu vurur)"),
+            ("KONVOY", new Color(0.72f, 0.3f, 1f), "HSS bastırma: karıştırıcının huzmesi"),
+            ("KONVOY", new Color(1f, 0.62f, 0.12f), "HSS bastırma: radara koşan yem İHA"),
+            ("KONVOY", new Color(1f, 0.12f, 0.08f), "HSS bastırma: dalan kamikaze İHA"),
             ("ÇİZGİLER", new Color(0.15f, 1f, 0.55f), "haberleşme bağlantısı sağlam"),
             ("ÇİZGİLER", new Color(1f, 0.12f, 0.08f), "bağlantı karıştırılmış"),
             ("ÇİZGİLER", new Color(0.55f, 0.75f, 1f), "renkli çizgi: İHA'nın planladığı rota"),
@@ -168,7 +174,7 @@ namespace SuruIHA
 
             // 3. sütun: EH direnci — tehdit → savunma
             x = x0 + 2 * (colW + gap);
-            y = Card(x, y0, colW, ch, "3 · ELEKTRONİK HARP DİRENCİ", "Beş tehdit, birbirini tamamlayan 13 savunma", Ui.Bad);
+            y = Card(x, y0, colW, ch, "3 · ELEKTRONİK HARP DİRENCİ", "Altı tehdit, birbirini tamamlayan 14 savunma", Ui.Bad);
             (string threat, Color c, string defense)[] map =
             {
                 ("Karıştırma", Ui.Bad, "Ortak karıştırma haritası · hedefi görmeden \"bitti\" dememe (spiral arama) · ölçümlerden karıştırıcıyı bulma · " +
@@ -177,6 +183,7 @@ namespace SuruIHA
                 ("Saldırgan İHA", Ui.Violet, "Beta itibar sistemi (menzil, hız, ilerleme kanıtı) · iki bağımsız tanık kuralı · \"tamamlandı\" bilgisi kaynağıyla yayılır"),
                 ("Hava savunma", Ui.Pink, "Radar ikaz alıcısı + kerteriz kestirimi · radarın görmediği rota · kilit ikazında kaçış · şemsiye altındaki hedefi bırakma"),
                 ("Rüzgâr ve batarya", Ui.Warn, "Rüzgâra karşı eve dönüş enerjisi hesaplanır; gücü yetmeyen hedef alınmaz, İHA zamanında döner"),
+                ("Konvoy: mayın, pusu, HSS", Ui.Accent, "Yol yalnız gerçekten taranınca \"temiz\" · pusuyu lazerle işaretleme · HSS bastırma: karıştırıcı + yem + iki kamikaze, roller lidersiz"),
             };
             py = y + 4f;
             foreach (var (threat, c, defense) in map)
@@ -241,6 +248,7 @@ namespace SuruIHA
                 ("Elektronik harp", "Kısıtlı en küçük kareler + k-ortalamalar (karıştırıcı bulma) · IMU tutarlılık testi · Beta itibar sistemi"),
                 ("Hava savunma", "Radar denklemi ve Swerling-1 tespit olasılığı · kerteriz kestirimi (en çok olabilirlik) · Dijkstra ile en az görülen rota"),
                 ("Enerji", "Döner kanatlı İHA güç modeli (Zeng vd. 2019) · rüzgâra karşı dönüş enerjisi · Ornstein-Uhlenbeck esintisi"),
+                ("Konvoy koruma", "Rol dağıtımı (herkes aynı bilgiyle aynı seçimi yapar) · radar en güçlü yankıya ateş eder: yem · iki yönden eşzamanlı dalış"),
                 ("Yapay zekâ", "8-8-1 yapay sinir ağı · geri yayılım · Adam · erken durdurma (denetimli öğrenme)"),
                 ("İstatistik", "Eşleştirilmiş deney (aynı 30 harita) · Wilcoxon işaretli sıralar · Kruskal-Wallis · ablasyon"),
             };
@@ -314,10 +322,13 @@ namespace SuruIHA
                 Ui.Label(Ui.R(x1 + 172, y + 2, colW - 172, 24), what, 15.5f, Ui.Ink2);
                 y += 32f;
             }
+            // Renklerin son grubu (çizgiler) kısayolların altına: üçüncü sütun ekrana sığsın
+            int lines = System.Array.FindIndex(Legend, e => e.group == "ÇİZGİLER");
+            DrawLegend(x1, y + 14f, colW, 15.5f, lines, Legend.Length, false);
 
             float x2 = x1 + colW + gap;
             Ui.Label(Ui.R(x2, top, colW, 24), "RENKLERİN ANLAMI", 13, Ui.Accent, true);
-            DrawLegend(x2, top + 30, colW, 15.5f);
+            DrawLegend(x2, top + 30, colW, 15.5f, 0, lines);
         }
 
         // ---------------------------------------------------------------- Esc menüsü

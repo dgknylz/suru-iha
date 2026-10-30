@@ -7,7 +7,7 @@ namespace SuruIHA
     public partial class SwarmMenu
     {
         static readonly string[] Findings = { "Elektronik harp", "Karar alma (CBBA)", "Yapay zekâ", "Savunmaların katkısı", "Ölçekleme",
-                                              "Hava savunma · enerji" };
+                                              "Hava savunma · enerji", "Konvoy koruma" };
         int finding;
 
         static readonly Color CMerkezi = new Color(1f, 0.6f, 0.35f);
@@ -78,7 +78,8 @@ namespace SuruIHA
                 case 2: ChartYz(cx, cy, cwi, chi); SideYz(sx, sy, swi); break;
                 case 3: ChartAblasyon(cx, cy, cwi, chi); SideAblasyon(sx, sy, swi); break;
                 case 4: ChartOlcek(cx, cy, cwi, chi); SideOlcek(sx, sy, swi); break;
-                default: ChartTehdit(cx, cy, cwi, chi); SideTehdit(sx, sy, swi); break;
+                case 5: ChartTehdit(cx, cy, cwi, chi); SideTehdit(sx, sy, swi); break;
+                default: ChartKonvoy(cx, cy, cwi, chi); SideKonvoy(sx, sy, swi); break;
             }
         }
 
@@ -134,6 +135,69 @@ namespace SuruIHA
                 "enerjisini hesaplayıp zamanında döndü, hiç İHA kaybetmeden hedeflerin hepsini yaptı.");
             SideText(x, y, w, "NASIL ÖLÇÜLDÜ?",
                 "Üç mimari aynı 30 haritada uçtu (results/tehdit.csv). Kayıplardaki fark Wilcoxon testiyle anlamlı (p < 0,0001).");
+        }
+
+        // ------------------------------------------------------------ 7. konvoy koruma (results/konvoy.csv, n=30)
+        // (mimari, mayından ve pusudan kaybedilen araç, hedefe varış %, kaybedilen İHA, radarın imhası %)
+        static readonly (string name, float mine, float amb, float arr, float dl, float rad, Color col)[] KvRows =
+        {
+            ("Merkezi", 0.23f, 1.60f, 63.30f, 3.90f, 0.00f, CMerkezi),
+            ("Merkeziyetsiz", 0.13f, 1.90f, 60.00f, 4.17f, 0.00f, CMerkeziyetsiz),
+            ("EH dirençli", 0.00f, 0.00f, 100.00f, 2.20f, 100.00f, CDirencli),
+        };
+
+        void ChartKonvoy(float x, float y, float w, float h)
+        {
+            float yEnd = y + h;
+            y = ChartTitle(x, y, w, "Dirençli sürünün koruduğu konvoy hiç araç kaybetmedi",
+                           "4 İKA, 2 gizli mayın, 2 pusu, HSS radarı, 20 dBm karıştırıcı · 30 uçuşun ortalaması");
+            float lx = x + 230f;
+            lx += LegendItem(lx, y, "mayından", new Color(0.62f, 0.62f, 0.6f));
+            LegendItem(lx, y, "pusudan (mimarinin renginde)", Ui.Ink2, true);
+            y += 46f;
+            float labelW = 200f, colW2 = 130f, px = x + labelW, pw = w - labelW - colW2 - 120f;
+            float rowH = Mathf.Clamp((yEnd - y - 2 * 34f - 30f - 50f) / 6f, 50f, 78f);
+            float top = y, bottom = y + 2 * 34f + 6 * rowH + 24f;
+            Grid(px, pw, top, bottom, 0, 4, new float[] { 0, 1, 2, 3, 4 }, "{0}");
+            float ry = top;
+            Ui.Label(Ui.R(x, ry + 6, w, 22), "KONVOY · kaybedilen İKA (4 araçtan)", 12.5f, Ui.Ink3, true);
+            Ui.Label(Ui.R(px + pw + 120f, ry + 6, colW2, 22), "hedefe varış", 13, Ui.Ink3, true, TextAnchor.UpperRight);
+            ry += 34f;
+            foreach (var r in KvRows)
+            {
+                float my = ry + rowH / 2f, bm = Map(r.mine, 0, 4, px, pw), ba = Map(r.mine + r.amb, 0, 4, px, pw);
+                Ui.Label(Ui.R(x, ry, labelW - 20, rowH), r.name, 16.5f, Ui.Ink, false, TextAnchor.MiddleRight);
+                Ui.Fill(Ui.R(px, my - 11f, Mathf.Max(bm - px, 0f), 22f), new Color(0.62f, 0.62f, 0.6f, 0.85f), 4f);
+                Ui.Fill(Ui.R(bm, my - 11f, Mathf.Max(ba - bm, 3f), 22f), new Color(r.col.r, r.col.g, r.col.b, 0.85f), 4f);
+                Ui.Label(Ui.R(ba + 12, ry, 260, rowH), $"{F1(r.mine + r.amb)} araç", 16, Ui.Ink, true, TextAnchor.MiddleLeft);
+                Ui.Label(Ui.R(px + pw + 120f, ry, colW2, rowH), $"%{F1(r.arr)}", 16, r.arr < 99f ? Ui.Warn : Ui.Ink2, true, TextAnchor.MiddleRight);
+                ry += rowH;
+            }
+            ry += 24f;
+            Ui.Label(Ui.R(x, ry + 6, w, 22), "SÜRÜ · kaybedilen İHA (10 İHA'dan, radara dalan kamikaze dahil)", 12.5f, Ui.Ink3, true);
+            Ui.Label(Ui.R(px + pw + 120f, ry + 6, colW2, 22), "radar imha", 13, Ui.Ink3, true, TextAnchor.UpperRight);
+            ry += 34f;
+            foreach (var r in KvRows)
+            {
+                float my = ry + rowH / 2f, bx = Map(r.dl, 0, 4, px, pw);
+                Ui.Label(Ui.R(x, ry, labelW - 20, rowH), r.name, 16.5f, Ui.Ink, false, TextAnchor.MiddleRight);
+                Ui.Fill(Ui.R(px, my - 11f, Mathf.Max(bx - px, 3f), 22f), new Color(r.col.r, r.col.g, r.col.b, 0.85f), 4f);
+                Ui.Label(Ui.R(bx + 12, ry, 220, rowH), $"{F1(r.dl)} İHA", 16, Ui.Ink, true, TextAnchor.MiddleLeft);
+                Ui.Label(Ui.R(px + pw + 120f, ry, colW2, rowH), $"%{F1(r.rad)}", 16, r.rad > 50f ? Ui.Good : Ui.Ink2, true, TextAnchor.MiddleRight);
+                ry += rowH;
+            }
+        }
+
+        void SideKonvoy(float x, float y, float w)
+        {
+            y = SideText(x, y, w, "NEDEN KAYBEDİYORLAR?",
+                "Karıştırma bölgesinde korumasız İHA konumunu yanlış bilir ama tarama noktasına vardığını sanıp yolu \"temiz\" bildirir. " +
+                "Konvoy bu bilgiye güvenip gizli mayına basar ya da pusunun menziline girer. Yanlış bilgi yalnızca İHA'yı değil, ona güvenen aracı da öldürür.");
+            y = SideText(x, y, w, "DİRENÇLİ SÜRÜ",
+                "Hedefi görmeden \"bitti\" demez, konvoy taranmamış yolda bekler. Yolun son kısmını koruyan radarı kerterizle bulur ve " +
+                "rollere bölünmüş bir saldırıyla susturur: karıştırıcı radarı körleştirir, yem füzeleri üstüne çeker, iki kamikaze iki yönden dalar.");
+            SideText(x, y, w, "NASIL ÖLÇÜLDÜ?",
+                "Üç mimari aynı 30 haritada uçtu (results/konvoy.csv). Araç kaybındaki fark Wilcoxon testiyle anlamlı (p < 0,0001).");
         }
 
         static float ChartTitle(float x, float y, float w, string title, string sub)

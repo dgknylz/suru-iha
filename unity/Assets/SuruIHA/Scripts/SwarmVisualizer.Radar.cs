@@ -27,7 +27,8 @@ namespace SuruIHA
             public readonly List<LineRenderer> Locks = new List<LineRenderer>();
             public Light Beacon;
             public float Az, Rate = 180f, FrameT, R = 400f;
-            public bool On;
+            public bool On, Dead;
+            public Renderer[] Rends;   // modelin parçaları (imha edilince kararır)
             public int[] Trk;
         }
 
@@ -59,12 +60,16 @@ namespace SuruIHA
             for (int i = 0; i < radarViews.Count; i++)
             {
                 var v = radarViews[i];
-                bool show = i < R.Length && (R[i].on == 1 || R[i].known == 1);   // pusu radarı açılana kadar görünmez
+                bool show = i < R.Length && (R[i].on == 1 || R[i].known == 1 || R[i].dead == 1);   // pusu radarı açılana kadar görünmez
                 v.Root.gameObject.SetActive(show);
                 if (!show) continue;
                 var s = R[i];
                 var p = SwarmFrame.Enu(s.p);
                 v.Root.localPosition = new Vector3(p.x, LocalGround(p.x, p.z), p.z);
+                bool dead = s.dead == 1;
+                if (dead && !v.Dead) RadarDestroyed(v);                 // SwarmVisualizer.Convoy.cs
+                else if (!dead && v.Dead) Char(v.Rends, false);
+                v.Dead = dead;
                 float dt = Time.time - v.FrameT;
                 if (v.On && s.on == 1 && dt > 1e-3f)
                     v.Rate = Mathf.Clamp(Mathf.Repeat(s.az - v.Az, 360f) / dt, 30f, 2000f);   // simülasyon hızlanınca anten de hızlanır
@@ -100,6 +105,7 @@ namespace SuruIHA
                 Prim(PrimitiveType.Cube, a, new Vector3(0, 1f, 0.2f), new Vector3(3.6f, 1.8f, 0.25f), Mats.Metal, Quaternion.Euler(-14f, 0, 0));
                 v.Antenna = a;
             }
+            v.Rends = v.Root.GetComponentsInChildren<Renderer>();
             v.Beacon = new GameObject("RadarIsigi").AddComponent<Light>();
             v.Beacon.transform.SetParent(v.Root, false);
             v.Beacon.transform.localPosition = beaconPos;

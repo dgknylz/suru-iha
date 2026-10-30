@@ -403,13 +403,14 @@ namespace SuruIHA
 
         void DrawLegendPanel(float tbTop)
         {
-            float w = 760f, colW = 340f, h = 520f;
+            float w = 760f, colW = 340f, h = 630f;
             float x = Ui.W - w - 20f, y = tbTop - 16f - h;
             Ui.Panel(Ui.R(x, y, w, h), 14, 0.92f);
             Ui.Label(Ui.R(x + 22, y + 14, 300, 20), "RENKLERİN ANLAMI", 11.5f, Ui.Accent, true);
             if (Ui.Button(Ui.R(x + w - 48, y + 10, 32, 32), "×", Ui.Kind.Ghost, size: 18)) legendOpen = false;
-            DrawLegend(x + 22, y + 44, colW, 14.5f, 0, 15, false);
-            DrawLegend(x + 22 + colW + 30, y + 44, colW, 14.5f, 15, Legend.Length, true);
+            int eh = System.Array.FindIndex(Legend, e => e.group == "ELEKTRONİK HARP");   // İHA ışığı + hedef halkası solda
+            DrawLegend(x + 22, y + 44, colW, 14.5f, 0, eh, false);
+            DrawLegend(x + 22 + colW + 30, y + 44, colW, 14.5f, eh, Legend.Length, true);
         }
 
         // ------------------------------------------------------------ görev sonu
@@ -428,13 +429,47 @@ namespace SuruIHA
             Ui.Panel(Ui.R(x, y, w, h), 18, 0.97f);
             float px = x + 30f, pw = w - 60f;
             bool all = f.m.done == f.m.total;
+            var cv = SwarmHud.Convoy(f);
             Ui.Chip(px, y + 24, "UÇUŞ BİTTİ", Ui.Good, 11.5f);
-            string title = cmpOn ? "Aynı saldırı, iki sürü: sonuç" : all ? "Görev tamamlandı" : "Sürü indi, bazı hedefler yapılamadı";
+            string title = cmpOn ? "Aynı saldırı, iki sürü: sonuç"
+                         : cv != null ? (cv.arrived == 1 ? (cv.lost == 0 ? "Konvoy kayıpsız hedefe ulaştı" : "Konvoy hedefe ulaştı, araç kaybı var")
+                                                         : "Konvoy hedefe ulaşamadı")
+                         : all ? "Görev tamamlandı" : "Sürü indi, bazı hedefler yapılamadı";
             Ui.Label(Ui.R(px, y + 52, pw, 36), title, 27, Ui.Ink, true);
             Ui.Label(Ui.R(px, y + 90, pw, 24), (RunTitle ?? "Canlı simülasyon") + " · harita #" + f.ctl.seed, 15, Ui.Ink3);
             float sy = y + 126f;
 
-            if (!cmpOn)
+            if (!cmpOn && cv != null)
+            {
+                // Konvoy görevi: ölçüt araçlar, tehditler ve sürünün kaybı
+                float sw = (pw - 3 * 12f) / 4f;
+                int n = cv.v.Length / 5, found = 0, nt = cv.threats?.Length ?? 0;
+                if (cv.threats != null) foreach (var t in cv.threats) found += t.f;
+                int kam = f.radars != null ? System.Array.FindAll(f.radars, r => r.dead == 1).Length : 0;
+                Ui.Stat(Ui.R(px, sy, sw, 112), $"{n - cv.lost}/{n}", cv.arrived == 1 ? "İKA sağlam, konvoy hedefte" : "İKA sağlam, konvoy hedefe varamadı",
+                        cv.lost == 0 && cv.arrived == 1 ? Ui.Good : Ui.Bad);
+                Ui.Stat(Ui.R(px + (sw + 12), sy, sw, 112), $"{found}/{nt}", "gizli tehdit bulundu (mayın, pusu)", found == nt ? Ui.Good : Ui.Warn);
+                Ui.Stat(Ui.R(px + 2 * (sw + 12), sy, sw, 112), $"{f.m.falseDone}", "yol parçası taranmadan \"temiz\" sayıldı",
+                        f.m.falseDone == 0 ? Ui.Good : Ui.Bad);
+                Ui.Stat(Ui.R(px + 3 * (sw + 12), sy, sw, 112), $"{f.m.shot + kam}", kam > 0 ? $"kaybedilen İHA (füze {f.m.shot}, radara dalan kamikaze {kam})"
+                        : $"kaybedilen İHA (füze {f.m.shot})", f.m.shot == 0 ? Ui.Good : Ui.Bad);
+                sy += 128f;
+                Ui.Label(Ui.R(px, sy, pw, 24), kam > 0 ? "HSS radarı imha edildi: sürü şemsiyenin altındaki yolu da taradı." : "HSS radarı ayakta kaldı.",
+                         15.5f, Ui.Ink2);
+                sy += 34f;
+                if (running != null && !running.Custom)
+                {
+                    var rb = Ui.R(px, sy, pw, 74);
+                    Ui.Fill(rb, new Color(1f, 1f, 1f, 0.05f), 12);
+                    Ui.Label(Ui.R(px + 16, sy + 10, pw - 32, 22), "Aynı senaryoda 30 deney uçuşunun ortalaması (konvoyun hedefe varması):", 14, Ui.Ink3);
+                    string R(int s, float v, string name) => s == runStrategy ? $"<b><color=#ffffff>{name} %{Pct(v)}</color></b>" : $"{name} %{Pct(v)}";
+                    Ui.Label(Ui.R(px + 16, sy + 36, pw - 32, 28),
+                             R(2, running.RefResilient, "EH dirençli") + "   ·   " + R(1, running.RefDecentral, "merkeziyetsiz") + "   ·   " +
+                             R(0, running.RefCentral, "merkezi") + (running.RefText != null ? "   ·   " + running.RefText.Replace("Deneyde ", "") : ""),
+                             17, Ui.Ink2);
+                }
+            }
+            else if (!cmpOn)
             {
                 float sw = (pw - 3 * 12f) / 4f;
                 float doneAt = SwarmEvents.Instance != null && SwarmEvents.Instance.MissionDoneAt > 0f ? SwarmEvents.Instance.MissionDoneAt : f.t;
@@ -519,6 +554,16 @@ namespace SuruIHA
         {
             Ui.Label(Ui.R(x, y, w, 26), title, 17, c, true);
             float sw = (w - 24f) / 3f;
+            var cv = SwarmHud.Convoy(f);
+            if (cv != null)
+            {
+                int n = cv.v.Length / 5, kam = f.radars != null ? System.Array.FindAll(f.radars, r => r.dead == 1).Length : 0;
+                Ui.Stat(Ui.R(x, y + 32, sw, 112), $"{n - cv.lost}/{n}", cv.arrived == 1 ? "İKA sağlam, hedefte" : "İKA sağlam, varamadı",
+                        cv.lost == 0 && cv.arrived == 1 ? Ui.Good : Ui.Bad);
+                Ui.Stat(Ui.R(x + sw + 12, y + 32, sw, 112), $"{f.m.shot + kam}", "kaybedilen İHA", c);
+                Ui.Stat(Ui.R(x + 2 * (sw + 12), y + 32, sw, 112), $"{f.m.falseDone}", "taranmadan \"temiz\"", f.m.falseDone == 0 ? Ui.Good : Ui.Bad);
+                return;
+            }
             Ui.Stat(Ui.R(x, y + 32, sw, 112), $"%{100f * f.m.done / Mathf.Max(1, f.m.total):0}", $"tamamlanan hedef ({f.m.done}/{f.m.total})", c);
             Ui.Stat(Ui.R(x + sw + 12, y + 32, sw, 112), $"{f.m.score * 100f:0}", "görev puanı", c);
             Ui.Stat(Ui.R(x + 2 * (sw + 12), y + 32, sw, 112), $"{f.m.falseDone}", "yanlış \"bitti\"", f.m.falseDone == 0 ? Ui.Good : Ui.Bad);
@@ -576,7 +621,7 @@ namespace SuruIHA
             }
             OpenMenu(Tab.Bulgular);
             string[] findShots = { "04_bulgu_eh", "05_bulgu_karar", "06_bulgu_yapay_zeka", "07_bulgu_ablasyon", "08_bulgu_olcekleme",
-                                   "08b_bulgu_tehditler" };
+                                   "08b_bulgu_tehditler", "08c_bulgu_konvoy" };
             for (int k = 0; k < findShots.Length; k++)
             {
                 finding = k;
@@ -904,6 +949,83 @@ namespace SuruIHA
             var bl = SwarmVisualizer.Main.Frame;
             var br = SwarmCompare.Instance != null && SwarmCompare.Instance.B != null ? SwarmCompare.Instance.B.Frame : null;
             log.AppendLine($"lodos ve batarya: solda bataryası biten {bl?.m?.depleted} · eve dönen {bl?.m?.rtb}; sağda biten {br?.m?.depleted} · eve dönen {br?.m?.rtb}");
+
+            // Konvoy koruma (dirençli): yola çıkış, pusu, HSS bastırma, radarın imhası, varış; sonra yan yana
+            scenario = Array.FindIndex(SwarmScenarios.All, s => s.Id == "konvoy");
+            strategy = 2;
+            compare = false;
+            useCustom = false;
+            Launch();
+            yield return Until(() => !CompareOn && SwarmHud.Convoy(SwarmVisualizer.Main.Frame) != null && SwarmVisualizer.Main.Frame.t > 45f, 60f);
+            bannerOpen = false;
+            var ika = GameObject.Find("IKA_1");
+            if (ika != null) cam.LookAt(ika.transform.position + Vector3.up * 2f, 150f, 200f, 24f);   // konvoy, yol ve sürü birlikte
+            yield return Wait(3f);
+            yield return Shot("50_konvoy_sinematik");
+            if (ika != null)
+            {
+                cam.LookAt(ika.transform.position + Vector3.up * 2f, 34f, 215f, 16f);
+                yield return Wait(3f);
+                yield return Shot("51_konvoy_yakin");
+            }
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1400f;
+            yield return Wait(3f);
+            yield return Shot("52_konvoy_tepeden");
+            cam.topHeight = th2;
+            yield return Until(() => SwarmVisualizer.Main.Frame?.sead?.Any(s => s.st == "saldırı") == true ||
+                                     SwarmVisualizer.Main.Frame?.radars?.Any(r => r.dead == 1) == true, 150f);
+            var rd = GameObject.Find("Radar_0");
+            var lead = GameObject.Find("IKA_1");
+            if (rd != null && lead != null)
+            {
+                // Radar ile konvoyun arası: roller, huzme ve dalış çizgileri aynı karede
+                var mid = Vector3.Lerp(rd.transform.position, lead.transform.position, 0.4f);
+                cam.LookAt(mid, 620f, 160f, 58f);
+            }
+            yield return Wait(1.5f);
+            yield return Shot("53_hss_bastirma");
+            yield return Until(() => SwarmVisualizer.Main.Frame?.radars?.Any(r => r.dead == 1) == true, 40f);
+            if (rd != null)
+            {
+                cam.LookAt(rd.transform.position + Vector3.up * 3f, 60f, 160f, 14f);
+                yield return Wait(2.5f);
+                yield return Shot("54_radar_imha");
+            }
+            yield return Until(() => SwarmVisualizer.Main.Frame?.convoy?.threats?.Length > 3 &&
+                                     SwarmVisualizer.Main.Frame.convoy.threats.Any(t => t.k == "pusu" && t.m == 1), 120f);
+            var pu = GameObject.Find("Tehdit_3_pusu") ?? GameObject.Find("Tehdit_1_pusu");
+            if (pu != null)
+            {
+                cam.LookAt(pu.transform.position + Vector3.up * 2f, 70f, 120f, 22f);
+                yield return Wait(2.5f);
+                yield return Shot("55_pusu_isaretleme");
+            }
+            yield return Until(() => SwarmVisualizer.Main.Frame?.convoy?.arrived == 1 || SwarmVisualizer.Main.Frame?.ctl?.finished == 1, 200f);
+            var ika2 = GameObject.Find("IKA_1");
+            if (ika2 != null) cam.LookAt(ika2.transform.position + Vector3.up * 2f, 60f, 30f, 25f);
+            yield return Wait(2f);
+            yield return Shot("56_konvoy_vardi");
+            var kvf = SwarmVisualizer.Main.Frame;
+            log.AppendLine($"konvoy (dirençli): vardı {kvf?.convoy?.arrived} · kaybedilen araç {kvf?.convoy?.lost} · " +
+                           $"bulunan tehdit {kvf?.convoy?.threats?.Count(t => t.f == 1)}/{kvf?.convoy?.threats?.Length} · " +
+                           $"radar imha {kvf?.radars?.Count(r => r.dead == 1)} · t={kvf?.t:0}");
+            log.AppendLine("olay akışı (konvoy):");
+            foreach (var e in SwarmEvents.Instance.Items) log.AppendLine($"  t={e.sim:0} {e.text}");
+
+            strategy = 1;                          // yan yana: korumasız sürü karıştırmada yolu taramadan "temiz" der
+            compare = true;
+            Launch();
+            yield return Until(() => SimConnected && CompareOn && SwarmVisualizer.Main.Frame?.t > 150f, 90f);
+            bannerOpen = false;
+            cam.mode = SwarmCamera.Mode.Top;
+            cam.topHeight = 1400f;
+            yield return Wait(3f);
+            yield return Shot("57_konvoy_yan_yana");
+            cam.topHeight = th2;
+            var kl = SwarmVisualizer.Main.Frame;
+            var kr = SwarmCompare.Instance != null && SwarmCompare.Instance.B != null ? SwarmCompare.Instance.B.Frame : null;
+            log.AppendLine($"konvoy yan yana (t={kl?.t:0}): solda kaybedilen araç {kl?.convoy?.lost}, sağda {kr?.convoy?.lost}");
             compare = false;
             strategy = 2;
             scenario = 1;

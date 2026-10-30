@@ -103,6 +103,18 @@ namespace SuruIHA
                 Args = "--jammer off --wind 8 --battery karisik", RefCentral = 100f, RefDecentral = 100f, RefResilient = 100f,
                 RefText = "Deneyde bataryası biten: dirençli 0 · diğerleri 0,9-1,3",
             },
+            new Scenario
+            {
+                Id = "konvoy", Tag = "KONVOY", TagColor = Ui.Accent, Title = "Konvoy koruma (İKA)",
+                Short = "Sürü 4 İKA'lık konvoyun yolunu tarar. Yolda gizli mayın ve pusu, yanında HSS radarı var.",
+                Watch = "Konvoy yalnızca taranmış (yeşil) yolda ilerler. Küçük halkalar yol tarama noktalarıdır: İHA oraya gerçekten " +
+                        "varırsa kamerası mayını ve pusuyu görür. Sürünün bilmediği tehdit mor, bulunan kırmızı halkadır; pusuyu bir " +
+                        "İHA lazerle işaretler, topçu vurur. Radarın şemsiyesi yolu kesince dirençli sürü HSS bastırma yapar: mor " +
+                        "huzme karıştırıcı İHA, turuncu çizgi radara koşan yem, kırmızı çizgiler iki yönden dalan kamikazeler. " +
+                        "Korumasız sürü karıştırmada yolu taramadan \"temiz\" der: konvoy gizli tehdide girer.",
+                Args = "--convoy", RefCentral = 63.3f, RefDecentral = 60f, RefResilient = 100f,
+                RefText = "Deneyde araç kaybı: dirençli 0 · diğerleri 1,8-2,0",
+            },
         };
 
         public static readonly string[] Strategies = { "centralized", "decentralized", "resilient" };

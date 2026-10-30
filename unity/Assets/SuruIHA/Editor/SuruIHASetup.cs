@@ -144,6 +144,8 @@ namespace SuruIHA.EditorTools
             ["MAT_Beacon_Blue"] = new MatDef(0.1f, 0.4f, 1f, 0.3f, 0, 6f),
             ["MAT_Stripe"] = new MatDef(0.75f, 0.6f, 0.12f, 0.6f),
             ["MAT_Sandbag"] = new MatDef(0.36f, 0.31f, 0.21f, 0.95f),
+            ["MAT_Tan"] = new MatDef(0.33f, 0.27f, 0.18f, 0.82f),
+            ["MAT_Net"] = new MatDef(0.11f, 0.115f, 0.07f, 0.95f),
             ["MAT_Concrete"] = new MatDef(0.2f, 0.195f, 0.18f, 0.92f),
             ["MAT_Bark"] = new MatDef(0.16f, 0.11f, 0.075f, 0.95f),
             ["MAT_BarkPine"] = new MatDef(1f, 1f, 1f, 0.92f),
@@ -494,7 +496,7 @@ namespace SuruIHA.EditorTools
         // ------------------------------------------------------------------ prefab'lar
         class Prefabs
         {
-            public GameObject drone, jammer, gcs, radar;
+            public GameObject drone, jammer, gcs, radar, ika, pusu, mayin;
             public List<GameObject> pines = new List<GameObject>(), oaks = new List<GameObject>(),
                 rocks = new List<GameObject>(), shrubs = new List<GameObject>(), grass = new List<GameObject>(),
                 houses = new List<GameObject>();
@@ -537,7 +539,7 @@ namespace SuruIHA.EditorTools
                         inst.transform.localRotation = Quaternion.Euler(0, 180, 0);
                     wrapper = r;
                 }
-                else if (name == "Jammer" || name == "GCS" || name == "Radar")
+                else if (name == "Jammer" || name == "GCS" || name == "Radar" || name == "IKA" || name == "Pusu" || name == "Mayin")
                 {
                     var r = new GameObject(name);
                     inst.transform.SetParent(r.transform, false);
@@ -577,6 +579,9 @@ namespace SuruIHA.EditorTools
                 else if (name == "Jammer") p.jammer = prefab;
                 else if (name == "GCS") p.gcs = prefab;
                 else if (name == "Radar") p.radar = prefab;
+                else if (name == "IKA") p.ika = prefab;
+                else if (name == "Pusu") p.pusu = prefab;
+                else if (name == "Mayin") p.mayin = prefab;
                 else if (name.StartsWith("Tree_Pine")) p.pines.Add(prefab);
                 else if (name.StartsWith("Tree_Oak")) p.oaks.Add(prefab);
                 else if (name.StartsWith("Rock")) p.rocks.Add(prefab);
@@ -690,6 +695,9 @@ namespace SuruIHA.EditorTools
             vis.droneModel = prefabs.drone;
             vis.jammerModel = prefabs.jammer;
             vis.radarModel = prefabs.radar;
+            vis.ikaModel = prefabs.ika;
+            vis.pusuModel = prefabs.pusu;
+            vis.mayinModel = prefabs.mayin;
             vis.gcsModel = prefabs.gcs;
             vis.droneScale = 3f;
             vis.autoGroundSnap = false;   // arazi zaten y=0'da

@@ -412,6 +412,58 @@ def ew_statistics(ew, tu, ab, sc):
     return lines
 
 
+def plot_convoy(kv, outdir):
+    """Konvoy koruma: araç kaybı (mayın / pusu), varış oranı ve düşen İHA, stratejilere göre."""
+    kv = kv.assign(lost_total=kv.drones_lost + kv.kamikaze)     # füzeyle düşen + radara dalan kamikaze
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
+    x = np.arange(len(STRATEGIES))
+    names = ["Merkezi", "Merkeziyetsiz", "EH dirençli"]     # STRATEGIES sırası
+    g = kv.groupby("strategy")
+    mine = g.convoy_lost_mine.mean().reindex(STRATEGIES)
+    amb = g.convoy_lost_ambush.mean().reindex(STRATEGIES)
+    ax = axes[0]
+    ax.bar(x, mine, color="#9a9890", label="mayın")
+    ax.bar(x, amb, bottom=mine, color="#D85A30", label="pusu")
+    ax.set_ylabel("Kaybedilen İKA (4 araçtan)")
+    ax.set_title("Konvoyun kaybı")
+    ax.legend(frameon=False)
+    ax = axes[1]
+    ax.bar(x, g.convoy_arrived.mean().reindex(STRATEGIES) * 100, color=[COLORS[s] for s in STRATEGIES])
+    ax.set_ylabel("Konvoyun hedefe varması (%)")
+    ax.set_ylim(0, 105)
+    ax.set_title("Varış")
+    ax = axes[2]
+    ax.bar(x, g.lost_total.mean().reindex(STRATEGIES), color=[COLORS[s] for s in STRATEGIES])
+    ax.set_ylabel("Kaybedilen İHA (10 İHA'dan)")
+    ax.set_title("Sürünün kaybı (kamikaze dahil)")
+    for ax in axes:
+        ax.set_xticks(x)
+        ax.set_xticklabels(names, fontsize=10)
+        ax.grid(axis="y", alpha=0.3)
+    fig.suptitle(f"Konvoy koruma: mayın, pusu, HSS radarı, 20 dBm karıştırıcı (n={kv.seed.nunique()})")
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, "konvoy.png"), dpi=150)
+    plt.close(fig)
+
+
+def convoy_statistics(kv):
+    kv = kv.assign(lost_total=kv.drones_lost + kv.kamikaze)
+    lines = [f"\n##### KONVOY KORUMA (4 İKA, 2 mayın, 2 pusu, HSS radarı, 20 dBm karıştırıcı, n={kv.seed.nunique()}) #####"]
+    for s in STRATEGIES:
+        x = kv[kv.strategy == s]
+        lines.append(f"  {STRATEGY_NAMES[s]:28s} varış %{x.convoy_arrived.mean() * 100:5.1f}  araç kaybı {x.convoy_lost.mean():4.2f} ± "
+                     f"{x.convoy_lost.std():4.2f} (mayın {x.convoy_lost_mine.mean():4.2f}, pusu {x.convoy_lost_ambush.mean():4.2f})  "
+                     f"bulunan tehdit {x.threats_found.mean():4.2f}/4  radar imha %{x.radar_destroyed.mean() * 100:5.1f}  "
+                     f"İHA kaybı {x.lost_total.mean():4.2f} (kamikaze {x.kamikaze.mean():4.2f})  yanlış \"temiz\" {x.false_done.mean():4.2f}  "
+                     f"varış süresi (medyan) {x.convoy_time.median():4.0f} s")
+    r = kv[kv.strategy == "resilient"].sort_values("seed")
+    for s in ("centralized", "decentralized"):
+        o = kv[kv.strategy == s].sort_values("seed")
+        lines.append(wilcoxon_line(r.convoy_lost.values, o.convoy_lost.values, f"araç kaybı: dirençli - {STRATEGY_NAMES[s]}"))
+        lines.append(wilcoxon_line(r.lost_total.values, o.lost_total.values, f"İHA kaybı: dirençli - {STRATEGY_NAMES[s]}"))
+    return lines
+
+
 def wilcoxon_line(a, b, label):
     ok = ~(np.isnan(np.asarray(a, float)) | np.isnan(np.asarray(b, float)))
     a, b = np.asarray(a, float)[ok], np.asarray(b, float)[ok]
@@ -549,6 +601,7 @@ def main():
     sw = pd.read_csv(a.swarm) if os.path.exists(a.swarm) else None
     dc = pd.read_csv(a.decision) if os.path.exists(a.decision) else None
     ew, tu, ab, sc = opt("ew.csv"), opt("tune.csv"), opt("ablation.csv"), opt("scaling.csv")
+    kv = opt("konvoy.csv")
     outdir = os.path.join(rd, "figures")
     os.makedirs(outdir, exist_ok=True)
     plot_main(df, outdir)
@@ -564,7 +617,11 @@ def main():
         plot_ablation(ab, outdir)
     if sc is not None:
         plot_scaling(sc, outdir)
+    if kv is not None:
+        plot_convoy(kv, outdir)
     report = statistics(df, sw, dc, (ew, tu, ab, sc))
+    if kv is not None:
+        report += "\n".join(convoy_statistics(kv)) + "\n"
     path = os.path.join(os.path.dirname(a.csv), "istatistik.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write(report)

@@ -61,6 +61,13 @@ Tek paragraf. İçinde şunlar olsun:
      dalış gerektiren hedef alınmaz.
    - **Enerji:** döner kanatlı İHA güç modeli (Zeng vd. 2019), rüzgâr (ortalama + Ornstein-Uhlenbeck esintisi), hız sınırı
      havaya göre. Standart emniyet (%10'da eve dön) ile enerji farkında karar (rüzgâra karşı dönüş enerjisi) karşılaştırıldı.
+6c. **Konvoy koruma (İKA + İHA işbirliği):** Ayrı bir alt bölüm yap:
+   - Sürü 4 İKA'lık konvoyun yolunu 60 m'lik parçalar hâlinde tarar; konvoy yalnızca "temiz" bilinen yolda ilerler. Yolda
+     gizli mayın ve pusu var; tarama noktasına gerçekten varmayan (konumunu yanlış bilen) İHA tehdidi göremez.
+   - Bulunan pusu bir İHA tarafından lazerle işaretlenir, topçu vurur (işaretleme görevi CBBA'ya yeni görev olarak girer).
+   - **HSS bastırma (SEAD):** radarın yeri kerterizle bulununca dört rol (karıştırıcı, yem, iki kamikaze) lidersiz dağıtılır:
+     her İHA aynı bilgiyle aynı seçimi yapar. Yem, radarın "en güçlü yankıya ateş et" kuralını kullanır; iki kamikaze iki
+     yönden, radarın iki atışı arasındaki süreden kısa aralıkla dalar. Şekil: rol noktaları ve dalış çizgileri.
 7. **Karşılaştırılan üç mimari:** Her birini bir paragrafla anlat. Dirençli mimarinin mekanizmalarını madde madde yaz (README §2): karıştırma haritası, uzun TTL, bölgeden kaçınma, işbirlikçi konum, spiral arama, GPS kurtarma, güven sistemi, karıştırıcı bulma, FHSS, aldatma tespiti, görev değerlendirme. Ayrıca öngörülü çarpışma önlemeyi (CPA) sürü zekâsı bölümüne ekle.
 8. **Deney tasarımı:**
    - Ana deney: 3 strateji × 4 güç × 2 saldırgan oranı × 30 tekrar = 720 koşu.
@@ -74,6 +81,8 @@ Tek paragraf. İçinde şunlar olsun:
    - **Ölçekleme (Aşama 4):** 5 / 10 / 20 İHA (görev = 2 × İHA) × 3 strateji × 3 koşul × 20 tekrar = 540 koşu; hesap yükü de ölçüldü.
    - **Yeni tehditler:** hava savunma (yeri bilinen radar + 80. saniyede açılan pusu radarı) ve 8 m/s lodos + karışık
      batarya × 3 strateji × 30 tekrar = 180 koşu (`run_experiments.py --threats`).
+   - **Konvoy koruma:** 4 İKA, 2 mayın, 2 pusu, HSS radarı, 20 dBm karıştırıcı × 3 strateji × 30 tekrar = 90 koşu
+     (`run_experiments.py --convoy`).
    - Aynı tohumda aynı görev haritası kullanıldı (eşleştirilmiş tasarım).
 9. **Ölçütler:** Görev tamamlama oranı, **görev puanı** (yapılan görevlerin zamanla azalan değerlerinin toplamı / tüm değerler, 0-100), yeni hedefe tepki süresi, görev alanında katedilen yol, yeniden planlama sayısı, görev süresi (kalkış ve intikal dahil), yanlış tamamlama, tekrar ziyaret, paket iletim oranı, konum hatası, sürü bağlantılılığı (en büyük bağlı grubun oranı), düzen yuva hatası, en düşük yerden yükseklik, yakın geçiş sayısı.
 10. **Doğrulama:** `tests/test_suru.py` içinde 23 otomatik test var (radyo fiziği, düzen geometrisi, tam uçuş, arazi takibi, arıza; karar alma için en iyi ekleme hesabının kaba kuvvetle karşılaştırılması, Choi uzlaşma kuralları, CBBA'nın çakışmasız plana yakınsaması, yeni hedeflerin yapılması, yapay zekâ ağı). Yapay zekânın geri yayılım türevleri sayısal türevle karşılaştırıldı (göreli hata 10⁻⁹). Raporda "simülatörün doğru çalıştığını nasıl kontrol ettin?" sorusunun cevabı bu.
@@ -206,6 +215,17 @@ Yorumlaman gereken noktalar:
   İHA'nın değeri arasındaki oran değişirse doğru karar da değişir.
 - **Enerji:** sabit %10 emniyeti rüzgârı bilmediği için korumasız sürülerde uçuş başına 0,9-1,3 İHA eve varamadan düştü;
   enerji farkında sürüde hiç düşmedi, hedeflerin hepsi yapıldı. Görev puanı biraz düştü (düşük bataryalı İHA erken döndü).
+- **Konvoy koruma:** korumasız sürülerde konvoy uçuş başına 1,83-2,03 araç kaybetti (çoğu pusudan), hedefe varış
+  %60-63,3; dirençli sürüde 0 araç kaybı, varış %100, HSS radarı uçuşların hepsinde imha edildi
+  (Wilcoxon p < 0,0001). Bedeli uçuş başına 2,2 İHA (biri radara dalan kamikaze). Kayıpların kaynağı: karıştırmada konumunu yanlış
+  bilen İHA'nın yolu taramadan "temiz" bildirmesi. Bu, sürünün kararlarının sahadaki başka bir sisteme (kara konvoyu)
+  nasıl yayıldığını gösteriyor: yanlış bilgi yalnızca İHA'yı değil, ona güvenen aracı da öldürüyor.
+- **Tasarım süreci (konvoy):** HSS bastırma önce sürünün görev paylaşımına (CBBA) yeni görevler olarak eklendi; nöbet
+  noktaları tutulamadı, yem erken vuruldu, uçuş başına 4-6 İHA kaybedildi. Rollerin lidersiz ama belirlenimci dağıtıldığı
+  ayrı bir katmana geçilince kayıp uçuş başına 2,2 İHA'ya (kamikaze dahil) indi. Ayrıca karıştırma bölgesinden kaçınma kuralı, temiz hücredeki
+  bir tarama noktasının yanındaki karıştırma hücreleri yüzünden İHA'yı hedeften itip konvoyu bekletiyordu; konvoy
+  görevlerinde hedefe son 40 m'de bu kural kapatıldı. Aynı durum genel hedeflerde de var (eski deneylerin uçuşlarının
+  yaklaşık yarısında devreye girerdi); önceki sonuçlar birebir tekrarlanabilsin diye orada açılmadı, öneri olarak yaz.
 - **Tasarım süreci (dürüstçe anlat):** radar riskini görev değerine katmak İHA'ların biraz farklı tehdit haritaları yüzünden
   uzlaşmayı (CBBA) salındırdı; kesin bir kurala (kısa dalış) geçildi. Kerteriz kestiriminde ilk yöntem (çizgilere dik uzaklık,
   ağırlıklı en küçük kareler) birbirine yakın ölçümlerde radarı yüzlerce metre yanlış yere koyup "eminim" diyordu; en çok
@@ -224,7 +244,8 @@ Yorumlaman gereken noktalar:
 - Pekiştirmeli öğrenmeyi daha fazla hesaplama gücüyle davranış kararlarına (ne zaman aramayı bırakmalı, ne zaman konum düzeltmeye dönmeli) uygulamak; ablasyon bu kararların puana etkisinin büyük olduğunu gösteriyor
 - "Bölgeden kaçınma" kuralını kazanç-maliyet hesabıyla akıllandırmak
 - Küçük kara robotlarıyla (ESP32) fiziksel deney; paket kaybı yazılımla verilir
-- Hava savunmada hedef değeri ile İHA değerini aynı ölçüde tartan bir karar (beklenen kayıp); radarı bastırma görevi (SEAD)
+- Hava savunmada hedef değeri ile İHA değerini aynı ölçüde tartan bir karar (beklenen kayıp); HSS bastırmanın genel hava
+  savunma senaryolarına (yalnız konvoy değil) yayılması ve bastırmanın beklenen kayıpla tartılması
 - Enerjide batarya değişimi / şarj istasyonu ve rüzgârın araziyle değişmesi
 
 ## Kaynaklar

@@ -49,6 +49,9 @@ namespace SuruIHA
             B.droneModel = A.droneModel;
             B.jammerModel = A.jammerModel;
             B.radarModel = A.radarModel;
+            B.ikaModel = A.ikaModel;
+            B.pusuModel = A.pusuModel;
+            B.mayinModel = A.mayinModel;
             B.gcsModel = A.gcsModel;
             B.gcsModelOffset = A.gcsModelOffset;
             B.droneScale = A.droneScale;
@@ -180,8 +183,12 @@ namespace SuruIHA
             var m = f.m;
             Ui.Label(Ui.R(x, y + 12, w, 30), Name(f.strategy), 19, accent, true, TextAnchor.UpperCenter);
             string gps = m.spoofed > 0 || m.spoofSeen > 0 ? $"  ·  kandırılan {m.spoofed}" : $"  ·  GPS'siz {m.gpsLost}";
-            Ui.Label(Ui.R(x, y + 42, w, 26),
-                     $"hedef <b>{m.done}/{m.total}</b>  ·  puan <b>{m.score * 100:0}</b>  ·  yanlış \"bitti\" <b>{m.falseDone}</b>{gps}",
+            var cv = SwarmHud.Convoy(f);
+            int n = cv != null ? cv.v.Length / 5 : 0;
+            Ui.Label(Ui.R(x, y + 42, w, 26), cv != null
+                     ? $"İKA <b>{n - cv.lost}/{n}</b>  ·  konvoy yolu <b>%{100f * Mathf.Clamp01(cv.lead / Mathf.Max(cv.len, 1f)):0}</b>  ·  " +
+                       $"taranmadan \"temiz\" <b>{m.falseDone}</b>{gps}"
+                     : $"hedef <b>{m.done}/{m.total}</b>  ·  puan <b>{m.score * 100:0}</b>  ·  yanlış \"bitti\" <b>{m.falseDone}</b>{gps}",
                      16, Ui.Ink, false, TextAnchor.UpperCenter);
             Ui.Label(Ui.R(x, y + 68, w, 22), $"t = {f.t:0} s  ·  {SwarmScenarios.PhaseTitle(f.phase)}  ·  paket iletimi %{m.pdr * 100:0}", 13.5f, Ui.Ink3, false, TextAnchor.UpperCenter);
         }

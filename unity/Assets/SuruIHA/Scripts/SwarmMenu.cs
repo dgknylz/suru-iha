@@ -360,7 +360,7 @@ namespace SuruIHA
             y += 42;
 
             const float gap = 14f, ch = 170f;
-            const int cols = 5;
+            const int cols = 6;
             int nRows = (SwarmScenarios.All.Length + cols - 1) / cols;
             float cwd = (cw - (cols - 1) * gap) / cols;
             for (int i = 0; i < SwarmScenarios.All.Length; i++)
@@ -372,11 +372,17 @@ namespace SuruIHA
                 Ui.Outline(r, sel ? Ui.Accent : Ui.Line, sel ? 2f : 1f, 14);
                 float rx = r.x / Ui.S, ry = r.y / Ui.S;
                 Ui.Chip(rx + 16, ry + 14, sc.Tag, sc.TagColor, 11.5f);
-                Ui.Label(Ui.R(rx + 16, ry + 42, cwd - 32, 30), sc.Title, 20, Ui.Ink, true);
-                Ui.Label(Ui.R(rx + 16, ry + 72, cwd - 32, 64), sc.Short, 14.5f, Ui.Ink2);
+                // Altı sütunda kartlar dar: sığmayan başlık ve açıklama küçülür
+                float ts = 20f, ss = 14.5f;
+                while (ts > 15f && Ui.TextWidth(sc.Title, ts, true) > cwd - 32) ts -= 0.5f;
+                while (ss > 12f && Ui.TextHeight(sc.Short, ss, cwd - 32) > 66f) ss -= 0.5f;
+                Ui.Label(Ui.R(rx + 16, ry + 42, cwd - 32, 30), sc.Title, ts, Ui.Ink, true);
+                Ui.Label(Ui.R(rx + 16, ry + 72, cwd - 32, 66), sc.Short, ss, Ui.Ink2);
                 float other = Mathf.Max(sc.RefCentral, sc.RefDecentral), low = Mathf.Min(sc.RefCentral, sc.RefDecentral);
                 string refText = sc.RefText ?? $"Deneyde dirençli %{Pct(sc.RefResilient)} · diğerleri %{Pct(low)}" + (other - low > 0.6f ? $"-{Pct(other)}" : "");
-                Ui.Label(Ui.R(rx + 16, ry + ch - 32, cwd - 32, 22), refText, 13.5f, Ui.Ink3);
+                float rs = 13.5f;
+                while (rs > 11f && Ui.TextWidth(refText, rs) > cwd - 32) rs -= 0.5f;
+                Ui.Label(Ui.R(rx + 16, ry + ch - 32, cwd - 32, 22), refText, rs, Ui.Ink3);
                 if (Ui.Click(r)) scenario = i;
             }
             y += nRows * ch + (nRows - 1) * gap + 24;
